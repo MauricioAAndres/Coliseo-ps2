@@ -40,7 +40,7 @@ namespace Gladiator.Core
             new Def("BURLA", new[] { "kb:t" }, new[] { "pad:dpad/up" }),
             new Def("SOLTAR / LANZAR ARMA", new[] { "kb:g" }, new[] { "pad:dpad/down" }),
             new Def("RECOGER / USAR", new[] { "kb:e" }, new[] { "pad:buttonSouth" }),
-            new Def("FIJAR OBJETIVO", new[] { "mouse:middleButton", "kb:tab" }, new[] { "pad:rightStickPress" }),
+            new Def("FIJAR / GIRAR CAMARA", new[] { "mouse:middleButton", "kb:tab" }, new[] { "pad:rightStickPress" }),
         };
 
         public static int Count => Defs.Length;

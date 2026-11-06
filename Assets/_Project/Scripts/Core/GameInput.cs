@@ -85,6 +85,8 @@ namespace Gladiator.Core
 
         /// <summary>Shoulder camera: lock on to a rival / let go. Middle mouse button or Tab / gamepad R3 by default.</summary>
         public static bool LockOnPressed => Bound(GameAction.LockOn);
+        /// <summary>Same button held: with the classic camera, turns it (with the mouse / right stick).</summary>
+        public static bool LockOnHeld => BoundHeld(GameAction.LockOn);
 
         /// <summary>Mouse movement this frame (pixels).</summary>
         public static Vector2 LookDelta => M != null ? M.delta.ReadValue() : Vector2.zero;

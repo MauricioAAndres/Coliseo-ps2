@@ -165,7 +165,7 @@ namespace Gladiator.UI
                     Add("VOLVER", () => Show(Page.Main));
                     note.text = GameSettings.ShoulderCamera
                         ? "Al hombro: el raton / stick derecho gira la camara.\nFIJAR objetivo: rueda del raton (clic) o TAB / R3 (patada: LB)."
-                        : "Clasica: camara alta del coliseo, apuntas con el raton.";
+                        : "Clasica: camara alta del coliseo, apuntas con el raton.\nGIRAR: manten la rueda (o TAB / R3) y mueve el raton o el stick; un toque la endereza.";
                     break;
                 case Page.Controls:
                     title.text = "CONTROLES";

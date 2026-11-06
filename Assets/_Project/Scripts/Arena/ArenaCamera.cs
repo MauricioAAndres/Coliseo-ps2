@@ -10,6 +10,8 @@ namespace Gladiator.Arena
     /// Shoulder (option): third person behind the right shoulder, turned with the mouse / right stick, with a
     /// souls-style lock-on (middle mouse or Tab / R3) that keeps the rival in view; flick the mouse or stick sideways
     /// to switch target. Minigames (FocusOverride) always use the classic framing.
+    /// Classic: hold the lock-on button (mouse wheel / R3) and move the mouse or right stick to turn the camera
+    /// around the player; a quick tap puts it back to the normal angle.
     /// </summary>
     public class ArenaCamera : MonoBehaviour
     {
@@ -37,6 +39,11 @@ namespace Gladiator.Arena
         public bool ShoulderActive => GameSettings.ShoulderCamera && Player != null && !FocusOverride.HasValue;
         /// <summary>Shoulder camera heading (degrees): the player moves relative to it.</summary>
         public float OrbitYaw => orbitYaw;
+
+        /// <summary>Classic camera: how far the player has turned it (degrees, added to Yaw).</summary>
+        public float ClassicTurn => turnTarget;
+        float turnTarget, turnCurrent, turnHold, turnMoved;
+        bool turnWasHeld;
 
         Vector3 focus, velocity;
         float shake, curDistance = -1f, curPitch = -1f;
@@ -98,6 +105,7 @@ namespace Gladiator.Arena
             {
                 if (LockTarget != null) SetLock(null);
                 orbitInit = false;
+                UpdateClassicTurn();
                 Place();
             }
         }
@@ -108,9 +116,35 @@ namespace Gladiator.Arena
             float k = 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime);
             curDistance = Mathf.Lerp(curDistance, Distance, k);
             curPitch = Mathf.Lerp(curPitch, Pitch, k);
-            Quaternion rot = Quaternion.Euler(curPitch, Yaw, 0f);
+            // Minigames frame their own view: the hand-turned angle only applies when following the player.
+            turnCurrent = Mathf.LerpAngle(turnCurrent, FocusOverride.HasValue ? 0f : turnTarget, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
+            Quaternion rot = Quaternion.Euler(curPitch, Yaw + turnCurrent, 0f);
             Vector3 pos = focus + Vector3.up * 1.2f - rot * Vector3.forward * curDistance;
             transform.SetPositionAndRotation(ApplyShake(pos), rot);
+        }
+
+        /// <summary>Classic camera: wheel / R3 held + mouse or right stick turns it; a short tap resets it.</summary>
+        void UpdateClassicTurn()
+        {
+            if (FocusOverride.HasValue || Player == null) { turnWasHeld = false; return; }
+            float dt = Time.unscaledDeltaTime;
+            bool held = GameInput.LockOnHeld;
+            if (held)
+            {
+                Vector2 stick = GameInput.AimStick;
+                float d = GameInput.LookDelta.x * 0.25f * GameSettings.CameraSensitivity;
+                if (Mathf.Abs(stick.x) > 0.2f) d += stick.x * 140f * GameSettings.CameraSensitivity * dt;
+                turnTarget = Mathf.Repeat(turnTarget + d + 180f, 360f) - 180f;
+                turnHold += dt;
+                turnMoved += Mathf.Abs(d);
+            }
+            else if (turnWasHeld)
+            {
+                if (turnHold < 0.25f && turnMoved < 3f) turnTarget = 0f; // quick tap: back to the normal angle
+                turnHold = 0f;
+                turnMoved = 0f;
+            }
+            turnWasHeld = held;
         }
 
         Vector3 ApplyShake(Vector3 pos)

@@ -189,7 +189,7 @@ namespace Gladiator.UI
                 string K(GameAction a) => InputBindings.Short(a);
                 string move = K(GameAction.MoveUp) + K(GameAction.MoveLeft) + K(GameAction.MoveDown) + K(GameAction.MoveRight);
                 if (move.Length > 4) move = K(GameAction.MoveUp) + "/" + K(GameAction.MoveLeft) + "/" + K(GameAction.MoveDown) + "/" + K(GameAction.MoveRight);
-                hintText.text = move + " mover  " + (hintShoulder ? "RATON camara  " + K(GameAction.LockOn) + " fijar" : "RATON apuntar") +
+                hintText.text = move + " mover  " + (hintShoulder ? "RATON camara  " + K(GameAction.LockOn) + " fijar" : "RATON apuntar  " + K(GameAction.LockOn) + "+RATON girar camara") +
                     "  " + K(GameAction.Light) + " ligero  " + K(GameAction.Heavy) + " fuerte  " + K(GameAction.Kick) + " patada  " +
                     K(GameAction.Block) + " bloquear  " + K(GameAction.Jump) + " saltar  " + K(GameAction.Dodge) + " esquivar  " +
                     K(GameAction.Crouch) + " agacharse  " + K(GameAction.Taunt) + " burla  " + K(GameAction.Drop) + " soltar/lanzar  " +

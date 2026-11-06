@@ -273,6 +273,7 @@ En la puerta norte del ludus, **E** abre el menu de combate:
 - Prueba de dos procesos: `ColiseoPS2.exe -mptest host` y `ColiseoPS2.exe -mptest join` (lineas `[MPTEST]`).
 
 ## Camara al hombro y graficos PS2 / PS3
+- **Camara clasica: girarla**: manten la rueda del raton (o TAB / R3) y mueve el raton o el stick derecho; un toque rapido la endereza.
 - **ESC > CAMARA > TIPO**: CLASICA (camara alta del coliseo, apuntas con el raton) o **AL HOMBRO** (tercera persona
   estilo souls). Al hombro el raton / stick derecho gira la camara, el gladiador mira hacia donde camina y un ataque con
   direccion lo gira al instante. **Fijar objetivo**: clic en la rueda del raton o TAB (mando: R3; la patada pasa a LB).

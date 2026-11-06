@@ -457,6 +457,32 @@ namespace Gladiator.Arena
             Gladiator.Core.GameSettings.GraphicsPreset = 0;
             Gladiator.Core.GameSettings.Apply(false);
             yield return Wait(0.8f);
+            // Classic camera turned by hand: mouse wheel held + mouse moved, then a quick tap puts it back.
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            float turned = 0f, afterTap = 0f, yaw0 = cam != null ? cam.transform.eulerAngles.y : 0f, yawTurned = yaw0;
+            if (mouse != null && cam != null)
+            {
+                var held = new UnityEngine.InputSystem.LowLevel.MouseState().WithButton(UnityEngine.InputSystem.LowLevel.MouseButton.Middle);
+                for (int i = 0; i < 30; i++)
+                {
+                    held.delta = new Vector2(20f, 0f);
+                    UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, held);
+                    yield return null;
+                }
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, new UnityEngine.InputSystem.LowLevel.MouseState());
+                yield return Wait(0.8f);
+                turned = cam.ClassicTurn;
+                yawTurned = cam.transform.eulerAngles.y;
+                yield return Shot(tag + "v6_clasica_girada");
+                held.delta = Vector2.zero;
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, held);
+                yield return null;
+                yield return null;
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(mouse, new UnityEngine.InputSystem.LowLevel.MouseState());
+                yield return Wait(0.8f);
+                afterTap = cam.ClassicTurn;
+            }
+            Log($"VIEW classic turn={turned:0} camYaw {yaw0:0}->{yawTurned:0} afterTap={afterTap:0} (expected turned, then 0)");
             Log($"VIEW back ps2 rt={(rs != null && rs.Target != null ? rs.Target.width + "x" + rs.Target.height : "?")} shadowDist={(urp != null ? urp.shadowDistance : -1f)} cursor={Cursor.lockState}");
             yield return Shot(tag + "v5_ps2_clasica");
             Teleport(e, home + Vector3.forward * 10f, Vector3.back);
@@ -469,6 +495,9 @@ namespace Gladiator.Arena
         IEnumerator BindTest(string tag)
         {
             var kbd = UnityEngine.InputSystem.Keyboard.current;
+            bool wasEnabled = kbd != null && kbd.enabled;
+            if (kbd != null && !kbd.enabled) UnityEngine.InputSystem.InputSystem.EnableDevice(kbd); // window without focus
+            Log($"BIND keyboard={(kbd != null ? kbd.displayName : "none")} enabledBefore={wasEnabled} focused={Application.isFocused}");
             InputBindings.ResetDefaults(false);
             Log($"BIND defaults light=[{InputBindings.Describe(GameAction.Light, false)} | {InputBindings.Describe(GameAction.Light, true)}] " +
                 $"kick=[{InputBindings.Describe(GameAction.Kick, false)} | {InputBindings.Describe(GameAction.Kick, true)}] " +
@@ -703,6 +732,8 @@ namespace Gladiator.Arena
                 $"maxHP={player.Health.Max:0} dmgMul={player.DamageMultiplier:0.00} spdMul={player.AttackSpeedMultiplier:0.00} move={player.MoveSpeed:0.00} " +
                 $"enemy0HP={enemy.Health.Max:0} enemy0Dmg={enemy.DamageMultiplier:0.00} res={Screen.width}x{Screen.height}");
 
+            // Simulated keys / mouse must count even when the test window is behind other windows (test only).
+            UnityEngine.InputSystem.InputSystem.settings.backgroundBehavior = UnityEngine.InputSystem.InputSettings.BackgroundBehavior.IgnoreFocus;
             // The tests frame shots with the classic camera and the PS2 look (not saved: the player's options stay).
             Gladiator.Core.GameSettings.CameraMode = 0;
             Gladiator.Core.GameSettings.GraphicsPreset = 0;
