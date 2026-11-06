@@ -68,6 +68,16 @@ namespace Gladiator.Net
             yield return Until(() => ns.Players.Count >= 2, 60f);
             Log($"ROSTER n={ns.Players.Count} [{Roster(ns)}]");
             if (ns.Players.Count < 2) yield break;
+            Log("ADDRESSES [" + string.Join(" ; ", NetSession.AddressLines()) + "]");
+            var pm = Gladiator.UI.PauseMenu.Instance;
+            if (pm != null)
+            {
+                pm.Open();
+                pm.ShowPage(Gladiator.UI.PauseMenu.Page.Lobby);
+                yield return Wait(0.6f);
+                yield return Shot("mp_host_sala");
+                pm.Close();
+            }
             yield return Wait(1f);
             ns.StartGame();
             yield return Until(() => NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 30f);
@@ -126,6 +136,31 @@ namespace Gladiator.Net
             yield return Until(() => !ns.Active, 25f);
             yield return Wait(0.5f);
             Log($"KICKED active={ns.Active} notice='{ns.LastNotice}' avatars={nav.RemoteCount}");
+
+            yield return Wait(2.5f); // the host has closed its room by now
+            // Joining failures must say why.
+            ns.Join("127.0.0.1:7790"); // nobody listens there
+            yield return Until(() => !ns.Active, 10f);
+            Log($"FAIL refused notice='{ns.LastNotice}' help='{ns.LastHelp}'");
+            var mine = NetSession.LocalAddresses();
+            if (mine.Count > 0)
+            {
+                ns.Join(mine[0]);
+                yield return Until(() => !ns.Active, 10f);
+                Log($"FAIL own-ip notice='{ns.LastNotice}'");
+            }
+            ns.Join("192.168.250.77"); // a LAN address of another network: nobody answers
+            yield return Until(() => !ns.Active, 12f);
+            Log($"FAIL lan notice='{ns.LastNotice}' help='{ns.LastHelp}'");
+            var pm = Gladiator.UI.PauseMenu.Instance;
+            if (pm != null)
+            {
+                pm.Open();
+                pm.ShowPage(Gladiator.UI.PauseMenu.Page.Multi);
+                yield return Wait(0.6f);
+                yield return Shot("mp_client_ayuda");
+                pm.Close();
+            }
         }
     }
 }

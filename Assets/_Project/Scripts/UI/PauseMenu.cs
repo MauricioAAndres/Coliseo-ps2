@@ -94,6 +94,8 @@ namespace Gladiator.UI
             list = PS2UI.Anchored(new GameObject("List", typeof(RectTransform)).GetComponent<RectTransform>(), new Vector2(0.5f, 1f), new Vector2(0, -100), new Vector2(480, 380));
             list.SetParent(panel, false);
             note = PS2UI.Text(panel, "", 14, TextAnchor.UpperCenter, new Vector2(0.5f, 0f), new Vector2(0, 62), new Vector2(500, 40), PS2UI.Parchment);
+            note.horizontalOverflow = HorizontalWrapMode.Wrap; // long help texts (multiplayer) wrap and the panel grows
+            note.verticalOverflow = VerticalWrapMode.Overflow;
             hint = PS2UI.Text(panel, "", 13, TextAnchor.MiddleCenter, new Vector2(0.5f, 0f), new Vector2(0, 22), new Vector2(520, 18), new Color(0.75f, 0.7f, 0.6f));
         }
 
@@ -225,7 +227,7 @@ namespace Gladiator.UI
         {
             var ns = NetSession.Ensure();
             if (ns.Active) { Show(Page.Lobby); return; }
-            if (ipText == null) ipText = PlayerPrefs.GetString("mp_ip", "192.168.0.");
+            if (ipText == null) ipText = PlayerPrefs.GetString("mp_ip", "");
             ns.StartBrowsing();
             title.text = "MULTIJUGADOR";
             Add("CREAR PARTIDA  (ANFITRION)", HostGame);
@@ -239,8 +241,11 @@ namespace Gladiator.UI
             AddValue("IP DEL ANFITRION", () => (ipText ?? "") + (EditingIp ? ((Time.unscaledTime % 1f) < 0.55f ? "_" : " ") : ""), d => BeginIpEdit());
             Add("UNIRSE POR IP", () => JoinGame(ipText));
             Add("VOLVER", () => Show(Page.Main));
-            note.text = (games.Count == 0 ? "Buscando partidas en tu red... (misma Wi-Fi: aparecen solas)" : "Partidas encontradas en tu red.") +
-                        "\nPor internet: el anfitrion abre el puerto " + NetSession.DefaultPort + " o usad Radmin VPN / ZeroTier.";
+            if (ns.LastHelp != null && Time.unscaledTime - ns.LastHelpTime < 120f)
+                note.text = ns.LastHelp;
+            else
+                note.text = (games.Count == 0 ? "Buscando partidas (misma Wi-Fi o Radmin VPN: aparecen solas)..." : "Partidas encontradas.") +
+                            "\nSi no aparece: escribe la IP que le sale al ANFITRION en su sala.\nPor internet: los dos en Radmin VPN (misma red) y la IP 26.x del anfitrion.";
         }
 
         /// <summary>The room: players (the host can kick), start (host only), back to the game, leave.</summary>
@@ -270,9 +275,13 @@ namespace Gladiator.UI
             Add(ns.IsHost ? "CERRAR LA SALA" : "SALIR DE LA SALA", () => { ns.Leave(); Show(Page.Multi); });
             if (ns.IsHost)
             {
-                var ips = NetSession.LocalAddresses();
-                note.text = "Tu IP: " + (ips.Count > 0 ? string.Join("  ", ips) : "?") + "   (puerto " + ns.Port + ")\n" +
-                            (ns.Phase == NetSession.PhaseLobby ? "Solo tu puedes expulsar e iniciar la partida." : "Estais en el ludus compartido.");
+                Add(ns.FetchingPublicIp ? "BUSCANDO TU IP DE INTERNET..." : "VER MI IP DE INTERNET", () => { ns.FetchPublicIp(); Show(Page.Lobby); });
+                var lines = NetSession.AddressLines();
+                bool vpn = lines.Exists(l => !l.StartsWith("MISMA"));
+                string pub = ns.PublicIp == null ? "" : ns.PublicIp == "?" ? "\nINTERNET: no se pudo averiguar" :
+                    "\nINTERNET: " + ns.PublicIp + " (solo si abres el puerto " + ns.Port + " TCP en el router)";
+                note.text = "DALES UNA DE ESTAS IP:\n" + (lines.Count > 0 ? string.Join("\n", lines) : "?") + pub +
+                            (vpn ? "" : "\nPor internet sin estar en la misma Wi-Fi: usad Radmin VPN (la de Wi-Fi no sirve).");
             }
             else note.text = ns.Phase == NetSession.PhaseLobby ? "Esperando a que el anfitrion inicie la partida..." : "Estais en el ludus compartido.";
             return true;
@@ -325,7 +334,7 @@ namespace Gladiator.UI
             {
                 if (ns == null) return "none";
                 var sb = new System.Text.StringBuilder();
-                sb.Append(ns.Role).Append(ns.Connecting).Append(ns.LocalId).Append(ns.Phase);
+                sb.Append(ns.Role).Append(ns.Connecting).Append(ns.LocalId).Append(ns.Phase).Append(ns.PublicIp).Append(ns.FetchingPublicIp);
                 foreach (var p in ns.Players) sb.Append('|').Append(p.Id).Append(p.G != null ? p.G.Name : "");
                 return sb.ToString();
             }
@@ -369,7 +378,12 @@ namespace Gladiator.UI
         {
             float h = rows.Count > 12 ? 27f : rows.Count > 6 ? 38f : 46f, gap = rows.Count > 12 ? 3f : 6f;
             float total = rows.Count * h + (rows.Count - 1) * gap;
-            panel.sizeDelta = new Vector2(560, 100 + total + 110);
+            // The note grows upwards when it has more than two lines; the panel grows with it.
+            float noteH = Mathf.Max(40f, note.preferredHeight + 4f);
+            float extra = noteH - 40f;
+            note.rectTransform.sizeDelta = new Vector2(500, noteH);
+            note.rectTransform.anchoredPosition = new Vector2(0, 62 + extra * 0.5f);
+            panel.sizeDelta = new Vector2(560, 100 + total + 110 + extra);
             for (int i = 0; i < rows.Count; i++)
                 PS2UI.Anchored(rows[i].Rect, new Vector2(0.5f, 1f), new Vector2(0, -i * (h + gap)), new Vector2(480, h));
         }

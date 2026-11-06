@@ -8,8 +8,11 @@ Unity **6000.5.10f1** · URP 17.5 (renderer Forward) · Input System 1.20
 
 ## Probar el multijugador con un amigo
 1. Los dos descargan el mismo zip de **Releases** (deben tener la misma versión).
-2. **El anfitrión**: ESC → MULTIJUGADOR → CREAR PARTIDA. La primera vez, Windows pregunta por el cortafuegos: permite el acceso.
-3. **El amigo**:
+2. **Los dos** ejecutan una vez `permitir_cortafuegos.bat` (viene en el zip; pide permisos de administrador). Radmin VPN y
+   ZeroTier cuentan como "red pública" en Windows y, sin esto, el cortafuegos bloquea la conexión.
+   **El anfitrión**: ESC → MULTIJUGADOR → CREAR PARTIDA. En la sala le salen sus IP con etiqueta (RADMIN VPN, MISMA WI-FI...).
+   Una IP `192.168.x.x` o `10.x.x.x` es de red local: **por internet no sirve**.
+3. **El amigo** (guía paso a paso en `LEEME_MULTIJUGADOR.txt`):
    - **En la misma red Wi-Fi/LAN**: la partida aparece sola en la lista de MULTIJUGADOR.
    - **Por internet**: lo más fácil es que los dos instalen **Radmin VPN** o **ZeroTier**, entren en la misma red y el amigo
      escriba la IP de Radmin/ZeroTier del anfitrión en **IP DEL ANFITRION** → UNIRSE POR IP. La otra opción es que el anfitrión

@@ -186,6 +186,21 @@ namespace Gladiator.Net
         volatile bool stopping;
         float broadcastTimer;
         UdpClient broadcaster;
+        float netRefresh;
+        List<IPEndPoint> netBroadcasts = new List<IPEndPoint>();
+
+        static List<IPEndPoint> DirectedBroadcasts()
+        {
+            var list = new List<IPEndPoint>();
+            foreach (var n in Interfaces())
+            {
+                byte[] ip = n.Ip.GetAddressBytes(), m = n.Mask.GetAddressBytes(), bc = new byte[4];
+                for (int i = 0; i < 4; i++) bc[i] = (byte)(ip[i] | ~m[i]);
+                var ep = new IPEndPoint(new IPAddress(bc), DiscoveryPort);
+                if (!list.Exists(e => e.Address.Equals(ep.Address))) list.Add(ep);
+            }
+            return list;
+        }
 
         // Client connect runs on a thread so the menu never freezes.
         TcpClient connecting;
@@ -326,6 +341,9 @@ namespace Gladiator.Net
                     string name = Players.Count > 0 ? Players[0].G.Name : "Partida";
                     byte[] b = Encoding.UTF8.GetBytes("COLISEO|" + Version + "|" + name.Replace("|", " ") + "|" + Port + "|" + Players.Count + "|" + Phase);
                     broadcaster.Send(b, b.Length, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+                    // Also to every network's own broadcast address, so the game shows up over Radmin VPN / ZeroTier too.
+                    if (Time.unscaledTime >= netRefresh) { netRefresh = Time.unscaledTime + 10f; netBroadcasts = DirectedBroadcasts(); }
+                    foreach (var ep in netBroadcasts) { try { broadcaster.Send(b, b.Length, ep); } catch { } }
                 }
                 catch { }
             }
@@ -414,10 +432,15 @@ namespace Gladiator.Net
                 try
                 {
                     var ar = tcp.BeginConnect(a, pt, null, null);
-                    if (ar.AsyncWaitHandle.WaitOne(5000) && tcp.Connected) { tcp.EndConnect(ar); connectResult = 1; }
-                    else connectResult = -1;
+                    if (!ar.AsyncWaitHandle.WaitOne(6000)) connectResult = -1; // nobody answered
+                    else { tcp.EndConnect(ar); connectResult = tcp.Connected ? 1 : -1; }
                 }
-                catch { connectResult = -1; }
+                catch (SocketException se)
+                {
+                    connectResult = se.SocketErrorCode == SocketError.ConnectionRefused ? -2
+                        : se.SocketErrorCode == SocketError.HostNotFound || se.SocketErrorCode == SocketError.NoData ? -3 : -1;
+                }
+                catch { connectResult = -3; }
             }) { IsBackground = true, Name = "NetConnect" }.Start();
             Debug.Log("[NET] connecting to " + address + ":" + port);
             RosterChanged?.Invoke();
@@ -433,7 +456,7 @@ namespace Gladiator.Net
                 if (connectResult < 0)
                 {
                     try { tcp.Close(); } catch { }
-                    Fail("NO SE PUDO CONECTAR CON " + ConnectTarget + ": revisa la IP y que el anfitrion haya creado la partida");
+                    ExplainFailure(connectResult);
                     return;
                 }
                 hostConn = new NetConn(tcp);
@@ -487,6 +510,90 @@ namespace Gladiator.Net
                     GameMessage?.Invoke(fid, gt, gp);
                     break;
             }
+        }
+
+        /// <summary>Longer explanation of the last failed connection (the MULTIJUGADOR page shows it).</summary>
+        public string LastHelp { get; private set; }
+        public float LastHelpTime { get; private set; } = -999f;
+
+        void Help(string text) { LastHelp = text; LastHelpTime = Time.unscaledTime; }
+
+        /// <summary>Tells the player why joining failed and what to do about it.</summary>
+        void ExplainFailure(int code)
+        {
+            string ip = ConnectTarget;
+            var mine = LocalAddresses();
+            if (mine.Contains(ip))
+            {
+                Help("Esa IP es la de TU ordenador. Escribe la que le sale al ANFITRION en su SALA (ESC > MULTIJUGADOR).");
+                Fail("ESA IP ES LA TUYA: ESCRIBE LA DEL ANFITRION");
+                return;
+            }
+            if (code == -3)
+            {
+                Help("La direccion no es valida. Escribe solo numeros y puntos, por ejemplo 26.14.120.7");
+                Fail("DIRECCION NO VALIDA: " + ip);
+                return;
+            }
+            if (code == -2)
+            {
+                Help("Ese ordenador responde, pero no tiene una partida abierta: el anfitrion debe pulsar CREAR PARTIDA y quedarse en la sala.");
+                Fail("EN " + ip + " NO HAY NINGUNA PARTIDA ABIERTA");
+                return;
+            }
+            if (IsLanAddress(ip) && !SameSubnetAsMe(ip))
+                Help(ip + " es una IP de RED LOCAL: solo sirve si estais en la misma Wi-Fi. Por internet: instalad los dos Radmin VPN, " +
+                     "entrad en la misma red y usad la IP de Radmin del anfitrion (empieza por 26.). Y el anfitrion debe permitir el juego en el cortafuegos.");
+            else
+                Help("Nadie responde en " + ip + ". Revisad: 1) que esteis en la misma red (Wi-Fi o Radmin VPN), 2) que el anfitrion haya permitido " +
+                     "el juego en el cortafuegos de Windows (redes PRIVADAS y PUBLICAS: Radmin cuenta como publica; o ejecutad permitir_cortafuegos.bat), " +
+                     "3) que la IP sea la que le sale al anfitrion en su SALA.");
+            Fail("NO RESPONDE " + ip + " (MIRA LA AYUDA EN MULTIJUGADOR)");
+        }
+
+        static bool IsLanAddress(string ip)
+        {
+            if (!IPAddress.TryParse(ip, out var a) || a.AddressFamily != AddressFamily.InterNetwork) return false;
+            byte[] b = a.GetAddressBytes();
+            return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168);
+        }
+
+        static bool SameSubnetAsMe(string ip)
+        {
+            if (!IPAddress.TryParse(ip, out var target)) return false;
+            byte[] t = target.GetAddressBytes();
+            foreach (var n in Interfaces())
+            {
+                byte[] m = n.Mask.GetAddressBytes(), me = n.Ip.GetAddressBytes();
+                bool same = true;
+                for (int i = 0; i < 4; i++) if ((t[i] & m[i]) != (me[i] & m[i])) { same = false; break; }
+                if (same) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Public internet IP, asked on demand from the room (null until known; "?" if it failed).</summary>
+        public string PublicIp { get; private set; }
+        public bool FetchingPublicIp { get; private set; }
+
+        public void FetchPublicIp()
+        {
+            if (FetchingPublicIp) return;
+            StartCoroutine(FetchPublicIpRoutine());
+        }
+
+        System.Collections.IEnumerator FetchPublicIpRoutine()
+        {
+            FetchingPublicIp = true;
+            using (var req = UnityEngine.Networking.UnityWebRequest.Get("https://api.ipify.org"))
+            {
+                req.timeout = 6;
+                yield return req.SendWebRequest();
+                string t = req.result == UnityEngine.Networking.UnityWebRequest.Result.Success ? req.downloadHandler.text.Trim() : "";
+                PublicIp = IPAddress.TryParse(t, out _) ? t : "?";
+            }
+            FetchingPublicIp = false;
+            RosterChanged?.Invoke();
         }
 
         void Fail(string reason)
@@ -576,10 +683,61 @@ namespace Gladiator.Net
         public static string F(float v) => v.ToString("0.###", CultureInfo.InvariantCulture);
         public static float PF(string s) => float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : 0f;
 
+        public struct NetIf { public IPAddress Ip, Mask; public string Kind; }
+
+        /// <summary>Usable IPv4 networks of this PC, labelled: RADMIN VPN, ZEROTIER, HAMACHI, TAILSCALE, MISMA WI-FI / RED.
+        /// Virtual adapters of other programs (Hyper-V, WSL, VirtualBox, VMware) are left out: nobody can join through them.</summary>
+        public static List<NetIf> Interfaces()
+        {
+            var list = new List<NetIf>();
+            try
+            {
+                foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    string desc = ((ni.Description ?? "") + " " + (ni.Name ?? "")).ToLowerInvariant();
+                    if (desc.Contains("hyper-v") || desc.Contains("vethernet") || desc.Contains("wsl") || desc.Contains("virtualbox") ||
+                        desc.Contains("vmware") || desc.Contains("vboxnet")) continue;
+                    foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (ua.Address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(ua.Address)) continue;
+                        string s = ua.Address.ToString();
+                        if (s.StartsWith("169.254.")) continue;
+                        byte[] b = ua.Address.GetAddressBytes();
+                        string kind;
+                        if (desc.Contains("radmin") || b[0] == 26) kind = "RADMIN VPN";
+                        else if (desc.Contains("zerotier")) kind = "ZEROTIER";
+                        else if (desc.Contains("hamachi") || b[0] == 25) kind = "HAMACHI";
+                        else if (desc.Contains("tailscale") || (b[0] == 100 && b[1] >= 64 && b[1] <= 127)) kind = "TAILSCALE";
+                        else if (IsLanAddress(s)) kind = "MISMA WI-FI / RED";
+                        else kind = "OTRA RED";
+                        IPAddress mask = ua.IPv4Mask;
+                        if (mask == null || mask.Equals(IPAddress.Any)) mask = IPAddress.Parse("255.255.255.0");
+                        list.Add(new NetIf { Ip = ua.Address, Mask = mask, Kind = kind });
+                    }
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        /// <summary>"MISMA WI-FI / RED: 192.168.1.45" lines for the room, VPNs first.</summary>
+        public static List<string> AddressLines()
+        {
+            var lines = new List<string>();
+            var ifs = Interfaces();
+            ifs.Sort((a, b) => (a.Kind.StartsWith("MISMA") ? 1 : 0).CompareTo(b.Kind.StartsWith("MISMA") ? 1 : 0));
+            foreach (var n in ifs) lines.Add(n.Kind + ": " + n.Ip);
+            return lines;
+        }
+
         /// <summary>This machine's IPv4 addresses on the local network (what the others type to join).</summary>
         public static List<string> LocalAddresses()
         {
             var list = new List<string>();
+            foreach (var n in Interfaces()) if (!list.Contains(n.Ip.ToString())) list.Add(n.Ip.ToString());
+            if (list.Count > 0) return list;
             try
             {
                 foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())

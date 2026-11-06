@@ -1,0 +1,44 @@
+COLISEO PS2 - COMO JUGAR ONLINE CON UN AMIGO
+============================================
+
+Los dos necesitais ESTA MISMA version del juego.
+
+IMPORTANTE: una IP que empieza por 192.168. o 10. es de RED LOCAL.
+Solo sirve si estais en la misma Wi-Fi. Por internet NO funciona.
+
+
+OPCION 1 - RADMIN VPN (la mas facil por internet)
+-------------------------------------------------
+1. Los dos instalan Radmin VPN (gratis): https://www.radmin-vpn.com
+2. El anfitrion: Red > Crear red (nombre y contrasena).
+   El amigo: Red > Unirse a una red existente (el mismo nombre y contrasena).
+3. LOS DOS ejecutan permitir_cortafuegos.bat (una vez; pide permisos).
+   Radmin cuenta como "red publica" en Windows y el cortafuegos la bloquea si no.
+   (El anfitrion lo necesita para recibir al amigo; el amigo, para que la
+   partida le aparezca sola en la lista.)
+4. El anfitrion abre el juego: ESC > MULTIJUGADOR > CREAR PARTIDA.
+5. El amigo: ESC > MULTIJUGADOR. La partida deberia aparecer sola en la lista.
+   Si no aparece: en "IP DEL ANFITRION" escribe la IP "RADMIN VPN: 26.x.x.x"
+   que le sale al anfitrion en su SALA, y pulsa UNIRSE POR IP.
+6. El anfitrion pulsa INICIAR.
+
+
+OPCION 2 - MISMA WI-FI / MISMA CASA
+-----------------------------------
+La partida aparece sola en la lista. Si no: la IP "MISMA WI-FI / RED"
+que le sale al anfitrion en su sala.
+
+
+OPCION 3 - ABRIR EL PUERTO (sin VPN)
+------------------------------------
+El anfitrion abre el puerto 7777 TCP en su router hacia su PC,
+pulsa "VER MI IP DE INTERNET" en la sala y se la pasa al amigo.
+
+
+SI NO CONECTA
+-------------
+El juego te dice por que en ESC > MULTIJUGADOR:
+- "ESA IP ES LA TUYA": estas escribiendo tu propia IP, no la del anfitrion.
+- "NO HAY NINGUNA PARTIDA ABIERTA": el anfitrion no ha pulsado CREAR PARTIDA.
+- "NO RESPONDE": no estais en la misma red (usad Radmin) o el cortafuegos
+  del anfitrion lo bloquea (permitir_cortafuegos.bat).
