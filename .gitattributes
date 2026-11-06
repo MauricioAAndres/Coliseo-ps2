@@ -1,0 +1,23 @@
+# Text files: normalise line endings
+* text=auto
+*.cs text diff=csharp
+*.shader text
+*.hlsl text
+*.md text
+*.json text
+*.asset text
+*.unity text
+*.prefab text
+*.mat text
+*.meta text
+
+# Binary
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.fbx binary
+*.zip binary
+*.exe binary
+*.dll binary
