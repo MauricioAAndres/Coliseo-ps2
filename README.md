@@ -383,6 +383,15 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   siguen en el ludus no aparecen en el pueblo, y al reves); las puertas de las casas que abre uno se abren para todos;
   si alguien le pega a un vecino, huye en todas las pantallas.
 
+## El pueblo: casas en venta y casas de dos pisos
+- **4 casas en venta**, una en cada cuarto del pueblo y lejos de la plaza (a 80 m o mas unas de otras). Estan vacias
+  (no vive nadie) y tienen un cartel **SE VENDE** junto a la puerta. En la puerta: **[E] COMPRAR ESTA CASA** por su
+  precio (250-500 denarios). Comprada, el cartel desaparece, la puerta se abre y es tuya (se guarda; la puerta dice
+  "TU CASA").
+- **Casas de dos pisos** (las insulae): una **escalera exterior** pegada a un lado de la casa sube desde atras hasta un
+  rellano con barandilla, y ahi esta la **puerta del primer piso** (E para abrirla). El primer piso es otra vivienda
+  con su cocina, habitacion y baño. Estando abajo se oculta todo lo de arriba; estando arriba, solo el tejado.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

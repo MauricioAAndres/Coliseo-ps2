@@ -200,7 +200,7 @@ namespace Gladiator.Town
                 Log($"HOUSES homes={houses.Count} withDoor={withDoor} threeRooms={threeRooms}");
                 // the home nearest the plaza
                 HouseInterior hs = null; float bd = float.MaxValue;
-                foreach (var hh in houses) { float dd = (hh.transform.position - town.Layout.Fountain).sqrMagnitude; if (dd < bd) { bd = dd; hs = hh; } }
+                foreach (var hh in houses) { if (hh.Floor != 0 || hh.Lot.ForSale) continue; float dd = (hh.transform.position - town.Layout.Fountain).sqrMagnitude; if (dd < bd) { bd = dd; hs = hh; } }
                 var tm1 = town.GetComponent<TownManager>();
                 Vector3 front = hs.Door.Center + hs.transform.forward * 1.2f;
                 Teleport(town.Player, front, -hs.transform.forward);
@@ -268,6 +268,86 @@ namespace Gladiator.Town
                 Teleport(town.Player, front + hs.transform.forward * 2f, -hs.transform.forward);
                 yield return Wait(0.5f);
                 Log($"LEAVE roofShown={hs.Upper.activeSelf} (expected True)");
+            }
+
+            // ---- houses for sale: four, spread over the town; buy one
+            {
+                var sale = town.Houses.FindAll(hh => hh.Floor == 0 && hh.Lot.ForSale);
+                float minApart = float.MaxValue;
+                for (int i = 0; i < sale.Count; i++) for (int j = i + 1; j < sale.Count; j++)
+                    minApart = Mathf.Min(minApart, (sale[i].transform.position - sale[j].transform.position).magnitude);
+                int livedIn = 0;
+                foreach (var c in sim.Citizens) foreach (var hh in sale) if (c.HomeId == "home" + hh.Lot.Id) livedIn++;
+                Log($"FORSALE count={sale.Count} (expected 4) minApart={minApart:0}m nobodyLivesThere={livedIn == 0} prices=[{string.Join(",", sale.ConvertAll(hh => hh.Lot.Price.ToString()))}]");
+                if (sale.Count > 0)
+                {
+                    var tmB = town.GetComponent<TownManager>();
+                    var hb = sale[0];
+                    HouseDeeds.Remove(town.Layout.Seed, hb.Lot.Id);
+                    if (hb.SaleSign != null) hb.SaleSign.SetActive(true);
+                    Teleport(town.Player, hb.Door.Center + hb.transform.forward * 1.1f, -hb.transform.forward);
+                    yield return Wait(0.6f);
+                    yield return Shot("25_casa_en_venta");
+                    var prof = GameManager.Instance.Profile;
+                    int before = prof.Denarii;
+                    bool poor = before < hb.Lot.Price && !tmB.TryBuy(hb);
+                    prof.AddDenarii(hb.Lot.Price);
+                    int money0 = prof.Denarii;
+                    bool bought = tmB.TryBuy(hb);
+                    yield return Wait(0.8f);
+                    Log($"BUY refusedWhenPoor={poor || before >= hb.Lot.Price} bought={bought} paid={money0 - prof.Denarii} owned={HouseDeeds.Owns(town.Layout.Seed, hb.Lot.Id)} doorOpen={hb.Door.IsOpen} signHidden={hb.SaleSign == null || !hb.SaleSign.activeSelf}");
+                    yield return Shot("26_casa_comprada");
+                    HouseDeeds.Remove(town.Layout.Seed, hb.Lot.Id); // tests leave no trace
+                    prof.Denarii = before;
+                }
+            }
+
+            // ---- two-storey houses: outside stairs up to a door into the first floor
+            {
+                var ups = town.Houses.FindAll(hh => hh.Floor == 1);
+                int twoStorey = town.Layout.Lots.FindAll(l => l.IsHome && l.Floors >= 2).Count;
+                Log($"STAIRS twoStoreyHomes={twoStorey} upperFloors={ups.Count} (expected equal)");
+                HouseInterior up = null; float bu = float.MaxValue;
+                foreach (var hh in ups) { float dd = (hh.transform.position - town.Layout.Fountain).sqrMagnitude; if (dd < bu) { bu = dd; up = hh; } }
+                if (up != null)
+                {
+                    Teleport(town.Player, up.StairBottom, up.StairDir);
+                    yield return Wait(0.5f);
+                    yield return Shot("27_escalera_abajo");
+                    float maxY = 0f;
+                    for (float t = 0f; t < 6f; t += Time.deltaTime)
+                    {
+                        Vector3 to = up.StairTop - town.Player.transform.position; to.y = 0f;
+                        if (to.magnitude < 0.3f) break;
+                        town.Player.Move(to.normalized * 0.7f); town.Player.SetFacing(to);
+                        maxY = Mathf.Max(maxY, town.Player.transform.position.y);
+                        yield return null;
+                    }
+                    town.Player.Move(Vector3.zero);
+                    yield return Wait(0.4f);
+                    float y = town.Player.transform.position.y;
+                    var upDoor = town.NearestDoor(town.Player.transform.position, 1.7f);
+                    Log($"CLIMB reachedY={y:0.00} (expected ~3.1) doorFound={(upDoor != null && upDoor == up.Door)}");
+                    yield return Shot("28_escalera_arriba");
+                    if (upDoor != null) upDoor.Toggle();
+                    yield return Wait(0.7f);
+                    // step in through the side door into the first-floor kitchen
+                    Vector3 inside = up.transform.TransformPoint(new Vector3(0f, 0.05f, up.HalfZ - 1.3f));
+                    for (float t = 0f; t < 4f; t += Time.deltaTime)
+                    {
+                        Vector3 to = inside - town.Player.transform.position; to.y = 0f;
+                        if (to.magnitude < 0.3f) break;
+                        town.Player.Move(to.normalized * 0.6f); town.Player.SetFacing(to);
+                        yield return null;
+                    }
+                    town.Player.Move(Vector3.zero);
+                    yield return Wait(0.6f);
+                    var tmU = town.GetComponent<TownManager>();
+                    Log($"UPSTAIRS doorOpen={up.Door.IsOpen} inside={up.Contains(town.Player.transform.position)} room={tmU.CurrentRoom} roofHidden={!up.Upper.activeSelf} y={town.Player.transform.position.y:0.00}");
+                    yield return Shot("29_primer_piso");
+                    Teleport(town.Player, town.Layout.Find("plaza").Position, -town.Layout.ArenaFacing);
+                    yield return Wait(0.5f);
+                }
             }
 
             // ---- the smithy sells (the ludus no longer does)

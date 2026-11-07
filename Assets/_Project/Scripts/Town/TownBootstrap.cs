@@ -41,6 +41,13 @@ namespace Gladiator.Town
         /// <summary>The homes you can walk into.</summary>
         public System.Collections.Generic.List<HouseInterior> Houses { get; private set; }
 
+        /// <summary>Hide the "for sale" boards of the houses already bought.</summary>
+        void MarkOwned()
+        {
+            foreach (var h in Houses)
+                if (h.Lot.ForSale && h.SaleSign != null && HouseDeeds.Owns(Layout.Seed, h.Lot.Id)) h.SaleSign.SetActive(false);
+        }
+
         public HouseInterior HouseAt(Vector3 p)
         {
             if (Houses == null) return null;
@@ -55,7 +62,9 @@ namespace Gladiator.Town
             foreach (var h in Houses)
             {
                 if (h.Door == null) continue;
-                Vector3 d = h.Door.Center - p; d.y = 0f;
+                Vector3 d = h.Door.Center - p;
+                if (Mathf.Abs(d.y) > 1.3f) continue; // a door upstairs is not this one
+                d.y = 0f;
                 if (d.magnitude < bd) { bd = d.magnitude; best = h.Door; }
             }
             return best;
@@ -98,6 +107,7 @@ namespace Gladiator.Town
             builder.Build();
             Buildings = builder.BuildingCount;
             Houses = builder.Houses;
+            MarkOwned();
             // streets for the townsfolk: navmesh baked from the colliders just built (before any fighter exists)
             Vector3 mid = (Layout.WallCorners[0] + Layout.WallCorners[2]) * 0.5f;
             float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
@@ -263,7 +273,7 @@ namespace Gladiator.Town
             var s = Gladiator.Net.NetSession.Instance;
             var h = door != null ? door.GetComponent<HouseInterior>() : null;
             if (s == null || !s.InGame || h == null) return;
-            s.Send("DR", h.Lot.Id + "|" + (door.IsOpen ? 1 : 0));
+            s.Send("DR", h.Lot.Id + "|" + (door.IsOpen ? 1 : 0) + "|" + h.Floor);
         }
 
         /// <summary>Another player opened or closed a door in the same town.</summary>
@@ -272,8 +282,9 @@ namespace Gladiator.Town
             if (type != "DR" || town == null || town.Houses == null) return;
             var a = payload.Split('|');
             if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
+            int floor = a.Length > 2 && int.TryParse(a[2], out int fl) ? fl : 0;
             foreach (var h in town.Houses)
-                if (h.Lot.Id == lotId && h.Door != null) { h.Door.SetOpen(a[1] == "1"); break; }
+                if (h.Lot.Id == lotId && h.Floor == floor && h.Door != null) { h.Door.SetOpen(a[1] == "1"); break; }
         }
 
         /// <summary>The front of the nearest smithy (where the smith sells), within a range.</summary>
@@ -336,9 +347,19 @@ namespace Gladiator.Town
                 return;
             }
             var door = town.NearestDoor(p, 1.7f);
+            var dh = door != null ? door.GetComponent<HouseInterior>() : null;
+            if (dh != null && dh.Lot.ForSale && !HouseDeeds.Owns(town.Layout.Seed, dh.Lot.Id))
+            {
+                var gmB = GameManager.Instance;
+                int money = gmB != null ? gmB.Profile.Denarii : 0;
+                town.Hud.SetPrompt(key + "COMPRAR ESTA CASA: " + dh.Lot.Price + " DENARIOS   (tienes " + money + ")");
+                if (GameInput.InteractPressed) TryBuy(dh);
+                return;
+            }
             if (door != null)
             {
-                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA"));
+                bool mine = dh != null && dh.Lot.ForSale;
+                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA") + (mine ? "   (TU CASA)" : ""));
                 if (GameInput.InteractPressed) { door.Toggle(); SendDoor(door); }
                 return;
             }
@@ -362,6 +383,25 @@ namespace Gladiator.Town
                 return;
             }
             town.Hud.SetPrompt("");
+        }
+
+        /// <summary>Buy a house for sale: pay its price, it is yours (saved), its door opens.</summary>
+        public bool TryBuy(HouseInterior h)
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || h == null || !h.Lot.ForSale || HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) return false;
+            if (!gm.Profile.Spend(h.Lot.Price))
+            {
+                town.Hud.ShowMessage("NO TE ALCANZA: CUESTA " + h.Lot.Price + " DENARIOS Y TIENES " + gm.Profile.Denarii, 3f);
+                return false;
+            }
+            HouseDeeds.Add(town.Layout.Seed, h.Lot.Id);
+            if (h.SaleSign != null) h.SaleSign.SetActive(false);
+            h.Door.SetOpen(true);
+            SendDoor(h.Door);
+            town.Hud.ShowMessage("¡CASA COMPRADA!  YA ES TUYA", 3.5f);
+            Gladiator.Audio.AudioManager.UI("ui_select");
+            return true;
         }
 
         /// <summary>A line from a townsperson (shown as the message on top). Returns it (tests).</summary>

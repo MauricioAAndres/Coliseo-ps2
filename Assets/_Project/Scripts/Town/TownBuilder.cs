@@ -116,7 +116,7 @@ namespace Gladiator.Town
             Face(roofM, -up, 0.5f, fl, bl, br, fr);
         }
 
-        void Collider(Vector3 center, Vector3 size, Quaternion rot) => PS2Spawn.BoxCollider(colliders, center, size, rot);
+        void Collider(Vector3 center, Vector3 size, Quaternion rot) => PS2Spawn.BoxCollider(colTarget != null ? colTarget : colliders, center, size, rot);
 
         // ------------------------------------------------------------------ build
         public void Build()
@@ -245,120 +245,71 @@ namespace Gladiator.Town
         }
 
         /// <summary>
-        /// A home you can enter: hollow walls with a front doorway and a door on a hinge (E), a kitchen at the entrance
-        /// and, behind a partition with two openings, a bedroom and a bathroom (no inner doors, no furniture yet). The
-        /// floors tell the rooms apart: stone in the kitchen, wood in the bedroom, light tiles in the bathroom.
-        /// Ceiling, upper floors and roof are the house's own object, hidden while the player is inside.
+        /// A home you can enter. Every storey has a kitchen at the front and, behind a partition with two openings, a
+        /// bedroom and a bathroom (floors: stone, wood, light tiles; no inner doors, no furniture yet). The ground floor
+        /// opens on the street; a two-storey house has an outside staircase along one side up to a landing and a door
+        /// into its first floor (its own kitchen, bedroom and bathroom). Whatever is above the storey you are in
+        /// (upper floor, roof) hides while you are inside so the camera can look in.
         /// </summary>
         void HomeHouse(TownLot lot)
         {
             Quaternion q = lot.Rotation;
-            float w = lot.Width, d = lot.Depth, floorH = 3.1f, H = 3.1f, t = 0.22f, pt = 0.15f;
-            float hx = w * 0.5f, hz = d * 0.5f, h = floorH * lot.Floors;
+            float w = lot.Width, d = lot.Depth, H = 3.1f;
+            float hx = w * 0.5f, hz = d * 0.5f, h = H * lot.Floors;
             bool insula = lot.Kind == BuildingKind.Insula;
+            bool stairs = lot.Floors >= 2;
             float rise = insula ? 0.9f : Mathf.Min(1.8f, d * 0.22f);
             Material wall = plaster[lot.Tint % plaster.Length];
+            int ss = lot.StairSide == 0 ? 1 : lot.StairSide;
 
-            var houseGo = new GameObject("House_" + lot.Id);
-            houseGo.transform.SetParent(root, false);
-            houseGo.transform.SetPositionAndRotation(lot.Center, q);
-            var house = houseGo.AddComponent<HouseInterior>();
-            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz;
+            // ---- ground floor (town-wide batches, static colliders)
+            var ground = Storey(lot, 0, wall, false, ss);
 
-            // ---- walls (local box from extents), each with its collider
-            void Seg(float x0, float x1, float z0, float z1, float y0, float y1, bool outside)
+            // ---- first floor of a two-storey house: its own object, hidden while you are downstairs
+            GameObject midGo = null;
+            HouseInterior upperHouse = null;
+            if (stairs)
             {
-                if (x1 - x0 < 0.05f || z1 - z0 < 0.02f || y1 - y0 < 0.02f) return;
-                var size = new Vector3(x1 - x0, y1 - y0, z1 - z0);
-                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f);
-                Box(wall, c, size, q);
-                Collider(c, size, q);
-                if (outside && y0 <= 0.01f)
-                    Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.35f, (z0 + z1) * 0.5f), new Vector3(size.x + 0.1f, 0.7f, size.z + 0.1f), q);
-            }
-            float dx = lot.DoorOffset * w, dw = 0.6f;
-            Seg(-hx, hx, -hz, -hz + t, 0, H, true);              // back
-            Seg(-hx, -hx + t, -hz, hz, 0, H, true);              // left
-            Seg(hx - t, hx, -hz, hz, 0, H, true);                // right
-            Seg(-hx, dx - dw, hz - t, hz, 0, H, true);           // front, left of the door
-            Seg(dx + dw, hx, hz - t, hz, 0, H, true);            // front, right of the door
-            Seg(dx - dw, dx + dw, hz - t, hz, 2.3f, H, false);   // over the door
-            Box(darkWood, LP(lot, dx, 2.36f, hz + 0.05f), new Vector3(1.5f, 0.16f, 0.12f), q); // lintel trim
-
-            // ---- rooms: kitchen in front; bedroom + bathroom at the back (side chosen by the door, for variety)
-            float ix0 = -hx + t, ix1 = hx - t, iz0 = -hz + t, iz1 = hz - t;
-            float zs = iz0 + (iz1 - iz0) * 0.45f;                // partition between the back rooms and the kitchen
-            bool bathRight = lot.DoorOffset < 0f;
-            float xs = bathRight ? ix1 - (ix1 - ix0) * 0.4f : ix0 + (ix1 - ix0) * 0.4f;
-            float bedX0 = bathRight ? ix0 : xs, bedX1 = bathRight ? xs : ix1;
-            float bathX0 = bathRight ? xs : ix0, bathX1 = bathRight ? ix1 : xs;
-            float bedC = (bedX0 + bedX1) * 0.5f, bathC = (bathX0 + bathX1) * 0.5f;
-            // partition wall with two openings (1 m), one into each back room
-            var cuts = new List<float> { ix0 };
-            foreach (float g in bedC < bathC ? new[] { bedC, bathC } : new[] { bathC, bedC }) { cuts.Add(g - 0.5f); cuts.Add(g + 0.5f); }
-            cuts.Add(ix1);
-            for (int i = 0; i + 1 < cuts.Count; i += 2) Seg(cuts[i], cuts[i + 1], zs - pt * 0.5f, zs + pt * 0.5f, 0, H, false);
-            Seg(bedC - 0.5f, bedC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, 2.3f, H, false);
-            Seg(bathC - 0.5f, bathC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, 2.3f, H, false);
-            Seg(xs - pt * 0.5f, xs + pt * 0.5f, iz0, zs, 0, H, false); // between bedroom and bathroom
-
-            Box(stoneDark, LP(lot, 0, 0.03f, (zs + iz1) * 0.5f), new Vector3(ix1 - ix0, 0.04f, iz1 - zs), q, 0.5f);          // kitchen: stone
-            Box(wood, LP(lot, bedC, 0.03f, (iz0 + zs) * 0.5f), new Vector3(bedX1 - bedX0, 0.04f, zs - iz0), q, 0.5f);         // bedroom: wood
-            Box(paving, LP(lot, bathC, 0.03f, (iz0 + zs) * 0.5f), new Vector3(bathX1 - bathX0, 0.04f, zs - iz0), q, 0.8f);   // bathroom: tiles
-            house.PartitionZ = zs; house.BedGapX = bedC; house.BathGapX = bathC;
-            house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
-            house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = bedX0, X1 = bedX1, Z0 = iz0, Z1 = zs });
-            house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = bathX0, X1 = bathX1, Z0 = iz0, Z1 = zs });
-
-            // ground-floor windows on the front, away from the door
-            for (int i = 0; i < 2; i++)
-            {
-                float x = -w * 0.5f + w * (i + 0.5f) / 2f;
-                if (Mathf.Abs(x - dx) < 1.4f) continue;
-                Box(dark, LP(lot, x, 2.0f, hz + 0.02f), new Vector3(0.6f, 0.75f, 0.06f), q);
-                Box(darkWood, LP(lot, x - 0.42f, 2.0f, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
-                Box(darkWood, LP(lot, x + 0.42f, 2.0f, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+                midGo = new GameObject("Floor1_" + lot.Id);
+                midGo.transform.SetParent(root, false);
+                var mid = new Dictionary<Material, MeshBuilder>();
+                current = mid; colTarget = midGo.transform;
+                Box(wall, LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);           // the floor between storeys
+                Collider(LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+                upperHouse = Storey(lot, 1, wall, true, ss);
+                if (insula)
+                {   // the wooden balcony on the front of the first floor
+                    Box(wood, LP(lot, 0, H, hz + 0.6f), new Vector3(w * 0.8f, 0.12f, 1.2f), q);
+                    Box(darkWood, LP(lot, 0, H + 0.55f, hz + 1.15f), new Vector3(w * 0.8f, 0.08f, 0.08f), q);
+                    for (int i = 0; i <= 4; i++)
+                        Box(darkWood, LP(lot, -w * 0.4f + w * 0.8f * i / 4f, H + 0.3f, hz + 1.15f), new Vector3(0.08f, 0.6f, 0.08f), q);
+                    foreach (float sx in new[] { -0.4f, 0.4f })
+                        Box(darkWood, LP(lot, w * sx, H * 0.5f, hz + 1.15f), new Vector3(0.14f, H, 0.14f), q);
+                }
+                current = null; colTarget = null;
+                foreach (var kv in mid) PS2Spawn.Mesh(midGo.transform, "F1_" + kv.Key.name, kv.Value.Build("HouseFloor1"), Vector3.zero, kv.Key);
+                LowPolyMesh.BakeAmbient(midGo, AmbientSky, AmbientGround);
+                upperHouse.transform.SetParent(midGo.transform, true);
+                BuildStairs(lot, ss, H, upperHouse);
             }
 
-            // ---- the door: a panel on a hinge at the left side of the doorway; it swings inwards
-            var hinge = new GameObject("DoorHinge").transform;
-            hinge.SetParent(houseGo.transform, false);
-            hinge.localPosition = new Vector3(dx - dw, 0f, hz - t * 0.5f);
-            var panel = PS2Spawn.Box(hinge, "DoorPanel", new Vector3(dw * 2f - 0.04f, 2.26f, 0.08f), new Vector3(dw, 1.15f, 0f), darkWood, null, 0.8f);
-            PS2Spawn.Box(panel.transform, "Band", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, 0.5f, 0f), iron);
-            PS2Spawn.Box(panel.transform, "Band2", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, -0.6f, 0f), iron);
-            panel.AddComponent<BoxCollider>().size = new Vector3(dw * 2f - 0.04f, 2.26f, 0.12f);
-            LowPolyMesh.BakeAmbient(hinge.gameObject, AmbientSky, AmbientGround);
-            var door = houseGo.AddComponent<TownDoor>();
-            door.Hinge = hinge; door.Width = dw * 2f;
-            house.Door = door;
-
-            // ---- the house's own top: ceiling, upper floors, balcony, roof + a collider for the camera
+            // ---- the top: ceiling of the highest open storey, solid storeys above it, roof + a collider for the camera
+            float topBase = stairs ? 2f * H : H;
             var mine = new Dictionary<Material, MeshBuilder>();
             current = mine;
-            Box(wall, LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
-            if (h > H + 0.2f) Box(wall, LP(lot, 0, (H + 0.15f + h) * 0.5f, 0), new Vector3(w, h - H - 0.15f, d), q);
+            Box(wall, LP(lot, 0, topBase + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+            if (h > topBase + 0.2f) Box(wall, LP(lot, 0, (topBase + 0.15f + h) * 0.5f, 0), new Vector3(w, h - topBase - 0.15f, d), q);
             Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, h, 0), q, w + 0.6f, d + 0.6f, rise);
-            for (int f = 1; f < lot.Floors; f++)
+            for (int f = stairs ? 2 : 1; f < lot.Floors; f++)
             {
                 int n = Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));
                 for (int i = 0; i < n; i++)
                 {
-                    float x = -w * 0.5f + w * (i + 0.5f) / n, y = f * floorH + 1.6f;
+                    float x = -w * 0.5f + w * (i + 0.5f) / n, y = f * H + 1.6f;
                     Box(dark, LP(lot, x, y, hz + 0.02f), new Vector3(0.6f, 0.75f, 0.06f), q);
                     Box(darkWood, LP(lot, x - 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
                     Box(darkWood, LP(lot, x + 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
                 }
-                Box(dark, LP(lot, w * 0.5f + 0.02f, f * floorH + 1.8f, 0), new Vector3(0.06f, 0.7f, 0.6f), q);
-            }
-            if (insula)
-            {
-                Box(wood, LP(lot, 0, floorH, hz + 0.6f), new Vector3(w * 0.8f, 0.12f, 1.2f), q);
-                Box(darkWood, LP(lot, 0, floorH + 0.55f, hz + 1.15f), new Vector3(w * 0.8f, 0.08f, 0.08f), q);
-                for (int i = 0; i <= 4; i++)
-                    Box(darkWood, LP(lot, -w * 0.4f + w * 0.8f * i / 4f, floorH + 0.3f, hz + 1.15f), new Vector3(0.08f, 0.6f, 0.08f), q);
-                foreach (float sx in new[] { -0.4f, 0.4f })
-                    Box(darkWood, LP(lot, w * sx, floorH * 0.5f, hz + 1.15f), new Vector3(0.14f, floorH, 0.14f), q);
             }
             current = null;
             var upper = new GameObject("Upper_" + lot.Id);
@@ -368,9 +319,180 @@ namespace Gladiator.Town
             LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
             float top = h + rise;
             // the roof's eaves stick out 0.3 m: the camera must count them too
-            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, (H + 0.2f + top) * 0.5f, 0), new Vector3(w + 0.6f, top - H - 0.2f, d + 0.6f), q);
-            house.Upper = upper;
-            Houses.Add(house);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, (topBase + 0.2f + top) * 0.5f, 0), new Vector3(w + 0.6f, top - topBase - 0.2f, d + 0.6f), q);
+
+            ground.Upper = upper;
+            ground.Hide.Add(upper);
+            if (midGo != null) ground.Hide.Add(midGo);
+            Houses.Add(ground);
+            if (upperHouse != null)
+            {
+                upperHouse.Upper = upper;
+                upperHouse.Hide.Add(upper);
+                Houses.Add(upperHouse);
+            }
+
+            // ---- for sale: a board on a post by the door
+            if (lot.ForSale)
+            {
+                Vector3 at = LP(lot, lot.DoorOffset * w + 1.5f, 0, hz + 1.1f);
+                var sign = new GameObject("SeVende_" + lot.Id).transform;
+                sign.SetParent(root, false);
+                sign.SetPositionAndRotation(at, q);
+                PS2Spawn.Box(sign, "Post", new Vector3(0.1f, 1.6f, 0.1f), new Vector3(0, 0.8f, 0), darkWood);
+                PS2Spawn.Box(sign, "Board", new Vector3(0.9f, 0.55f, 0.06f), new Vector3(0, 1.45f, 0.06f), PS2Materials.Get("sale_board", PS2Textures.Wood, new Color(0.95f, 0.85f, 0.6f)));
+                PS2Spawn.Box(sign, "Stripe", new Vector3(0.75f, 0.16f, 0.08f), new Vector3(0, 1.45f, 0.08f), PS2Materials.Flat(new Color(0.75f, 0.1f, 0.08f), 0.3f));
+                LowPolyMesh.BakeAmbient(sign.gameObject, AmbientSky, AmbientGround);
+                ground.SaleSign = sign.gameObject;
+            }
+        }
+
+        // Where Collider() puts its boxes (null = the town's static colliders).
+        Transform colTarget;
+
+        /// <summary>
+        /// One storey of a home: outer walls (front door on the ground floor, a side door at the top of the stairs on the
+        /// first), the kitchen / bedroom / bathroom partition, the floors, the windows and the door on its hinge.
+        /// Walls go into the current batch; returns the storey's interior (rooms, door).
+        /// </summary>
+        HouseInterior Storey(TownLot lot, int level, Material wall, bool sideDoor, int ss)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, d = lot.Depth, H = 3.1f, t = 0.22f, pt = 0.15f;
+            float hx = w * 0.5f, hz = d * 0.5f, y0 = level * H, y1 = y0 + H;
+
+            var go = new GameObject((level == 0 ? "House_" : "House1_") + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(lot.Center + Vector3.up * y0, q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz; house.Floor = level;
+
+            void Seg(float x0, float x1, float z0, float z1, float ya, float yb, bool outside)
+            {
+                if (x1 - x0 < 0.05f || z1 - z0 < 0.02f || yb - ya < 0.02f) return;
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, (z0 + z1) * 0.5f);
+                Box(wall, c, size, q);
+                Collider(c, size, q);
+                if (outside && ya <= 0.01f)
+                    Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.35f, (z0 + z1) * 0.5f), new Vector3(size.x + 0.1f, 0.7f, size.z + 0.1f), q);
+            }
+            float dw = 0.6f;
+            float dx = lot.DoorOffset * w;                  // front door (ground floor)
+            float dz = hz - 1.3f;                           // side door (first floor), over the stair landing
+            float sideX0 = ss > 0 ? hx - t : -hx, sideX1 = ss > 0 ? hx : -hx + t;
+            float otherX0 = ss > 0 ? -hx : hx - t, otherX1 = ss > 0 ? -hx + t : hx;
+            Seg(-hx, hx, -hz, -hz + t, y0, y1, true);                                   // back
+            Seg(otherX0, otherX1, -hz, hz, y0, y1, true);                               // side without the stairs
+            if (sideDoor)
+            {
+                Seg(sideX0, sideX1, -hz, dz - dw, y0, y1, true);                       // stair side, behind the door
+                Seg(sideX0, sideX1, dz + dw, hz, y0, y1, true);                        // stair side, in front of the door
+                Seg(sideX0, sideX1, dz - dw, dz + dw, y0 + 2.3f, y1, false);           // over the door
+                Seg(-hx, hx, hz - t, hz, y0, y1, true);                                 // front (no door)
+            }
+            else
+            {
+                Seg(sideX0, sideX1, -hz, hz, y0, y1, true);
+                Seg(-hx, dx - dw, hz - t, hz, y0, y1, true);                            // front, left of the door
+                Seg(dx + dw, hx, hz - t, hz, y0, y1, true);                             // front, right of the door
+                Seg(dx - dw, dx + dw, hz - t, hz, y0 + 2.3f, y1, false);                // over the door
+                Box(darkWood, LP(lot, dx, y0 + 2.36f, hz + 0.05f), new Vector3(1.5f, 0.16f, 0.12f), q);
+            }
+
+            // rooms: kitchen in front; bedroom + bathroom at the back
+            float ix0 = -hx + t, ix1 = hx - t, iz0 = -hz + t, iz1 = hz - t;
+            float zs = iz0 + (iz1 - iz0) * 0.45f;
+            bool bathRight = (lot.DoorOffset < 0f) ^ (level == 1);
+            float xs = bathRight ? ix1 - (ix1 - ix0) * 0.4f : ix0 + (ix1 - ix0) * 0.4f;
+            float bedX0 = bathRight ? ix0 : xs, bedX1 = bathRight ? xs : ix1;
+            float bathX0 = bathRight ? xs : ix0, bathX1 = bathRight ? ix1 : xs;
+            float bedC = (bedX0 + bedX1) * 0.5f, bathC = (bathX0 + bathX1) * 0.5f;
+            var cuts = new List<float> { ix0 };
+            foreach (float g in bedC < bathC ? new[] { bedC, bathC } : new[] { bathC, bedC }) { cuts.Add(g - 0.5f); cuts.Add(g + 0.5f); }
+            cuts.Add(ix1);
+            for (int i = 0; i + 1 < cuts.Count; i += 2) Seg(cuts[i], cuts[i + 1], zs - pt * 0.5f, zs + pt * 0.5f, y0, y1, false);
+            Seg(bedC - 0.5f, bedC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
+            Seg(bathC - 0.5f, bathC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
+            Seg(xs - pt * 0.5f, xs + pt * 0.5f, iz0, zs, y0, y1, false);
+            float fy = y0 + (level == 0 ? 0.03f : 0.17f);
+            Box(stoneDark, LP(lot, 0, fy, (zs + iz1) * 0.5f), new Vector3(ix1 - ix0, 0.04f, iz1 - zs), q, 0.5f);
+            Box(wood, LP(lot, bedC, fy, (iz0 + zs) * 0.5f), new Vector3(bedX1 - bedX0, 0.04f, zs - iz0), q, 0.5f);
+            Box(paving, LP(lot, bathC, fy, (iz0 + zs) * 0.5f), new Vector3(bathX1 - bathX0, 0.04f, zs - iz0), q, 0.8f);
+            house.PartitionZ = zs; house.BedGapX = bedC; house.BathGapX = bathC;
+            house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
+            house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = bedX0, X1 = bedX1, Z0 = iz0, Z1 = zs });
+            house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = bathX0, X1 = bathX1, Z0 = iz0, Z1 = zs });
+
+            // front windows
+            int nwin = level == 0 ? 2 : Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));
+            for (int i = 0; i < nwin; i++)
+            {
+                float x = -w * 0.5f + w * (i + 0.5f) / nwin, y = y0 + (level == 0 ? 2.0f : 1.6f);
+                if (level == 0 && Mathf.Abs(x - dx) < 1.4f) continue;
+                Box(dark, LP(lot, x, y, hz + 0.02f), new Vector3(0.6f, 0.75f, 0.06f), q);
+                Box(darkWood, LP(lot, x - 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+                Box(darkWood, LP(lot, x + 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+            }
+
+            // the door on its hinge (it swings inwards)
+            var hinge = new GameObject("DoorHinge").transform;
+            hinge.SetParent(go.transform, false);
+            Quaternion baseRot = Quaternion.identity;
+            if (sideDoor)
+            {
+                baseRot = Quaternion.Euler(0f, ss > 0 ? 90f : -90f, 0f);
+                hinge.localPosition = new Vector3(ss * (hx - t * 0.5f), 0f, ss > 0 ? dz + dw : dz - dw);
+            }
+            else hinge.localPosition = new Vector3(dx - dw, 0f, hz - t * 0.5f);
+            hinge.localRotation = baseRot;
+            var panel = PS2Spawn.Box(hinge, "DoorPanel", new Vector3(dw * 2f - 0.04f, 2.26f, 0.08f), new Vector3(dw, 1.15f, 0f), darkWood, null, 0.8f);
+            PS2Spawn.Box(panel.transform, "Band", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, 0.5f, 0f), iron);
+            PS2Spawn.Box(panel.transform, "Band2", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, -0.6f, 0f), iron);
+            panel.AddComponent<BoxCollider>().size = new Vector3(dw * 2f - 0.04f, 2.26f, 0.12f);
+            LowPolyMesh.BakeAmbient(hinge.gameObject, AmbientSky, AmbientGround);
+            var door = go.AddComponent<TownDoor>();
+            door.Hinge = hinge; door.Width = dw * 2f; door.BaseRot = baseRot;
+            house.Door = door;
+            return house;
+        }
+
+        /// <summary>
+        /// Outside staircase along the stair side: from the ground at the back up to a landing at the first floor, in
+        /// front of the side door. A ramp collider under solid steps; a railing on the open side.
+        /// </summary>
+        void BuildStairs(TownLot lot, int ss, float H, HouseInterior upper)
+        {
+            Quaternion q = lot.Rotation;
+            float hx = lot.Width * 0.5f, hz = lot.Depth * 0.5f, sw = 1.15f;
+            float x0 = ss * hx, xc = ss * (hx + sw * 0.5f), xo = ss * (hx + sw);
+            float zBottom = -hz + 0.3f, zLand = hz - 2.1f, zEnd = hz - 0.5f;
+            float run = zLand - zBottom;
+            int n = Mathf.Max(10, Mathf.CeilToInt(H / 0.22f));
+            for (int i = 0; i < n; i++)
+            {
+                float top = H * (i + 1) / n, za = zBottom + run * i / n, zb = zBottom + run * (i + 1) / n;
+                Box(stone, LP(lot, xc, top * 0.5f, (za + zb) * 0.5f), new Vector3(sw, top, zb - za), q);
+            }
+            Box(stone, LP(lot, xc, H * 0.5f, (zLand + zEnd) * 0.5f), new Vector3(sw, H, zEnd - zLand), q);   // landing block
+            // walking: a ramp over the steps + the landing top
+            float len = Mathf.Sqrt(run * run + H * H), ang = Mathf.Atan2(H, run) * Mathf.Rad2Deg;
+            Vector3 mid = LP(lot, xc, H * 0.5f - 0.05f, zBottom + run * 0.5f);
+            PS2Spawn.BoxCollider(colliders, mid, new Vector3(sw, 0.1f, len), q * Quaternion.Euler(-ang, 0f, 0f));
+            Collider(LP(lot, xc, H * 0.5f, (zLand + zEnd) * 0.5f), new Vector3(sw, H, zEnd - zLand), q);
+            // railing on the open side: posts + a rail along the slope and the landing
+            for (int i = 0; i <= 4; i++)
+            {
+                float z = zBottom + run * i / 4f, y = H * i / 4f;
+                Box(darkWood, LP(lot, xo - ss * 0.05f, y + 0.5f, z), new Vector3(0.08f, 1f, 0.08f), q);
+            }
+            Box(darkWood, LP(lot, xo - ss * 0.05f, H * 0.5f + 1f, zBottom + run * 0.5f), new Vector3(0.07f, 0.07f, len), q * Quaternion.Euler(-ang, 0f, 0f));
+            Box(darkWood, LP(lot, xo - ss * 0.05f, H + 1f, (zLand + zEnd) * 0.5f), new Vector3(0.07f, 0.07f, zEnd - zLand), q);
+            Collider(LP(lot, xo - ss * 0.05f, H + 0.5f, (zLand + zEnd) * 0.5f), new Vector3(0.1f, 1f, zEnd - zLand), q);
+            Collider(LP(lot, xc, H + 0.5f, zEnd - 0.05f), new Vector3(sw, 1f, 0.1f), q);                 // end of the landing
+            upper.StairBottom = LP(lot, xc, 0.05f, zBottom - 0.6f);
+            upper.StairTop = LP(lot, xc, H + 0.05f, hz - 1.3f);
+            upper.StairDir = q * Vector3.forward;
         }
 
         /// <summary>Open shop front: counter, striped awning.</summary>

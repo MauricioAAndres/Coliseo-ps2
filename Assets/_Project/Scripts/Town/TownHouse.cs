@@ -15,7 +15,15 @@ namespace Gladiator.Town
 
         public TownLot Lot;
         public float HalfX, HalfZ;
-        public GameObject Upper;     // ceiling, upper floors and roof (and their camera collider)
+        public GameObject Upper;     // the roof (and its camera collider)
+        /// <summary>Everything above this storey (upper floor, roof): hidden while the player is inside.</summary>
+        public readonly List<GameObject> Hide = new List<GameObject>();
+        /// <summary>0 ground floor, 1 first floor (reached by the outside stairs).</summary>
+        public int Floor;
+        /// <summary>The "SE VENDE" board (houses for sale).</summary>
+        public GameObject SaleSign;
+        /// <summary>First floor: foot and top of the outside stairs, and the way up (tests).</summary>
+        public Vector3 StairBottom, StairTop, StairDir;
         public TownDoor Door;
         public readonly List<Room> Rooms = new List<Room>();
         /// <summary>The partition between the kitchen and the back rooms (local z) and its two openings (local x).</summary>
@@ -28,7 +36,7 @@ namespace Gladiator.Town
         public bool Contains(Vector3 world)
         {
             Vector3 l = transform.InverseTransformPoint(world);
-            return Mathf.Abs(l.x) < HalfX - 0.05f && Mathf.Abs(l.z) < HalfZ - 0.05f && l.y < 3f;
+            return Mathf.Abs(l.x) < HalfX - 0.05f && Mathf.Abs(l.z) < HalfZ - 0.05f && l.y > -0.6f && l.y < 3f;
         }
 
         /// <summary>COCINA, BANO or HABITACION, or null outside.</summary>
@@ -47,7 +55,38 @@ namespace Gladiator.Town
             return transform.position;
         }
 
-        public void ShowUpper(bool show) { if (Upper != null && Upper.activeSelf != show) Upper.SetActive(show); }
+        public void ShowUpper(bool show) { foreach (var g in Hide) if (g != null && g.activeSelf != show) g.SetActive(show); }
+    }
+
+    /// <summary>The houses the player has bought, per town (saved).</summary>
+    public static class HouseDeeds
+    {
+        const string Key = "Gladiator.HousesOwned.";
+        static string K(int seed) => Key + seed;
+
+        public static bool Owns(int seed, int lotId)
+        {
+            foreach (var part in PlayerPrefs.GetString(K(seed), "").Split(','))
+                if (int.TryParse(part, out int id) && id == lotId) return true;
+            return false;
+        }
+
+        public static void Add(int seed, int lotId)
+        {
+            if (Owns(seed, lotId)) return;
+            string v = PlayerPrefs.GetString(K(seed), "");
+            PlayerPrefs.SetString(K(seed), string.IsNullOrEmpty(v) ? lotId.ToString() : v + "," + lotId);
+            PlayerPrefs.Save();
+        }
+
+        public static void Remove(int seed, int lotId)
+        {
+            var keep = new List<string>();
+            foreach (var part in PlayerPrefs.GetString(K(seed), "").Split(','))
+                if (int.TryParse(part, out int id) && id != lotId) keep.Add(part);
+            PlayerPrefs.SetString(K(seed), string.Join(",", keep));
+            PlayerPrefs.Save();
+        }
     }
 
     /// <summary>A front door on a hinge: E opens / closes it (it swings inwards).</summary>
@@ -57,10 +96,12 @@ namespace Gladiator.Town
         public bool IsOpen { get; private set; }
         public Transform Hinge;
         public float Width = 1.2f;
+        /// <summary>The hinge's closed rotation (side doors are turned 90 degrees).</summary>
+        public Quaternion BaseRot = Quaternion.identity;
         float angle;
 
         /// <summary>Middle of the doorway, on the ground (where you stand to use it).</summary>
-        public Vector3 Center => Hinge.position + Hinge.parent.rotation * new Vector3(Width * 0.5f, 0f, 0f);
+        public Vector3 Center => Hinge.position + Hinge.parent.rotation * (BaseRot * new Vector3(Width * 0.5f, 0f, 0f));
         public float Angle => angle;
 
         /// <summary>Online: another player opened or closed it.</summary>
@@ -77,7 +118,7 @@ namespace Gladiator.Town
             float target = IsOpen ? OpenAngle : 0f;
             if (Mathf.Approximately(angle, target)) return;
             angle = Mathf.MoveTowards(angle, target, 300f * Time.deltaTime);
-            Hinge.localRotation = Quaternion.Euler(0f, angle, 0f);
+            Hinge.localRotation = BaseRot * Quaternion.Euler(0f, angle, 0f);
         }
     }
 }

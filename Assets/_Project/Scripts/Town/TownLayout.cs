@@ -21,6 +21,11 @@ namespace Gladiator.Town
         public int Floors;
         public int Tint, RoofTint;
         public float DoorOffset; // along the width, -0.5..0.5
+        /// <summary>Two-storey homes: the side of the outside staircase (+1 right, -1 left).</summary>
+        public int StairSide;
+        /// <summary>Empty, for the player to buy (nobody lives there).</summary>
+        public bool ForSale;
+        public int Price;
         /// <summary>World point just outside the front door (where people go in and out).</summary>
         public Vector3 Door => Center + Front * (Depth * 0.5f + 0.9f) + Right * (DoorOffset * Width);
         public Vector3 Right => Vector3.Cross(Vector3.up, Front).normalized;
@@ -250,10 +255,39 @@ namespace Gladiator.Town
             Post("guard_forum_l", new Vector3(-7f, 0, MainEnd + 1.5f), Vector3.back);
             Post("guard_forum_r", new Vector3(7f, 0, MainEnd + 1.5f), Vector3.back);
             Places.Add(new TownPlace { Id = "ludus_gate", Name = "Puerta del ludus", Kind = PlaceKind.LudusGate, Position = LudusGate });
+            // ---- two-storey homes: an outside staircase along one side (the house gives up 1.3 m of its width for it)
+            foreach (var lot in Lots)
+            {
+                if (!lot.IsHome || lot.Floors < 2) continue;
+                lot.StairSide = rng.Next(2) == 0 ? -1 : 1;
+                lot.Width -= 1.3f;
+                lot.Center -= lot.Right * (lot.StairSide * 0.65f);
+            }
+
+            // ---- four empty houses for sale, one in each quarter of the town, away from the plaza
+            var inv = Quaternion.Inverse(rot);
+            for (int quarter = 0; quarter < 4; quarter++)
+            {
+                TownLot pick = null; float bestScore = -1f;
+                foreach (var lot in Lots)
+                {
+                    if (lot.Kind != BuildingKind.Domus || lot.ForSale) continue;
+                    Vector3 l = inv * lot.Center; if (Mirrored) l.x = -l.x;
+                    int qd = (l.x >= 0 ? 1 : 0) + (l.z >= 0 ? 2 : 0);
+                    if (qd != quarter) continue;
+                    float dist = new Vector2(l.x, l.z).magnitude;
+                    if (dist < 22f) continue;
+                    float score = dist * (0.6f + (float)rng.NextDouble() * 0.8f);
+                    if (score > bestScore) { bestScore = score; pick = lot; }
+                }
+                if (pick != null) { pick.ForSale = true; pick.Price = 250 + rng.Next(0, 6) * 50; }
+            }
+
             int homes = 0;
             foreach (var lot in Lots)
             {
                 if (lot.Kind == BuildingKind.Garden) continue;
+                if (lot.ForSale) { homes++; continue; } // empty: nobody lives there
                 bool home = lot.IsHome;
                 string name = home ? (lot.Kind == BuildingKind.Insula ? "Insula " : "Casa ") + (++homes) : KindName(lot.Kind);
                 Places.Add(new TownPlace { Id = (home ? "home" : "work") + lot.Id, Name = name, Kind = home ? PlaceKind.Home : PlaceKind.Work, Position = lot.Door, LotId = lot.Id });
