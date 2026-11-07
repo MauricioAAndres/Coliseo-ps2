@@ -329,9 +329,17 @@ namespace Gladiator.Character
         /// </summary>
         void StraightenBack(Transform body)
         {
+            var b = Rig.Bones;
+            // shoulders: the collarbones swing back (open chest) or forward (closed), the arms go with them
+            float sh = (Rig.Metrics.ShoulderBack - 0.35f) * 40f;
+            if (Mathf.Abs(sh) > 0.1f)
+            {
+                Vector3 up = body.up;
+                b[SK.LeftShoulder].rotation = Quaternion.AngleAxis(-sh, up) * b[SK.LeftShoulder].rotation;
+                b[SK.RightShoulder].rotation = Quaternion.AngleAxis(sh, up) * b[SK.RightShoulder].rotation;
+            }
             float a = Rig.Metrics.Posture * 24f;
             if (a < 0.1f) return;
-            var b = Rig.Bones;
             Vector3 axis = body.right;
             b[SK.Spine1].rotation = Quaternion.AngleAxis(-a * 0.35f, axis) * b[SK.Spine1].rotation;
             b[SK.Spine2].rotation = Quaternion.AngleAxis(-a * 0.35f, axis) * b[SK.Spine2].rotation;

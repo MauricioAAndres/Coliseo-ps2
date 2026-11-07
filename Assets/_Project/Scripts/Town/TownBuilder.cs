@@ -188,7 +188,7 @@ namespace Gladiator.Town
             {
                 case BuildingKind.Shop: ShopFront(lot, awningA, awningB); break;
                 case BuildingKind.Tavern: ShopFront(lot, banner, awningA); Amphorae(lot, 4); Sign(lot, new Color(0.62f, 0.1f, 0.08f)); break;
-                case BuildingKind.Smithy: Smithy(lot); Sign(lot, new Color(0.35f, 0.35f, 0.38f)); break;
+                case BuildingKind.Smithy: Smithy(lot); Sign(lot, new Color(0.35f, 0.35f, 0.38f)); ShopMarker(lot); break;
                 case BuildingKind.Bakery: Oven(lot); Sign(lot, new Color(0.85f, 0.65f, 0.3f)); break;
                 case BuildingKind.Pottery: Amphorae(lot, 7); Oven(lot); Sign(lot, new Color(0.75f, 0.45f, 0.3f)); break;
             }
@@ -393,6 +393,22 @@ namespace Gladiator.Town
             float hz = lot.Depth * 0.5f, x = lot.DoorOffset * lot.Width + 1.3f;
             Box(darkWood, LP(lot, x, 2.9f, hz + 0.45f), new Vector3(0.08f, 0.08f, 0.9f), q);
             Box(PS2Materials.Get("sign_" + ColorUtility.ToHtmlStringRGB(c), PS2Textures.Cloth, c), LP(lot, x, 2.55f, hz + 0.75f), new Vector3(0.06f, 0.55f, 0.55f), q);
+        }
+
+        /// <summary>Where you can buy: a yellow ring on the ground at the door and a tall yellow banner on a pole.</summary>
+        void ShopMarker(TownLot lot)
+        {
+            var b = new MeshBuilder();
+            b.AddAnnulus(0.95f, 1.15f, 0.04f, 20, Color.white, 1f);
+            var ring = PS2Spawn.Mesh(root, "ShopRing_" + lot.Id, b.Build("ShopRing"), lot.Door, PS2Materials.Flat(new Color(1f, 0.82f, 0.1f), 0.2f));
+            ring.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            Vector3 pole = lot.Door + lot.Right * 1.6f;
+            var y = PS2Materials.Get("banner_shop", PS2Textures.Cloth, new Color(0.95f, 0.75f, 0.1f));
+            Box(darkWood, pole + Vector3.up * 2f, new Vector3(0.12f, 4f, 0.12f), lot.Rotation);
+            Box(y, pole + Vector3.up * 3.3f + lot.Right * 0.45f, new Vector3(0.8f, 1.2f, 0.05f), lot.Rotation, 0f);
+            Box(iron, pole + Vector3.up * 3.3f + lot.Right * 0.45f + lot.Front * 0.04f, new Vector3(0.35f, 0.12f, 0.03f), lot.Rotation * Quaternion.Euler(0, 0, 45f), 0f);
+            Box(iron, pole + Vector3.up * 3.3f + lot.Right * 0.45f + lot.Front * 0.04f, new Vector3(0.35f, 0.12f, 0.03f), lot.Rotation * Quaternion.Euler(0, 0, -45f), 0f);
+            Collider(pole + Vector3.up * 1f, new Vector3(0.2f, 2f, 0.2f), lot.Rotation);
         }
 
         void Amphorae(TownLot lot, int n)

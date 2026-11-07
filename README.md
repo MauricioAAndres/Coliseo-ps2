@@ -373,9 +373,10 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   hombreras, grebas, gladius y scutum rojo). Vigilan las puertas de la arena y del ludus las 24 h, las esquinas de la
   plaza, los extremos de la calle transversal y la explanada de la arena.
 - **Parejas**: en la mayoria de las casas (~80%) vive una pareja (hombre + mujer), a veces con hijos o un anciano.
-- **Dos herrerias** por pueblo, en la plaza: delante de su puerta, **[E] HERRERIA** abre la tienda de armas, armaduras
+- **Dos herrerias** por pueblo, separadas: una en la plaza y otra en la calle del ludus, junto a su puerta. Las marca un **circulo amarillo** en la entrada y un estandarte amarillo: delante de su puerta, **[E] HERRERIA** abre la tienda de armas, armaduras
   y escudos. **El puesto del mercader del ludus ya no existe**: ahora se compra en el pueblo.
 - **Faldas y tunicas**: la parte de abajo sigue a cada pierna, asi las piernas ya no atraviesan la falda al andar.
+- **Hombros**: barra **POSTURA HOMBROS** en el creador (de ADELANTE a MUY ATRAS; por defecto un poco atras, pecho abierto).
 - **Espalda**: nueva barra **ESPALDA** en el creador (pestaña CUERPO): de ENCORVADA a MUY RECTA; por defecto recta.
 - **Pueblo online**: desde el ludus compartido cada uno puede salir al pueblo por la puerta este. Todos ven el pueblo del
   anfitrion (misma semilla, mismos vecinos) y su reloj; los jugadores que estan en el pueblo se ven entre si (los que

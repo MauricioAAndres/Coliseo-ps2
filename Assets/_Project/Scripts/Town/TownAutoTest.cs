@@ -117,7 +117,11 @@ namespace Gladiator.Town
                 if (man && woman) homesWithCouple++;
             }
             var guards = sim.Citizens.FindAll(c => c.Job == Job.Guardia);
-            int smithies = town.Layout.Lots.FindAll(l => l.Kind == BuildingKind.Smithy).Count;
+            var smithLots = town.Layout.Lots.FindAll(l => l.Kind == BuildingKind.Smithy);
+            int smithies = smithLots.Count;
+            if (smithies == 2)
+                Log($"SMITHIES apart={(smithLots[0].Door - smithLots[1].Door).magnitude:0}m  toPlaza=[{(smithLots[0].Door - town.Layout.Fountain).magnitude:0}m, {(smithLots[1].Door - town.Layout.Fountain).magnitude:0}m]  " +
+                    $"toLudusGate=[{(smithLots[0].Door - town.Layout.LudusGate).magnitude:0}m, {(smithLots[1].Door - town.Layout.LudusGate).magnitude:0}m]");
             Log($"POPULATION homes={homesUsed2} withCouple={homesWithCouple} ({100f * homesWithCouple / Mathf.Max(1, homesUsed2):0}%)  guards={guards.Count} (expected >=15) " +
                 $"guardsAllMen={guards.TrueForAll(c => !c.Female)} smithies={smithies} (expected 2) smiths={sim.Citizens.FindAll(c => c.Job == Job.Herrero).Count}");
             Log($"COMPLEXION women={women} [{fMin:0.00}..{fMax:0.00}] (expected >=0.50)  men={sim.Citizens.Count - women} [{mMin:0.00}..{mMax:0.00}] (expected <=0.50)");
@@ -147,6 +151,23 @@ namespace Gladiator.Town
                 town.Cam.Yaw = Quaternion.LookRotation(town.Layout.LudusFacing).eulerAngles.y; // look at their faces
                 yield return Wait(2.5f);
                 yield return Shot("09_complexion_busto");
+                // shoulders: forward / normal / back, seen from the side
+                foreach (var f in row) Destroy(f.gameObject);
+                row.Clear();
+                float[] shs = { 0f, 0.35f, 0.65f, 1f };
+                for (int i = 0; i < shs.Length; i++)
+                {
+                    var look = Gladiator.Character.CharacterAppearance.Random(new System.Random(77), false);
+                    look.Femininity = 0f; look.Armor = 0; look.Helmet = false; look.Outfit = 0; look.ClothesVersion = 1; look.Shirt = 0;
+                    look.ShoulderBack = shs[i];
+                    var f = Gladiator.Arena.CharacterFactory.Create("Hombros" + i, look, baseP + right * (-3.3f + i * 2.2f), Quaternion.LookRotation(right), 9);
+                    f.Controller.enabled = false;
+                    row.Add(f);
+                }
+                town.Cam.Yaw = Quaternion.LookRotation(town.Layout.LudusFacing).eulerAngles.y;
+                town.Cam.FocusOverride = baseP;
+                yield return Wait(2f);
+                yield return Shot("09b_hombros");
                 foreach (var f in row) Destroy(f.gameObject);
                 town.Cam.FocusOverride = null; town.Cam.Distance = 11f; town.Cam.Pitch = 40f;
                 town.Cam.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
@@ -253,6 +274,9 @@ namespace Gladiator.Town
             {
                 var tmS = town.GetComponent<TownManager>();
                 var smithy = town.Layout.Lots.Find(l => l.Kind == BuildingKind.Smithy);
+                Teleport(town.Player, smithy.Door + smithy.Front * 4f, -smithy.Front);
+                yield return Wait(1f);
+                yield return Shot("24_herreria_circulo");
                 Teleport(town.Player, smithy.Door, -smithy.Front);
                 yield return Wait(0.5f);
                 bool nearSmithy = tmS.NearestSmithy(town.Player.transform.position, 2.6f) != null;

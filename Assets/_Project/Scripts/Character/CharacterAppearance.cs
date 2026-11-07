@@ -17,6 +17,8 @@ namespace Gladiator.Character
         public float Femininity = 0f;
         /// <summary>Back: 0 = stooped like the raw animations, 1 = very upright. Default fairly upright.</summary>
         public float Posture = 0.65f;
+        /// <summary>Shoulders: 0 = rolled forward (closed), 1 = pulled back (open chest). Default a little back.</summary>
+        public float ShoulderBack = 0.65f;
         public float Height = 0.5f;
         public float Muscle = 0.5f;
         public float Fat = 0.25f;

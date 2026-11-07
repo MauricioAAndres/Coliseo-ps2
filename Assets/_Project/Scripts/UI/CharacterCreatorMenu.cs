@@ -135,6 +135,8 @@ namespace Gladiator.UI
                 Slider("BRAZOS", () => Look.ArmLength, v => Look.ArmLength = v),
                 Slider("ESPALDA", () => Look.Posture, v => Look.Posture = v,
                     v => v < 0.2f ? "ENCORVADA" : v > 0.8f ? "MUY RECTA" : "RECTA " + Mathf.RoundToInt(v * 100f) + "%"),
+                Slider("POSTURA HOMBROS", () => Look.ShoulderBack, v => Look.ShoulderBack = v,
+                    v => v < 0.25f ? "ADELANTE" : v > 0.8f ? "MUY ATRAS" : v < 0.45f ? "NORMAL" : "ATRAS " + Mathf.RoundToInt(v * 100f) + "%"),
             };
             tabs[1] = new List<RowDef>
             {

@@ -327,7 +327,7 @@ namespace Gladiator.Town
                 if (rn != null && rn != room) { room = rn; town.Hud.ShowMessage(rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn, 1.6f); }
             }
             // the smithies: weapons, armour and shields
-            var smithy = NearestSmithy(p, 2.6f);
+            var smithy = NearestSmithy(p, 1.6f); // standing on the yellow ring
             if (smithy != null)
             {
                 var gmS = GameManager.Instance;

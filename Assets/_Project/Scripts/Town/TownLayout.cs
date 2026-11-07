@@ -124,8 +124,8 @@ namespace Gladiator.Town
 
             // ---- the plaza's eight frontages hold the special buildings (shuffled by the seed)
             var specials = new List<BuildingKind> { BuildingKind.Temple, BuildingKind.Tavern, BuildingKind.Smithy, BuildingKind.Bakery,
-                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum, BuildingKind.Smithy };
-            // two smithies in every town: weapons, armour and shields are bought there
+                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum, BuildingKind.Shop };
+            // two smithies in every town (weapons, armour, shields): this one on the plaza, the other by the ludus gate
             Shuffle(specials, rng);
             // Temple always on the north side (looking down the plaza from the arena road), as in a forum.
             specials.Remove(BuildingKind.Temple);
@@ -163,7 +163,18 @@ namespace Gladiator.Town
             Street(new Vector3(0, 0, PlazaHalf + 11f), Vector3.forward, MainEnd - PlazaHalf - 13f, MainHalfW, 9f);
             Street(new Vector3(PlazaHalf + 11f, 0, 0), Vector3.right, CrossEnd - PlazaHalf - 11f, CrossHalfW, 9f);
             Street(new Vector3(-PlazaHalf - 11f, 0, 0), Vector3.left, CrossEnd - PlazaHalf - 11f, CrossHalfW, 9f);
+            int southFirst = Lots.Count;
             Street(new Vector3(0, 0, -PlazaHalf - 11f), Vector3.back, -SouthEnd - PlazaHalf - 11f, SouthHalfW, 9f);
+            // the second smithy: the last lot of the street to the ludus, by its gate (the first thing you see coming out)
+            {
+                int best = -1; float far = -1f;
+                for (int i = southFirst; i < Lots.Count; i++)
+                {
+                    float d = (Lots[i].Center - W(Vector3.zero)).sqrMagnitude;
+                    if (d > far) { far = d; best = i; }
+                }
+                if (best >= 0) { Lots[best].Kind = BuildingKind.Smithy; Lots[best].Floors = 1; }
+            }
 
             // ---- back rows: the four quarters behind the streets fill up with houses (more homes for the townsfolk)
             void Fill(float x0, float x1, float z0, float z1)

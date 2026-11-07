@@ -62,6 +62,8 @@ namespace Gladiator.Character
         public float H, S, Fem;
         /// <summary>0..1 from the creator's POSTURA: how much the poser straightens the back.</summary>
         public float Posture;
+        /// <summary>0..1 from the creator's POSTURA HOMBROS (0.35 = as the animations, more = further back).</summary>
+        public float ShoulderBack;
         public float LegTopY, KneeY, AnkleY, HipsY, Neck1Y, ArmY;
         public float LegX, KneeX, ShoulderHalf, UpperArm, ForeArm, HandLen;
         public float HipHalf, WaistHalf, ChestHalf, ChestFront, BellyFront;
@@ -73,6 +75,7 @@ namespace Gladiator.Character
         {
             float fem = Fem = Mathf.Clamp01(a.Femininity);
             Posture = Mathf.Clamp01(a.Posture);
+            ShoulderBack = Mathf.Clamp01(a.ShoulderBack);
             float mus = a.Muscle, fat = a.Fat;
             H = a.HeightMeters;
             float s = S = H / 1.8f;
