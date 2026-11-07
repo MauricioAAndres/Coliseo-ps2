@@ -358,6 +358,16 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   y **los golpes a los compañeros de entrenamiento** (si uno le pega a Priscus, el otro lo ve quejarse).
 - Version de red **COLISEO-MP2**: todos tienen que tener esta misma version del juego.
 
+## El pueblo: casas por dentro
+- Las **69 casas** (domus e insulae) se pueden visitar. Cada una tiene su **puerta principal**: acercate y pulsa **E**
+  para abrirla o cerrarla (gira hacia dentro sobre su bisagra; cerrada no deja pasar).
+- Dentro: **cocina** a la entrada y, detras de un tabique con dos huecos de paso (sin puertas interiores), una
+  **habitacion** y un **baño**. Sin decoracion por ahora; el suelo distingue cada estancia (piedra en la cocina,
+  madera en la habitacion, baldosa clara en el baño) y al pasar de una a otra sale su nombre en pantalla.
+- Al entrar en una casa (o al estar en su puerta) se ocultan su tejado, su techo y sus pisos de arriba, para que la
+  camara vea el interior. Los vecinos no entran en las casas por ahora (desaparecen en su puerta, como antes).
+- `Town/TownHouse.cs` (`HouseInterior`, `TownDoor`) y `TownBuilder.HomeHouse`.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

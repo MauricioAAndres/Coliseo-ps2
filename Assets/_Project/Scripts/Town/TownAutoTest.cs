@@ -157,6 +157,84 @@ namespace Gladiator.Town
             yield return Shot("12_panel_plaza");
             town.Info.SetPanel(false); town.Info.SetMarkers(false);
 
+            // ---- houses you can enter: door with E, kitchen / bedroom / bathroom, roof hidden inside
+            {
+                var houses = town.Houses;
+                int withDoor = 0, threeRooms = 0;
+                foreach (var hh in houses) { if (hh.Door != null) withDoor++; if (hh.Rooms.Count == 3) threeRooms++; }
+                Log($"HOUSES homes={houses.Count} withDoor={withDoor} threeRooms={threeRooms}");
+                // the home nearest the plaza
+                HouseInterior hs = null; float bd = float.MaxValue;
+                foreach (var hh in houses) { float dd = (hh.transform.position - town.Layout.Fountain).sqrMagnitude; if (dd < bd) { bd = dd; hs = hh; } }
+                var tm1 = town.GetComponent<TownManager>();
+                Vector3 front = hs.Door.Center + hs.transform.forward * 1.2f;
+                Teleport(town.Player, front, -hs.transform.forward);
+                yield return Wait(0.5f);
+                bool blockedClosed = true;
+                for (float t = 0f; t < 1.2f; t += Time.deltaTime) { town.Player.Move(-hs.transform.forward); yield return null; }
+                town.Player.Move(Vector3.zero);
+                blockedClosed = !hs.Contains(town.Player.transform.position);
+                Teleport(town.Player, front, -hs.transform.forward);
+                yield return Wait(0.3f);
+                var nd = town.NearestDoor(town.Player.transform.position, 1.7f);
+                if (nd != null) nd.Toggle();
+                yield return Wait(0.6f);
+                Log($"DOOR closedBlocks={blockedClosed} (expected True) opened={hs.Door.IsOpen} angle={hs.Door.Angle:0}");
+                yield return Shot("16_puerta_abierta");
+                {
+                    var ct = town.Cam.transform;
+                    var inside = Physics.OverlapSphere(ct.position, 0.4f, ~0, QueryTriggerInteraction.Ignore);
+                    var camHits = new System.Collections.Generic.List<string>();
+                    foreach (var c in inside) camHits.Add(c.transform.parent != null ? c.transform.parent.name + "/" + c.name : c.name);
+                    Log($"CAMDEBUG cam={ct.position} pitch={ct.eulerAngles.x:0} yaw={ct.eulerAngles.y:0} player={town.Player.transform.position} " +
+                        $"houseFwd={hs.transform.forward} insideColliders=[{string.Join(",", camHits)}]");
+                }
+                // walk in through the doorway, then visit every room
+                for (float t = 0f; t < 2.2f && !hs.Contains(town.Player.transform.position + (-hs.transform.forward) * 1.2f); t += Time.deltaTime)
+                { town.Player.Move(-hs.transform.forward * 0.6f); yield return null; }
+                for (float t = 0f; t < 1.2f; t += Time.deltaTime) { town.Player.Move(-hs.transform.forward * 0.6f); yield return null; }
+                town.Player.Move(Vector3.zero);
+                yield return Wait(0.5f);
+                Log($"ENTER inside={hs.Contains(town.Player.transform.position)} room={tm1.CurrentRoom} roofHidden={!hs.Upper.activeSelf}");
+                yield return Shot("17_dentro_cocina");
+                var seen = new System.Collections.Generic.List<string>();
+                // kitchen -> bedroom -> (back through the kitchen) -> bathroom -> kitchen, always through the openings
+                var legs = new (string room, Vector3[] pts)[]
+                {
+                    ("HABITACION", new[] { hs.GapPoint("HABITACION", 1), hs.GapPoint("HABITACION", -1), hs.RoomCenter("HABITACION") }),
+                    ("BANO", new[] { hs.GapPoint("HABITACION", -1), hs.GapPoint("HABITACION", 1), hs.GapPoint("BANO", 1), hs.GapPoint("BANO", -1), hs.RoomCenter("BANO") }),
+                    ("COCINA", new[] { hs.GapPoint("BANO", -1), hs.GapPoint("BANO", 1), hs.RoomCenter("COCINA") }),
+                };
+                foreach (var leg in legs)
+                {
+                    foreach (var target in leg.pts)
+                        for (float t = 0f; t < 4f; t += Time.deltaTime)
+                        {
+                            Vector3 to = target - town.Player.transform.position; to.y = 0f;
+                            if (to.magnitude < 0.3f) break;
+                            town.Player.Move(to.normalized * 0.5f); town.Player.SetFacing(to);
+                            yield return null;
+                        }
+                    town.Player.Move(Vector3.zero);
+                    yield return Wait(0.4f);
+                    seen.Add(leg.room + "->" + (hs.RoomAt(town.Player.transform.position) ?? "fuera") + "(msg " + tm1.CurrentRoom + ")");
+                    if (leg.room == "HABITACION") yield return Shot("18_dentro_habitacion");
+                }
+                Log("ROOMS walked [" + string.Join(", ", seen) + "]");
+                // the back wall holds
+                Vector3 before = town.Player.transform.position;
+                for (float t = 0f; t < 2f; t += Time.deltaTime) { town.Player.Move(-hs.transform.forward); yield return null; }
+                town.Player.Move(Vector3.zero);
+                Log($"WALLS stillInside={hs.Contains(town.Player.transform.position)} (expected True)");
+                GameSettings.CameraMode = 1; GameSettings.Apply(false);
+                yield return Wait(1.5f);
+                yield return Shot("19_dentro_hombro");
+                GameSettings.CameraMode = 0; GameSettings.Apply(false);
+                Teleport(town.Player, front + hs.transform.forward * 2f, -hs.transform.forward);
+                yield return Wait(0.5f);
+                Log($"LEAVE roofShown={hs.Upper.activeSelf} (expected True)");
+            }
+
             // ---- phase 3: bodies near the player
             Log($"NAVMESH ready={TownNavMesh.Ready} tris={TownNavMesh.Triangles} built in {TownNavMesh.BuildSeconds:0.00}s");
             var sp = town.Spawner;

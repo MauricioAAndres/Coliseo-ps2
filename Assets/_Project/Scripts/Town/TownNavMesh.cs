@@ -16,7 +16,7 @@ namespace Gladiator.Town
         public static float BuildSeconds { get; private set; }
         public static int Triangles { get; private set; }
 
-        public static void Build(Vector3 center, Vector3 size)
+        public static void Build(Vector3 center, Vector3 size, IList<HouseInterior> houses = null)
         {
             Clear();
             float t0 = Time.realtimeSinceStartup;
@@ -25,6 +25,16 @@ namespace Gladiator.Town
             NavMeshBuilder.CollectSources(bounds, ~0, NavMeshCollectGeometry.PhysicsColliders, 0, new List<NavMeshBuildMarkup>(), sources);
             // the fighters themselves are not obstacles
             sources.RemoveAll(s => s.component != null && s.component.GetComponentInParent<Combat.Fighter>() != null);
+            // house insides are not part of the streets (area 1 = not walkable)
+            if (houses != null)
+                foreach (var h in houses)
+                    sources.Add(new NavMeshBuildSource
+                    {
+                        shape = NavMeshBuildSourceShape.ModifierBox,
+                        transform = Matrix4x4.TRS(h.transform.position + Vector3.up * 1.5f, h.transform.rotation, Vector3.one),
+                        size = new Vector3(h.HalfX * 2f, 3f, h.HalfZ * 2f),
+                        area = 1,
+                    });
             var settings = NavMesh.GetSettingsByID(0);
             settings.agentRadius = 0.35f;
             settings.agentHeight = 1.8f;

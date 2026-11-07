@@ -38,6 +38,28 @@ namespace Gladiator.Town
         public int Buildings { get; private set; }
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
+        /// <summary>The homes you can walk into.</summary>
+        public System.Collections.Generic.List<HouseInterior> Houses { get; private set; }
+
+        public HouseInterior HouseAt(Vector3 p)
+        {
+            if (Houses == null) return null;
+            foreach (var h in Houses) if (h.Contains(p)) return h;
+            return null;
+        }
+
+        public TownDoor NearestDoor(Vector3 p, float range)
+        {
+            TownDoor best = null; float bd = range;
+            if (Houses == null) return null;
+            foreach (var h in Houses)
+            {
+                if (h.Door == null) continue;
+                Vector3 d = h.Door.Center - p; d.y = 0f;
+                if (d.magnitude < bd) { bd = d.magnitude; best = h.Door; }
+            }
+            return best;
+        }
 
         /// <summary>The town of this PC: the seed is made once and kept (-townseed N overrides it, for tests).</summary>
         public static int CurrentSeed()
@@ -66,10 +88,11 @@ namespace Gladiator.Town
             var builder = new TownBuilder(Layout, env);
             builder.Build();
             Buildings = builder.BuildingCount;
+            Houses = builder.Houses;
             // streets for the townsfolk: navmesh baked from the colliders just built (before any fighter exists)
             Vector3 mid = (Layout.WallCorners[0] + Layout.WallCorners[2]) * 0.5f;
             float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
-            TownNavMesh.Build(mid, new Vector3(span, 40f, span));
+            TownNavMesh.Build(mid, new Vector3(span, 40f, span), Houses);
             BuildSky(env);
             Camera cam = BuildCamera();
 
@@ -177,6 +200,11 @@ namespace Gladiator.Town
     {
         const float GateRadius = 3.2f;
         TownBootstrap town;
+        HouseInterior house;
+        string room;
+        /// <summary>The house the player is in (null outside) and the room (tests).</summary>
+        public HouseInterior CurrentHouse => house;
+        public string CurrentRoom => room;
         PlayerController pc;
         bool leaving;
 
@@ -189,6 +217,32 @@ namespace Gladiator.Town
             if (ArenaGateMenu.Instance != null && ArenaGateMenu.Instance.IsOpen) { town.Hud.SetPrompt(""); return; }
             string key = GameInput.UsingGamepad ? "(A) " : "[" + InputBindings.Short(GameAction.Interact) + "] ";
             Vector3 p = town.Player.transform.position;
+            // inside a house, or at its door: its roof and ceiling go away so the camera sees in; say which room
+            var inHouse = town.HouseAt(p);
+            if (inHouse == null)
+            {
+                var atDoor = town.NearestDoor(p, 2.6f);
+                if (atDoor != null) inHouse = atDoor.GetComponent<HouseInterior>();
+            }
+            if (inHouse != house)
+            {
+                if (house != null) house.ShowUpper(true);
+                house = inHouse;
+                if (house != null) house.ShowUpper(false);
+                room = null;
+            }
+            if (house != null)
+            {
+                string rn = house.RoomAt(p); // null at the door, outside
+                if (rn != null && rn != room) { room = rn; town.Hud.ShowMessage(rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn, 1.6f); }
+            }
+            var door = town.NearestDoor(p, 1.7f);
+            if (door != null)
+            {
+                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA"));
+                if (GameInput.InteractPressed) door.Toggle();
+                return;
+            }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;
             if (npc != null && npc.Citizen != null && !npc.Fleeing)
             {
