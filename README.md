@@ -395,9 +395,10 @@ En la puerta norte del ludus, **E** abre el menu de combate:
 ## El pueblo: muebles
 - Todas las viviendas habitadas (planta baja y primer piso) tienen muebles low-poly hechos por codigo, con el mismo
   estilo PS2 y colision:
-  - **Cocina**: hogar de piedra con fuego (llama que parpadea y luz calida, encendida solo en la casa donde estas),
-    mesa con tantas sillas como habitantes (2-4), vela y vasija en la mesa, estanteria con vasijas y estante colgante.
-  - **Baño**: bañera grande de piedra con agua, letrina de piedra con canal de agua, vela.
+  - **Cocina**: una cocina de obra con horno que ocupa todo un costado (la pared sin puerta): encimera de piedra,
+    horno con su boca y brasas, chimenea, fuego con olla (luz calida, encendida solo en la casa donde estas), vasijas
+    y un estante colgado encima. Mesa con tantas sillas como habitantes (2-4), vela y vasija; estanteria con vasijas.
+  - **Baño**: bañera grande de piedra con agua contra la pared del fondo (nunca tapa la entrada), letrina de piedra con canal de agua, vela.
   - **Habitacion**: cama doble si vive una pareja y camas simples para hijos o ancianos, cofre a los pies de la cama,
     comoda (o el cofre) con vela.
 - **Una cama por habitacion como maximo**: doble si vive una pareja, simple si vive una persona.

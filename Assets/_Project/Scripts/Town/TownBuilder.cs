@@ -547,9 +547,36 @@ namespace Gladiator.Town
                     }
                     else if (chest && z0 + 2.7f < z1 - 0.1f) Candle(cx + 0.25f, 0.56f, z0 + 2.4f);
                 }
-                // a bathroom: a big tub along wall z0 (the far one), a latrine against the far side near z1, a candle
-                void Bathroom(float x0, float x1, float z0, float z1, int farSide)
+                // a bathroom. Doorway in the z1 wall (normal homes): the tub along the back wall z0, the latrine by the far
+                // side near z1. Doorway in a side wall (large homes, doorSide = -1 at x0 / +1 at x1): the tub along the
+                // opposite side wall, the latrine against the z1 wall between the tub and the doorway. Candle on the tub.
+                void Bathroom(float x0, float x1, float z0, float z1, int farSide, int doorSide = 0)
                 {
+                    if (doorSide != 0)
+                    {
+                        float dpt = z1 - z0, wdt = x1 - x0;
+                        float tL = Mathf.Max(1.4f, dpt - 0.25f), tW = Mathf.Min(1.3f, wdt - 1.7f);
+                        if (tW < 0.9f) tW = 0.9f;
+                        float tx = doorSide > 0 ? x0 + 0.1f + tW * 0.5f : x1 - 0.1f - tW * 0.5f, tzc = (z0 + z1) * 0.5f;
+                        Box(stone, P(tx - tW * 0.5f + 0.08f, 0.3f, tzc), new Vector3(0.16f, 0.6f, tL), q);
+                        Box(stone, P(tx + tW * 0.5f - 0.08f, 0.3f, tzc), new Vector3(0.16f, 0.6f, tL), q);
+                        Box(stone, P(tx, 0.3f, tzc - tL * 0.5f + 0.08f), new Vector3(tW, 0.6f, 0.16f), q);
+                        Box(stone, P(tx, 0.3f, tzc + tL * 0.5f - 0.08f), new Vector3(tW, 0.6f, 0.16f), q);
+                        Box(stone, P(tx, 0.05f, tzc), new Vector3(tW, 0.1f, tL), q);
+                        Box(water, P(tx, 0.42f, tzc), new Vector3(tW - 0.3f, 0.03f, tL - 0.3f), q, 0f);
+                        Collider(P(tx, 0.3f, tzc), new Vector3(tW, 0.6f, tL), q);
+                        Candle(tx, 0.6f, tzc + tL * 0.5f - 0.1f);
+                        // latrine along the z1 wall, between the tub and the doorway
+                        float free0 = doorSide > 0 ? x0 + 0.2f + tW : x0 + 0.1f, free1 = doorSide > 0 ? x1 - 0.1f : x1 - 0.2f - tW;
+                        if (free1 - free0 >= 0.95f)
+                        {
+                            float lxc = (free0 + free1) * 0.5f, lzc = z1 - 0.35f;
+                            Solid(stone, lxc, 0.22f, lzc, new Vector3(0.9f, 0.44f, 0.6f));
+                            Box(dark, P(lxc, 0.445f, lzc), new Vector3(0.3f, 0.01f, 0.24f), q, 0f);
+                            Box(water, P(lxc, 0.03f, lzc - 0.42f), new Vector3(0.9f, 0.03f, 0.14f), q, 0f);
+                        }
+                        return;
+                    }
                     float bw = x1 - x0, depth = z1 - z0;
                     float tubW = Mathf.Max(1.4f, bw - 0.3f), tubD = Mathf.Min(1.35f, depth - 1.2f);
                     if (tubD < 0.9f) tubD = 0.9f;
@@ -571,39 +598,66 @@ namespace Gladiator.Town
                     }
                 }
 
-                // KITCHEN: hearth in the far front corner, table with chairs, a shelf, a hanging shelf, a candle
+                // KITCHEN: a masonry cooking range along the whole far side wall (the door is never there): an oven at the
+                // front end, a fire on the worktop with a pot, jars, and a shelf hanging above it. Table with chairs, a
+                // standing shelf on the other wall (normal homes; large ones keep their shelves in the storeroom).
                 float f = sideDoor ? -ss : (dx >= 0f ? -1f : 1f);
                 float xFar = f > 0 ? ix1 : ix0, xNear = f > 0 ? ix0 : ix1;
                 float kMid = (zs + iz1) * 0.5f;
                 {
-                    float hx0 = xFar - f * 0.62f, hz0 = iz1 - 0.62f;
-                    for (int k = 0; k < 8; k++)
-                    {
-                        float a = k / 8f * Mathf.PI * 2f;
-                        Solid(stoneDark, hx0 + Mathf.Cos(a) * 0.42f, 0.12f, hz0 + Mathf.Sin(a) * 0.42f, new Vector3(0.24f, 0.24f, 0.24f), false, k * 45f);
-                    }
-                    Box(ember, P(hx0, 0.06f, hz0), new Vector3(0.5f, 0.06f, 0.5f), q, 0f);
-                    Box(darkWood, P(hx0 - 0.12f, 0.14f, hz0), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, 30f, 0), 0f);
-                    Box(darkWood, P(hx0 + 0.1f, 0.14f, hz0 + 0.05f), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, -40f, 0), 0f);
-                    Collider(P(hx0, 0.3f, hz0), new Vector3(1.0f, 0.6f, 1.0f), q);
-                    var fire = new GameObject("Hearth").transform;
+                    const float cd = 0.72f;                                   // depth of the range
+                    float rx = xFar - f * cd * 0.5f, rz0 = zs + 0.1f, rz1 = iz1 - 0.05f, rLen = rz1 - rz0;
+                    // worktop body + top slab + a dark band (the fire boxes underneath)
+                    Solid(stone, rx, 0.45f, (rz0 + rz1) * 0.5f, new Vector3(cd, 0.9f, rLen));
+                    Box(stoneDark, P(rx, 0.93f, (rz0 + rz1) * 0.5f), new Vector3(cd + 0.04f, 0.06f, rLen + 0.04f), q, 0f);
+                    Box(dark, P(rx - f * (cd * 0.5f + 0.005f), 0.3f, rz0 + rLen * 0.35f), new Vector3(0.01f, 0.32f, rLen * 0.4f), q, 0f);
+                    // the oven at the front end: a block with a dark arched mouth, embers inside and a chimney
+                    float oz = rz1 - 0.55f;
+                    Solid(stoneDark, rx, 0.75f, oz, new Vector3(cd + 0.06f, 1.5f, 1.05f));
+                    Box(clay, P(rx, 1.6f, oz), new Vector3(cd - 0.04f, 0.22f, 0.95f), q, 0f);
+                    Box(dark, P(rx - f * (cd * 0.5f + 0.04f), 0.95f, oz), new Vector3(0.02f, 0.5f, 0.5f), q, 0f);
+                    Box(ember, P(rx - f * (cd * 0.5f + 0.045f), 0.78f, oz), new Vector3(0.02f, 0.12f, 0.42f), q, 0f);
+                    Box(stoneDark, P(xFar - f * 0.25f, 2.4f, oz), new Vector3(0.4f, 1.6f, 0.4f), q);                 // chimney up the wall
+                    // the fire on the worktop with a pot over it (its light: on only while you are in this storey)
+                    float fz = rz0 + Mathf.Min(1.2f, rLen * 0.4f);
+                    Box(ember, P(rx, 0.97f, fz), new Vector3(0.45f, 0.03f, 0.45f), q, 0f);
+                    Box(iron, P(rx, 1.12f, fz), new Vector3(0.36f, 0.26f, 0.36f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                    var fire = new GameObject("CookingFire").transform;
                     fire.SetParent(house.transform, false);
-                    fire.position = P(hx0, 0.1f, hz0);
+                    fire.position = P(rx, 0.97f, fz);
                     var fl = new GameObject("Flame").transform;
                     fl.SetParent(fire, false);
-                    PS2Spawn.Mesh(fl, "F", LowPolyMesh.Box(new Vector3(0.3f, 0.45f, 0.3f), new Vector3(0, 0.22f, 0)), Vector3.zero, flameMat, Quaternion.Euler(0, 45f, 0));
-                    PS2Spawn.Mesh(fl, "F2", LowPolyMesh.Box(new Vector3(0.16f, 0.32f, 0.16f), new Vector3(0, 0.16f, 0)), new Vector3(0.08f, 0, 0.05f), ember);
-                    var li = new GameObject("HearthLight").AddComponent<Light>();
+                    PS2Spawn.Mesh(fl, "F", LowPolyMesh.Box(new Vector3(0.18f, 0.16f, 0.18f), new Vector3(0, 0.08f, 0)), new Vector3(0.12f, 0f, 0.1f), flameMat, Quaternion.Euler(0, 45f, 0));
+                    var li = new GameObject("KitchenLight").AddComponent<Light>();
                     li.transform.SetParent(fire, false);
-                    li.transform.localPosition = new Vector3(0, 1.1f, 0);
-                    li.type = LightType.Point; li.range = 5.5f; li.intensity = 1.5f; li.color = new Color(1f, 0.58f, 0.25f);
+                    li.transform.localPosition = new Vector3(0, 1.0f, 0);
+                    li.type = LightType.Point; li.range = 5.5f; li.intensity = 1.4f; li.color = new Color(1f, 0.6f, 0.28f);
                     li.shadows = LightShadows.None;
                     li.enabled = false;
                     var tf = fire.gameObject.AddComponent<Gladiator.Arena.TorchFlicker>();
                     tf.Light = li; tf.Flame = fl; tf.BaseIntensity = li.intensity;
                     house.Lights.Add(li);
+                    // jars on the worktop
+                    for (int k = 0; k < 3; k++)
+                    {
+                        float jz = fz + 0.55f + k * 0.32f;
+                        if (jz > oz - 0.65f) break;
+                        Box(clay, P(rx + f * 0.1f, 1.05f, jz), new Vector3(0.18f, 0.22f, 0.18f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                    }
+                    // the hanging shelf above the worktop, on the same wall (away from any door)
+                    float hz1 = Mathf.Min(oz - 0.75f, fz + 1.4f), hz0 = Mathf.Max(rz0 + 0.1f, hz1 - 1.2f);
+                    if (hz1 - hz0 > 0.5f)
+                    {
+                        float hcz = (hz0 + hz1) * 0.5f, hxw = xFar - f * 0.15f;
+                        Box(wood, P(hxw, 1.75f, hcz), new Vector3(0.28f, 0.05f, hz1 - hz0), q, 0f);
+                        foreach (float e in new[] { -0.45f, 0.45f })
+                            Box(darkWood, P(hxw + f * 0.02f, 1.62f, hcz + e * (hz1 - hz0) / 1.2f), new Vector3(0.18f, 0.25f, 0.05f), q, 0f);
+                        for (int k = 0; k < 3; k++)
+                            Box(k == 1 ? iron : clay, P(hxw, 1.87f, hz0 + (k + 0.5f) * (hz1 - hz0) / 3f), new Vector3(0.16f, 0.2f, 0.16f), q, 0f);
+                    }
 
-                    float tx = xFar - f * 1.75f, tz = kMid - 0.35f;
+                    // table with chairs (one per person, 2..4), candle and a jar on it, clear of the range
+                    float tx = xFar - f * 2.35f, tz = kMid - 0.35f;
                     Solid(wood, tx, 0.74f, tz, new Vector3(1.25f, 0.07f, 0.72f));
                     foreach (float sx in new[] { -0.52f, 0.52f })
                         foreach (float sz in new[] { -0.28f, 0.28f })
@@ -623,14 +677,7 @@ namespace Gladiator.Town
                     }
                     Candle(tx + 0.25f, 0.78f, tz);
                     Box(clay, P(tx - 0.25f, 0.84f, tz + 0.05f), new Vector3(0.16f, 0.16f, 0.16f), q * Quaternion.Euler(0, 45f, 0), 0f);
-                    // standing shelf on the near side wall by the partition (in a large home the storeroom has the shelves)
                     if (!large) Shelf(xNear + f * 0.22f, zs + 0.95f, 1.2f);
-                    float hsx = xFar - f * 2.1f, hsz = iz1 - 0.16f;
-                    Box(wood, P(hsx, 1.65f, hsz), new Vector3(1.2f, 0.05f, 0.28f), q, 0f);
-                    foreach (float e in new[] { -0.5f, 0.5f })
-                        Box(darkWood, P(hsx + e, 1.52f, hsz + 0.05f), new Vector3(0.05f, 0.25f, 0.18f), q, 0f);
-                    for (int k = 0; k < 3; k++)
-                        Box(k == 1 ? iron : clay, P(hsx - 0.35f + k * 0.35f, 1.77f, hsz), new Vector3(0.16f, 0.2f, 0.16f), q, 0f);
                 }
 
                 if (!large)
@@ -644,8 +691,8 @@ namespace Gladiator.Town
                     // two bedrooms (the couple's double bed in one, a single bed in the other), two bathrooms, the storeroom
                     Bedroom(ix0, cx0, iz0, zb, -1, hh.Item1, false);
                     Bedroom(cx1, ix1, iz0, zb, 1, false, false);
-                    Bathroom(ix0, cx0, zb, zs, -1);
-                    Bathroom(cx1, ix1, zb, zs, 1);
+                    Bathroom(ix0, cx0, zb, zs, -1, 1);     // doorway in the hallway wall (x1 side of the left bathroom)
+                    Bathroom(cx1, ix1, zb, zs, 1, -1);
                     // storeroom 2 x 2: shelves along both side walls, the chest against the back wall, a candle on it
                     Shelf(cx0 + 0.27f, iz0 + 0.95f, 1.2f);
                     Shelf(cx1 - 0.27f, iz0 + 0.95f, 1.2f);

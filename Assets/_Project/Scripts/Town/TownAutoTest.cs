@@ -321,6 +321,32 @@ namespace Gladiator.Town
                     yield return Wait(1.5f);
                     var tmL = town.GetComponent<TownManager>();
                     Log($"LARGE inside room={lh.RoomAt(town.Player.transform.position)} roofHidden={!lh.Upper.activeSelf}");
+                    // walk from the hallway into both bathrooms and both bedrooms through their doorways
+                    var walkedIn = new System.Collections.Generic.List<string>();
+                    foreach (var rm in lh.Rooms)
+                    {
+                        if (rm.Name != "BANO" && rm.Name != "HABITACION") continue;
+                        Teleport(town.Player, lh.RoomCenter("PASILLO"), -lh.transform.forward);
+                        yield return Wait(0.2f);
+                        float side = rm.X0 < 0f ? -1f : 1f;
+                        float zc = rm.Name == "BANO" ? (rm.Z0 + rm.Z1) * 0.5f : rm.Z0 + 2.75f - 0.0f;
+                        if (rm.Name == "HABITACION") zc = lh.Rooms.Find(r => r.Name == "TRASTERO").Z0 + 2.75f;
+                        Vector3[] pts = { lh.transform.TransformPoint(new Vector3(0f, 0.05f, zc)), lh.transform.TransformPoint(new Vector3(side * 1.9f, 0.05f, zc)) };
+                        foreach (var target in pts)
+                            for (float t = 0f; t < 3f; t += Time.deltaTime)
+                            {
+                                Vector3 to = target - town.Player.transform.position; to.y = 0f;
+                                if (to.magnitude < 0.25f) break;
+                                town.Player.Move(to.normalized * 0.5f); town.Player.SetFacing(to);
+                                yield return null;
+                            }
+                        town.Player.Move(Vector3.zero);
+                        yield return Wait(0.2f);
+                        Vector3 lp = lh.transform.InverseTransformPoint(town.Player.transform.position);
+                        bool inRoom = lp.x >= rm.X0 && lp.x <= rm.X1 && lp.z >= rm.Z0 && lp.z <= rm.Z1;
+                        walkedIn.Add(rm.Name + (side < 0 ? "-izq" : "-der") + "=" + inRoom);
+                    }
+                    Log("LARGE walkIn [" + string.Join(", ", walkedIn) + "]");
                     yield return Shot("31_casa_grande");
                     camL.FocusOverride = null; camL.Distance = d0; camL.Pitch = p0; camL.Yaw = yaw0;
                 }
