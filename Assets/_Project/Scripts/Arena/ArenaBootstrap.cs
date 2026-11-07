@@ -131,6 +131,7 @@ namespace Gladiator.Arena
             hud.Init(cam, Player, pc, Enemies);
             Manager = new GameObject("ArenaManager").AddComponent<ArenaManager>();
             Manager.Begin(Encounter, Player, Enemies, hud, this);
+            new GameObject("TownCrowd").AddComponent<Gladiator.Town.ArenaCrowdManager>().Init(Manager, hud);
 
             if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-autotest") >= 0)
                 gameObject.AddComponent<AutoTestRunner>().Init(this, pc);
@@ -255,6 +256,9 @@ namespace Gladiator.Arena
                              Segments, Vector3.zero, Color.white, true, Segments, 0f);
             var bannerGo = Spawn(parent, "BannerBand", bannerB.Build("Banner"), Vector3.zero, banner);
 
+            // Townsfolk who come to watch (phase 4): their seats are planned first so the painted crowd leaves them free.
+            Gladiator.Town.ArenaCrowdManager.Plan(R);
+
             // Stepped stands + crowd (one combined mesh, colours baked per vertex).
             var standB = new MeshBuilder();
             var crowdB = new MeshBuilder();
@@ -278,6 +282,7 @@ namespace Gladiator.Arena
                     // Leave gaps behind the two gates.
                     float deg = a * Mathf.Rad2Deg % 360f;
                     if (Mathf.Abs(deg - 90f) < 8f || Mathf.Abs(deg - 270f) < 8f) continue;
+                    if (Gladiator.Town.ArenaCrowdManager.Reserved(k, a, rr + 0.8f)) continue; // a real townsperson sits here
                     Vector3 d = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
                     Vector3 c = d * (rr + 0.8f) + Vector3.up * (y2 + 0.35f);
                     Quaternion face = Quaternion.LookRotation(-d);

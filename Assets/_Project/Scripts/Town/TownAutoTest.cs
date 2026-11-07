@@ -98,8 +98,45 @@ namespace Gladiator.Town
             int asleep3 = sim.Census(3f)["durmiendo"];
             Log($"CHECK smithsAtWork@10={smithsWorking10}/{smiths} asleep@03={asleep3}/{sim.Citizens.Count}");
 
+            // ---- women and men of the town: complexion ranges
+            float fMin = 1f, fMax = 0f, mMin = 1f, mMax = 0f; int women = 0;
+            foreach (var c in sim.Citizens)
+            {
+                float fe = CitizenSpawner.Look(c).Femininity;
+                if (c.Female) { women++; fMin = Mathf.Min(fMin, fe); fMax = Mathf.Max(fMax, fe); }
+                else { mMin = Mathf.Min(mMin, fe); mMax = Mathf.Max(mMax, fe); }
+            }
+            Log($"COMPLEXION women={women} [{fMin:0.00}..{fMax:0.00}] (expected >=0.50)  men={sim.Citizens.Count - women} [{mMin:0.00}..{mMax:0.00}] (expected <=0.50)");
+
             yield return Wait(1.5f);
             yield return Shot("01_llegada");
+
+            // ---- the complexion slider: bust grows from masculine to feminine (same body otherwise), bare and in a tunic
+            {
+                var row = new System.Collections.Generic.List<Fighter>();
+                Vector3 baseP = town.Player.transform.position + town.Layout.LudusFacing * 4f;
+                Vector3 right = Vector3.Cross(Vector3.up, town.Layout.LudusFacing);
+                float[] fems = { 0f, 0.5f, 0.75f, 1f };
+                for (int k = 0; k < 2; k++)
+                    for (int i = 0; i < fems.Length; i++)
+                    {
+                        var look = Gladiator.Character.CharacterAppearance.Random(new System.Random(77), false);
+                        look.Femininity = fems[i]; look.Armor = 0; look.Helmet = false; look.Beard = 0; look.HairStyle = 2;
+                        look.Outfit = k == 0 ? 0 : 1; look.ClothesVersion = 1; look.Shirt = k == 0 ? 0 : 1; look.ClothColor = 2;
+                        var f = Gladiator.Arena.CharacterFactory.Create("Busto" + i, look,
+                            baseP + right * (-3.3f + i * 2.2f) + town.Layout.LudusFacing * (k * 3f), Quaternion.LookRotation(-town.Layout.LudusFacing), 9);
+                        f.Controller.enabled = false;
+                        row.Add(f);
+                    }
+                town.Cam.FocusOverride = baseP + town.Layout.LudusFacing * 1.5f;
+                town.Cam.Distance = 9f; town.Cam.Pitch = 12f;
+                town.Cam.Yaw = Quaternion.LookRotation(town.Layout.LudusFacing).eulerAngles.y; // look at their faces
+                yield return Wait(2.5f);
+                yield return Shot("09_complexion_busto");
+                foreach (var f in row) Destroy(f.gameObject);
+                town.Cam.FocusOverride = null; town.Cam.Distance = 11f; town.Cam.Pitch = 40f;
+                town.Cam.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+            }
 
             // the simulation made visible: F3 panel + F4 markers at 10:00 and at 21:00, from the air
             sim.Hour = 10f;

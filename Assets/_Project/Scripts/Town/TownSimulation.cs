@@ -380,6 +380,20 @@ namespace Gladiator.Town
         }
 
         // ------------------------------------------------------------------ relation with the player
+        /// <summary>Your reputation in the town: what the townsfolk think of you on average (-100..100).</summary>
+        public float Reputation
+        {
+            get
+            {
+                if (Citizens.Count == 0) return 0f;
+                float sum = 0f;
+                foreach (var c in Citizens) sum += c.Relation;
+                return sum / Citizens.Count;
+            }
+        }
+
+        public static string ReputationLabel(float r) => r >= 40f ? "IDOLO DEL PUEBLO" : r >= 15f ? "QUERIDO" : r > -15f ? "UN GLADIADOR MAS" : r > -40f ? "MAL VISTO" : "ODIADO";
+
         public void ChangeRelation(CitizenData c, int delta)
         {
             c.Relation = Mathf.Clamp(c.Relation + delta, -100, 100);

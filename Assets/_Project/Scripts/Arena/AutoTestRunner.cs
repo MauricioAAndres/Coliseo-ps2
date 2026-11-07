@@ -741,6 +741,18 @@ namespace Gladiator.Arena
             StartCoroutine(TrackActions(tag));
             yield return Wait(1.5f);
             yield return Shot(tag + "01_start");
+            var crowd = Gladiator.Town.ArenaCrowdManager.Instance;
+            if (crowd != null && crowd.Seated > 0)
+            {
+                // the townsfolk in the stands (north side), seen from the sand
+                var cam0 = ArenaCamera.Instance;
+                float d0 = cam0.Distance, p0 = cam0.Pitch;
+                cam0.FocusOverride = new Vector3(0f, 2.5f, 9f); cam0.Distance = 13f; cam0.Pitch = 8f;
+                yield return Wait(2f);
+                yield return Shot(tag + "01b_grada");
+                cam0.FocusOverride = null; cam0.Distance = d0; cam0.Pitch = p0;
+                yield return Wait(0.5f);
+            }
 
             if (tag == "d1_" && Gladiator.UI.PauseMenu.Instance != null)
             {

@@ -779,7 +779,7 @@ namespace Gladiator.Character
                 Vector3 to = f.transform.position - p; to.y = 0f;
                 float d = to.magnitude;
                 bool rival = f.TeamId != Fighter.TeamId;
-                if (d > (rival ? 14f : 5f)) continue;
+                if (d > (Fighter.Spectator ? 45f : rival ? 14f : 5f)) continue;
                 float score = d - (rival ? 6f : 0f) - Vector3.Dot(fwd, to / Mathf.Max(d, 0.01f)) * 2f;
                 if (score < bestScore) { bestScore = score; best = f; }
             }

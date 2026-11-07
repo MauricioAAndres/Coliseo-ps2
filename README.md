@@ -331,6 +331,19 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   contigo baja. Al anochecer cada uno vuelve a su puerta y desaparece dentro.
 - **[E] HABLAR** con cualquiera: una frase segun lo que hace y lo que piensa de ti (hablar una vez al dia sube un poco la relacion).
 
+## El pueblo (Fase 4: la grada) y la complexion
+- `Town/ArenaCrowdManager.cs`: al empezar un combate pregunta a la simulacion quien esta despierto a esa hora y sienta
+  **de 30 a 60 vecinos** (los que te adoran o te odian vienen con mas ganas) en las tres primeras filas de la grada, sobre
+  todo en el lado que mira la camara, entre el publico pintado (que les deja hueco). Tienen la misma cara y ropa que en el
+  pueblo, siguen la pelea con la cabeza y estan "sentados" (agachados). No cuentan para el combate: la IA, la punteria, la
+  camara y el fijar objetivo los ignoran (`Fighter.Spectator`).
+- Reacciones segun su relacion contigo: los fans se levantan a vitorear tus golpes y cuando cae un rival; los que te odian
+  te provocan cuando te golpean y celebran si caes.
+- Al terminar, el pueblo lo recuerda: ganar sube lo que piensan de ti los que estaban en la grada (mas los fans), perder lo
+  baja, y cada rival que tumbas suma. **Tu fama** (la media del pueblo) sale en el panel F3 y al final del combate.
+- **Complexion**: el deslizador COMPLEXION del creador ahora agranda el busto a medida que se acerca a femenina (desde el 35%),
+  y la ropa y la armadura lo siguen. En el pueblo, las mujeres tienen complexion del 50% al 100% y los hombres del 0% al 50%.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

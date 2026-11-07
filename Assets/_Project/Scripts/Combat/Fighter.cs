@@ -243,7 +243,22 @@ namespace Gladiator.Combat
             mpb = new MaterialPropertyBlock();
         }
 
-        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        void OnEnable() { if (!spectator && !All.Contains(this)) All.Add(this); }
+
+        bool spectator;
+        /// <summary>
+        /// Watching from the stands: not in <see cref="All"/>, so AI, aim assist, the camera, lock-on and throws ignore it.
+        /// </summary>
+        public bool Spectator
+        {
+            get => spectator;
+            set
+            {
+                spectator = value;
+                if (value) All.Remove(this);
+                else if (isActiveAndEnabled && !All.Contains(this)) All.Add(this);
+            }
+        }
         void OnDisable() { All.Remove(this); }
 
         // ------------------------------------------------------------------ intents

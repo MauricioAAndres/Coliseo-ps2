@@ -148,7 +148,8 @@ namespace Gladiator.Town
             var rng = new System.Random(c.LookSeed);
             var a = CharacterAppearance.Random(rng, true);
             a.Name = c.Name;
-            a.Femininity = c.Female ? Mathf.Lerp(0.8f, 1f, (float)rng.NextDouble()) : Mathf.Lerp(0f, 0.2f, (float)rng.NextDouble());
+            // complexion: women from 50% to fully feminine, men from fully masculine to 50%
+            a.Femininity = c.Female ? Mathf.Lerp(0.5f, 1f, (float)rng.NextDouble()) : Mathf.Lerp(0f, 0.5f, (float)rng.NextDouble());
             if (c.Female) { a.Beard = 0; a.HairStyle = new[] { 1, 2, 3, 5 }[rng.Next(4)]; }
             a.Armor = 0;
             a.Helmet = false;

@@ -231,6 +231,7 @@ namespace Gladiator.Audio
 
         void OnMove(Fighter f, string what)
         {
+            if (f != null && f.Spectator) return; // the stands: the crowd loop covers them
             switch (what)
             {
                 case "jump": case "dodge_back": Play("jump", At(f), 0.7f); break;

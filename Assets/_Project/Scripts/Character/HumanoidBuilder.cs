@@ -144,7 +144,17 @@ namespace Gladiator.Character
                 T(Ty(0.18f), M.WaistHalf * 1.05f + fat * 0.03f * S, M.BellyFront, S * 0.085f, new BW(SK.Hips, SK.Spine1, 0.5f));
                 T(Ty(0.33f), M.WaistHalf, S * 0.09f + fat * 0.08f * S, S * 0.08f, new BW(SK.Spine1, SK.Spine2, 0.5f));
                 T(Ty(0.52f), Mathf.Lerp(M.WaistHalf, M.ChestHalf, 0.7f), S * (0.1f + mus * 0.02f + fat * 0.03f) + fem * 0.02f * S, backDepth, new BW(SK.Spine2, SK.Chest, 0.5f));
-                T(Ty(0.70f), M.ChestHalf, M.ChestFront + fem * 0.015f * S, backDepth * 1.05f, SK.Chest);
+                // Bust: grows with a feminine build (complexion slider), from nothing at 35% to full at 100%.
+                // It is part of the torso rings, so tunics, shirts and armour (built over the same rings) follow it.
+                float bust = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.35f, 1f, fem));
+                if (bust > 0.01f)
+                {
+                    T(Ty(0.59f), Mathf.Lerp(M.WaistHalf, M.ChestHalf, 0.85f), M.ChestFront * 0.95f + bust * 0.04f * S, backDepth, new BW(SK.Spine2, SK.Chest, 0.7f));
+                    T(Ty(0.665f), M.ChestHalf, M.ChestFront + fem * 0.015f * S + bust * 0.075f * S, backDepth * 1.03f, SK.Chest);
+                    T(Ty(0.74f), M.ChestHalf, M.ChestFront + bust * 0.045f * S, backDepth * 1.05f, SK.Chest);
+                }
+                else
+                    T(Ty(0.70f), M.ChestHalf, M.ChestFront + fem * 0.015f * S, backDepth * 1.05f, SK.Chest);
                 T(Ty(0.84f), M.ChestHalf + mus * 0.01f * S, M.ChestFront * 0.85f, backDepth, SK.Chest);
                 T(Ty(0.93f), Mathf.Max(M.ChestHalf * 0.9f, M.ShoulderHalf * 0.86f), S * 0.068f, S * (0.075f + mus * 0.01f), SK.Chest);
                 T(Ty(0.99f), Mathf.Lerp(M.NeckR * 1.5f, M.ShoulderHalf, 0.42f + mus * 0.08f), M.NeckR * 1.3f, M.NeckR * 1.45f, SK.Chest);
