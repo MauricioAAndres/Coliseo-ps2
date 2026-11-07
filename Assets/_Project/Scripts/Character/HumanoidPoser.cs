@@ -634,10 +634,15 @@ namespace Gladiator.Character
         /// Two-handed weapons are aimed from one hand to the other (axes/greatswords: left hand below the right;
         /// spears: left hand in front), so the clips' grips decide where the weapon points.
         /// </summary>
+        float guardBlend;
+
         void AttachProps(Transform body)
         {
             var b = Rig.Bones;
             float S = Rig.Metrics.S;
+            // 0..1 while the fighter holds a guard up (smoothed): the blade stands up, the shield comes in front
+            bool guarding = Fighter != null && Fighter.State == FighterState.Blocking;
+            guardBlend = Mathf.MoveTowards(guardBlend, guarding ? 1f : 0f, Time.deltaTime * 9f);
             WeaponStats main = Fighter != null && Fighter.CurrentWeapon != null ? Fighter.ActiveStats : null;
             bool bow = main != null && main.IsBow;
             Vector3 rGrip = GripPoint(SK.RightHand, SK.RightHandMiddleEnd), lGrip = GripPoint(SK.LeftHand, SK.LeftHandMiddleEnd);
@@ -667,6 +672,14 @@ namespace Gladiator.Character
                     Vector3 thumb = grip * Vector3.forward;
                     Vector3 fore = (hand.position - b[SK.RightForeArm].position).normalized;
                     grip = Quaternion.FromToRotation(thumb, Vector3.Slerp(thumb, fore, bladeAlign)) * grip;
+                }
+                if (guardBlend > 1e-3f)
+                {
+                    // Guard: the blade stands up and leans across the front (up, a little forward and to the left), edge
+                    // to the enemy, instead of pointing back at the head as the raw block pose has it.
+                    Vector3 blade = (body.up * 1f + body.forward * 0.3f - body.right * 0.45f).normalized;
+                    Quaternion up = Quaternion.LookRotation(blade, -body.forward);
+                    grip = Quaternion.Slerp(grip, up, guardBlend);
                 }
                 WeaponSocket.SetPositionAndRotation(hand.position + hand.rotation * new Vector3(0.07f * S, -0.01f * S, 0f), grip);
             }
@@ -728,15 +741,19 @@ namespace Gladiator.Character
             }
             else if (shield != null)
             {
+                // Carried: upright on the left forearm, face out to the left side (a little forward), following the
+                // arm's position but not its twists. Guard: square in front of the chest, upright, facing forward.
                 Vector3 elbow = b[SK.LeftForeArm].position, wrist = b[SK.LeftHand].position;
-                Vector3 fore = (wrist - elbow).normalized;
-                Vector3 chestFwd = b[SK.Chest].rotation * Vector3.forward;
-                Vector3 normal = Vector3.ProjectOnPlane(chestFwd, fore);
-                if (normal.sqrMagnitude < 1e-4f) normal = chestFwd;
-                normal.Normalize();
-                Vector3 up = Vector3.ProjectOnPlane(Vector3.up, normal);
-                if (up.sqrMagnitude < 1e-4f) up = fore;
-                shield.SetPositionAndRotation(Vector3.Lerp(elbow, wrist, 0.55f) + normal * 0.07f * S, Quaternion.LookRotation(normal, up.normalized));
+                Vector3 fwd = body.forward, left = -body.right;
+                Vector3 sideN = (left * 0.9f + fwd * 0.35f).normalized;
+                Vector3 restPos = Vector3.Lerp(elbow, wrist, 0.5f) + sideN * 0.08f * S;
+                Quaternion restRot = Quaternion.LookRotation(sideN, Vector3.up);
+                Transform chest = b[SK.Chest];
+                Vector3 guardPos = new Vector3(chest.position.x, Mathf.Lerp(chest.position.y, b[SK.Hips].position.y, 0.35f), chest.position.z)
+                                   + fwd * 0.42f * S + left * 0.08f * S;
+                Quaternion guardRot = Quaternion.LookRotation(fwd, Vector3.up);
+                // the forearm goes behind the shield while guarding
+                shield.SetPositionAndRotation(Vector3.Lerp(restPos, guardPos, guardBlend), Quaternion.Slerp(restRot, guardRot, guardBlend));
             }
         }
 

@@ -510,10 +510,11 @@ namespace Gladiator.Character
                 B.Grid(cols, rows, P, (c, r) =>
                 {
                     Vector3 v = P(c, r);
-                    float rowK = r == 0 ? 0f : Mathf.Lerp(0.55f, 0.9f, (r - 1) / Mathf.Max(1f, rows - 1f));
-                    float side = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.65f, Mathf.Abs(v.x - rings[r].C.x) / Mathf.Max(0.001f, rings[r].RU)));
-                    // the front and back middle still lean a little on the nearer leg (that is where knees push)
-                    float w = rowK * Mathf.Lerp(0.55f, 1f, side);
+                    // waist: hips only; lower down more and more on the thigh, the hem entirely, so the cloth goes
+                    // where the knee goes (front and back too: the middle follows the nearer leg)
+                    float rowK = r == 0 ? 0f : Mathf.Lerp(0.4f, 1f, (r - 1) / Mathf.Max(1f, rows - 1f));
+                    float side = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.0f, 0.5f, Mathf.Abs(v.x - rings[r].C.x) / Mathf.Max(0.001f, rings[r].RU)));
+                    float w = rowK * Mathf.Lerp(0.85f, 1f, side);
                     int leg = Mathf.Sign(v.x - rings[r].C.x) == Mathf.Sign(leftX) ? SK.LeftLeg : SK.RightLeg;
                     return w <= 0.01f ? new BW(SK.Hips) : new BW(SK.Hips, leg, w);
                 }, inside, mat);
@@ -561,9 +562,11 @@ namespace Gladiator.Character
                         float hem = A.Pants == 3 ? M.KneeY + 0.1f * S : Mathf.Lerp(M.KneeY, 0f, 0.45f);
                         Ring k0 = hip.Inflated(1.08f, add); k0.C.y = M.LegTopY + 0.03f * S;
                         Ring k1 = hip.Inflated(1.24f, 0.012f * S); k1.C.y = M.LegTopY - 0.12f * S;
-                        Ring k2 = hip.Inflated(A.Pants == 3 ? 1.36f : 1.3f, 0.03f * S); k2.C.y = hem;
-                        k0.W = k1.W = k2.W = SK.Hips;
-                        SkirtLoft(new List<Ring> { k0, k1, k2 }, Cloth2);
+                        Ring k2 = hip.Inflated(A.Pants == 3 ? 1.5f : 1.42f, 0.04f * S); k2.C.y = hem;
+                        Ring km = k1; km.C = Vector3.Lerp(k1.C, k2.C, 0.5f); km.RU = Mathf.Lerp(k1.RU, k2.RU, 0.5f);
+                        km.RVPos = Mathf.Lerp(k1.RVPos, k2.RVPos, 0.5f); km.RVNeg = Mathf.Lerp(k1.RVNeg, k2.RVNeg, 0.5f);
+                        k0.W = k1.W = km.W = k2.W = SK.Hips;
+                        SkirtLoft(new List<Ring> { k0, k1, km, k2 }, Cloth2);
                         // Pleat lines.
                         for (int k = 0; k < 8; k++)
                         {
@@ -593,9 +596,11 @@ namespace Gladiator.Character
                 {
                     Ring sk0 = hip.Inflated(1.07f, add); sk0.C.y = M.LegTopY - 0.02f * S;
                     Ring sk1 = hip.Inflated(1.2f * flare, 0.015f * S); sk1.C.y = M.LegTopY - 0.15f * S;
-                    Ring sk2 = hip.Inflated(1.32f * flare, 0.03f * S); sk2.C.y = hem;
-                    sk0.W = sk1.W = sk2.W = SK.Hips;
-                    SkirtLoft(new List<Ring> { sk0, sk1, sk2 }, Cloth);
+                    Ring sk2 = hip.Inflated(1.46f * flare, 0.04f * S); sk2.C.y = hem;
+                    Ring skm = sk1; skm.C = Vector3.Lerp(sk1.C, sk2.C, 0.5f); skm.RU = Mathf.Lerp(sk1.RU, sk2.RU, 0.5f);
+                    skm.RVPos = Mathf.Lerp(sk1.RVPos, sk2.RVPos, 0.5f); skm.RVNeg = Mathf.Lerp(sk1.RVNeg, sk2.RVNeg, 0.5f);
+                    sk0.W = sk1.W = skm.W = sk2.W = SK.Hips;
+                    SkirtLoft(new List<Ring> { sk0, sk1, skm, sk2 }, Cloth);
                 }
                 switch (A.Shirt)
                 {

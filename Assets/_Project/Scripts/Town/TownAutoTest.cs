@@ -492,7 +492,39 @@ namespace Gladiator.Town
                 yield return Shot("22_falda_andando");
                 for (float t = 0f; t < 0.25f; t += Time.deltaTime) { wlk.Move(-town.Layout.ArenaFacing * 0.9f); yield return null; }
                 yield return Shot("23_falda_andando_b");
+                // from the front, mid-stride
+                for (float t = 0f; t < 0.6f; t += Time.deltaTime)
+                {
+                    wlk.Move(-town.Layout.ArenaFacing * 0.9f);
+                    camW.FocusOverride = wlk.transform.position + Vector3.up * 0.6f; camW.Distance = 3.4f; camW.Pitch = 6f;
+                    camW.Yaw = Quaternion.LookRotation(town.Layout.ArenaFacing).eulerAngles.y;
+                    yield return null;
+                }
+                yield return Shot("23c_falda_frente");
                 Destroy(wlk.gameObject);
+                // guards: a gladius alone, gladius + scutum blocking, and the scutum carried
+                var poses = new System.Collections.Generic.List<Fighter>();
+                Vector3 baseB = town.Player.transform.position + Vector3.Cross(Vector3.up, town.Layout.ArenaFacing) * 3f;
+                Vector3 sideB = Vector3.Cross(Vector3.up, town.Layout.ArenaFacing);
+                for (int i = 0; i < 3; i++)
+                {
+                    var lk = Gladiator.Character.CharacterAppearance.Random(new System.Random(31 + i), false);
+                    lk.Armor = 0; lk.Helmet = false;
+                    var g = Gladiator.Arena.CharacterFactory.Create("Guardia" + i, lk, baseB + sideB * (i * 1.6f), Quaternion.LookRotation(town.Layout.ArenaFacing), 9);
+                    g.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
+                    if (i > 0) Shield.Attach(g, ShieldLibrary.ById("scutum"), CitizenSpawner.GuardRed);
+                    if (i < 2) g.SetBlock(true);
+                    poses.Add(g);
+                }
+                camW.FocusOverride = baseB + sideB * 1.6f + Vector3.up * 1f; camW.Distance = 5.5f; camW.Pitch = 10f;
+                camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+                yield return Wait(1.5f);
+                Log($"GUARDPOSE states=[{string.Join(",", poses.ConvertAll(x => x.State.ToString()))}]");
+                yield return Shot("23d_bloqueo_frente");
+                camW.Yaw = Quaternion.LookRotation(sideB).eulerAngles.y;
+                yield return Wait(1f);
+                yield return Shot("23e_bloqueo_lado");
+                foreach (var g in poses) Destroy(g.gameObject);
                 camW.FocusOverride = null; camW.Distance = 11f; camW.Pitch = 40f;
                 camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
             }
