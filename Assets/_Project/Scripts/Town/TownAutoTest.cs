@@ -120,6 +120,67 @@ namespace Gladiator.Town
             yield return Shot("12_panel_plaza");
             town.Info.SetPanel(false); town.Info.SetMarkers(false);
 
+            // ---- phase 3: bodies near the player
+            Log($"NAVMESH ready={TownNavMesh.Ready} tris={TownNavMesh.Triangles} built in {TownNavMesh.BuildSeconds:0.00}s");
+            var sp = town.Spawner;
+            sim.Hour = 10.5f;
+            Teleport(town.Player, town.Layout.Find("plaza").Position, -town.Layout.ArenaFacing);
+            yield return Wait(4f);
+            float maxD = 0f;
+            foreach (var n in sp.Active) maxD = Mathf.Max(maxD, Flat(n.transform.position - town.Player.transform.position));
+            Log($"SPAWN 10:30 plaza active={sp.ActiveCount}/{CitizenSpawner.PoolSize} poolCreated={sp.PoolCreated} rebuilds={sp.Rebuilds} farthest={maxD:0.0}m " +
+                $"logicalNear={sim.Near(town.Player.transform.position, 40f, sim.Hour).Count}");
+            var names = new System.Collections.Generic.List<string>();
+            foreach (var n in sp.Active) if (names.Count < 6) names.Add(n.Citizen.Name + "(" + n.Citizen.JobName + (n.Walking ? ",camina" : "") + ")");
+            Log("BODIES " + string.Join(", ", names));
+            var travelled0 = new System.Collections.Generic.Dictionary<CitizenNPC, float>();
+            foreach (var n in sp.Active) travelled0[n] = n.Travelled;
+            yield return Shot("13_ciudadanos_plaza");
+            yield return Wait(6f);
+            int movers = 0; float total = 0f;
+            foreach (var kv in travelled0) if (kv.Key.Citizen != null) { float d = kv.Key.Travelled - kv.Value; total += d; if (d > 1f) movers++; }
+            Log($"MOVE in 6s: {movers}/{travelled0.Count} walked >1m, total={total:0.0}m");
+            GameSettings.CameraMode = 1; GameSettings.Apply(false);
+            yield return Wait(1.5f);
+            yield return Shot("14_hombro_plaza");
+            GameSettings.CameraMode = 0; GameSettings.Apply(false);
+
+            // talk to the nearest, then hit someone: they run and like you less
+            var tm0 = town.GetComponent<TownManager>();
+            var near = sp.Nearest(town.Player.transform.position, 40f);
+            if (near != null)
+            {
+                Vector3 side = near.transform.position - near.transform.forward * 1.4f;
+                Teleport(town.Player, side, near.transform.position - side);
+                yield return Wait(0.3f);
+                Log("TALK " + tm0.TalkTo(near));
+                yield return Shot("15_hablar");
+                int rel0 = near.Citizen.Relation;
+                var target = near;
+                Vector3 toT = target.transform.position - town.Player.transform.position; toT.y = 0f;
+                Teleport(town.Player, target.transform.position - toT.normalized * 1.3f, toT);
+                yield return Wait(0.2f);
+                town.Player.TryAttack(AttackType.Light);
+                yield return Wait(0.8f);
+                Log($"HIT {target.Citizen?.Name} fleeing={target.Fleeing} relation {rel0}->{target.Citizen?.Relation} health={target.Fighter.Health.Current:0}");
+                yield return Wait(2f);
+            }
+
+            // walk away: far bodies are released, near ones appear
+            Teleport(town.Player, town.Layout.ArenaGate + town.Layout.ArenaFacing * 2f, -town.Layout.ArenaFacing);
+            yield return Wait(4f);
+            maxD = 0f;
+            foreach (var n in sp.Active) maxD = Mathf.Max(maxD, Flat(n.transform.position - town.Player.transform.position));
+            Log($"SPAWN arena gate active={sp.ActiveCount} farthest={maxD:0.0}m rebuilds={sp.Rebuilds} logicalNear={sim.Near(town.Player.transform.position, 40f, sim.Hour).Count}");
+            // night: everybody goes home through their doors
+            Teleport(town.Player, town.Layout.Find("plaza").Position, -town.Layout.ArenaFacing);
+            yield return Wait(3f);
+            int dayCount = sp.ActiveCount;
+            sim.Hour = 23.5f;
+            yield return Wait(20f);
+            Log($"NIGHT 23:30 active before={dayCount} after 20s={sp.ActiveCount} logicalOutdoorsNear={sim.Near(town.Player.transform.position, 40f, sim.Hour).Count}");
+            sim.Hour = 3f;
+
             var cam = town.Cam;
             var player = town.Player;
             var pc = player.GetComponent<PlayerController>();

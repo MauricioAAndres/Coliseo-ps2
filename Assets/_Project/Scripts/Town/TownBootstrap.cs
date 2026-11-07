@@ -37,6 +37,7 @@ namespace Gladiator.Town
         public TrainingHUD Hud { get; private set; }
         public int Buildings { get; private set; }
         public TownInfoPanel Info { get; private set; }
+        public CitizenSpawner Spawner { get; private set; }
 
         /// <summary>The town of this PC: the seed is made once and kept (-townseed N overrides it, for tests).</summary>
         public static int CurrentSeed()
@@ -65,6 +66,10 @@ namespace Gladiator.Town
             var builder = new TownBuilder(Layout, env);
             builder.Build();
             Buildings = builder.BuildingCount;
+            // streets for the townsfolk: navmesh baked from the colliders just built (before any fighter exists)
+            Vector3 mid = (Layout.WallCorners[0] + Layout.WallCorners[2]) * 0.5f;
+            float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
+            TownNavMesh.Build(mid, new Vector3(span, 40f, span));
             BuildSky(env);
             Camera cam = BuildCamera();
 
@@ -87,6 +92,8 @@ namespace Gladiator.Town
             Hud = new GameObject("TownHUD", typeof(RectTransform)).AddComponent<TrainingHUD>();
             Hud.Init(cam);
             Hud.SetHint("WASD mover   E interactuar   puerta del ludus: volver   puerta de la arena: elegir combate   F3 el pueblo   F4 donde esta cada uno   ESC menu");
+            Spawner = new GameObject("Citizens").AddComponent<CitizenSpawner>();
+            Spawner.Init(Player);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
             gameObject.AddComponent<TownManager>().Init(this, pc);
@@ -94,7 +101,11 @@ namespace Gladiator.Town
             Debug.Log($"[TOWN] seed={Layout.Seed} rot={Layout.RotationDeg} mirrored={Layout.Mirrored} lots={Layout.Lots.Count} places={Layout.Places.Count} buildings={Buildings}");
         }
 
-        void OnDestroy() { if (Instance == this) Instance = null; }
+        void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            TownNavMesh.Clear();
+        }
 
         void SetupRenderSettings()
         {
@@ -178,6 +189,13 @@ namespace Gladiator.Town
             if (ArenaGateMenu.Instance != null && ArenaGateMenu.Instance.IsOpen) { town.Hud.SetPrompt(""); return; }
             string key = GameInput.UsingGamepad ? "(A) " : "[" + InputBindings.Short(GameAction.Interact) + "] ";
             Vector3 p = town.Player.transform.position;
+            var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;
+            if (npc != null && npc.Citizen != null && !npc.Fleeing)
+            {
+                town.Hud.SetPrompt(key + "HABLAR CON " + npc.Citizen.Name.ToUpperInvariant() + " (" + npc.Citizen.JobName + ")");
+                if (GameInput.InteractPressed) TalkTo(npc);
+                return;
+            }
             if (Flat(town.Layout.LudusGate - p) < GateRadius)
             {
                 town.Hud.SetPrompt(key + "VOLVER AL LUDUS");
@@ -191,6 +209,16 @@ namespace Gladiator.Town
                 return;
             }
             town.Hud.SetPrompt("");
+        }
+
+        /// <summary>A line from a townsperson (shown as the message on top). Returns it (tests).</summary>
+        public string TalkTo(CitizenNPC npc)
+        {
+            string line = npc.Say();
+            town.Hud.ShowMessage(line, 4.5f);
+            Vector3 to = town.Player.transform.position - npc.transform.position; to.y = 0f;
+            npc.Fighter.SetFacing(to);
+            return line;
         }
 
         public void GoToLudus()

@@ -318,6 +318,19 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   cercano y su dia; RePag/AvPag mueven el reloj). **F4**: un poste de color donde esta "logicamente" cada persona que
   esta en la calle (rojo trabajando, amarillo mercado, verde paseando, azul por agua, blanco de camino).
 
+## El pueblo (Fase 3: cuerpos para los que estan cerca)
+- `Town/CitizenSpawner.cs`: cada 0,25 s pregunta a la simulacion quien esta **en la calle a menos de 40 m** y le da un
+  cuerpo (el mismo humanoide de los gladiadores, con su cara, ropa y edad segun sus datos: ninos mas bajos, ancianos canosos,
+  sacerdotes de blanco...). Los que se alejan o entran en casa devuelven el cuerpo y vuelven a ser datos. **Pool de 18
+  cuerpos** reutilizables (sin crear ni destruir mientras juegas); si un cuerpo vuelve a la misma persona, no se reconstruye.
+- `Town/TownNavMesh.cs`: un navmesh del pueblo hecho al cargar (desde los colliders, ~0,1 s), para que caminen por las
+  calles y no atraviesen casas.
+- `Town/CitizenNPC.cs`: IA sencilla. Camina a donde le dice la simulacion, espera mirando su sitio (el puesto, la fuente,
+  el pueblo desde la puerta), los que pasean dan vueltas por la plaza y los ninos corretean. Te mira cuando estas cerca;
+  si te aprecia te vitorea y si te odia se golpea el pecho. **Si le pegas huye** (y los de alrededor tambien) y su relacion
+  contigo baja. Al anochecer cada uno vuelve a su puerta y desaparece dentro.
+- **[E] HABLAR** con cualquiera: una frase segun lo que hace y lo que piensa de ti (hablar una vez al dia sube un poco la relacion).
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

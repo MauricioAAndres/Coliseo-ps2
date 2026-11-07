@@ -85,6 +85,7 @@ namespace Gladiator.Town
             sb.Append("EL PUEBLO  ").Append(sim.Citizens.Count).Append(" hab.  ").Append(TownSimulation.Clock(h))
               .Append("     F3 cerrar  F4 marcas  RePag/AvPag +-1h\n");
             var census = sim.Census(h);
+            if (town.Spawner != null) sb.Append("con cuerpo cerca de ti: ").Append(town.Spawner.ActiveCount).Append('/').Append(CitizenSpawner.PoolSize).Append("   ");
             foreach (var kv in census) sb.Append(kv.Key).Append(' ').Append(kv.Value).Append("  ");
             sb.Append("\n\n");
             var plaza = sim.At("plaza", h);
