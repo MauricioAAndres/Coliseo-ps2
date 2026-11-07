@@ -174,9 +174,10 @@ namespace Gladiator.Town
             foreach (var home in homes)
             {
                 if (Citizens.Count >= Population) break;
-                bool insula = Layout.Lots[home.LotId].Kind == BuildingKind.Insula;
                 bool couple = rng.NextDouble() < 0.85;
-                int size = couple ? (insula ? rng.Next(2, 5) : rng.Next(2, 4)) : (insula ? rng.Next(1, 4) : rng.Next(1, 3));
+                bool largeHome = Layout.Lots[home.LotId].Large;
+                // one bed per bedroom: a normal home sleeps a couple (double bed) or one person; a large home one more
+                int size = couple ? (largeHome ? 3 : 2) : (largeHome ? 2 : 1);
                 string nomen = familyNames[fam++ % familyNames.Count];
                 for (int m = 0; m < size && Citizens.Count < Population; m++)
                 {

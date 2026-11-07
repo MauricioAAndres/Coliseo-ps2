@@ -25,6 +25,8 @@ namespace Gladiator.Town
         public int StairSide;
         /// <summary>Empty, for the player to buy (nobody lives there).</summary>
         public bool ForSale;
+        /// <summary>Large home: kitchen, hallway, 2 bedrooms, 2 bathrooms and a 2 x 2 m storeroom.</summary>
+        public bool Large;
         public int Price;
         /// <summary>World point just outside the front door (where people go in and out).</summary>
         public Vector3 Door => Center + Front * (Depth * 0.5f + 0.9f) + Right * (DoorOffset * Width);
@@ -188,13 +190,21 @@ namespace Gladiator.Town
                     for (float z = z0; z <= z1 + 0.01f; z += 11f)
                     {
                         if (rng.NextDouble() < 0.22) continue; // an empty plot here and there
-                        Vector3 c = new Vector3(x + ((float)rng.NextDouble() - 0.5f) * 2f, 0, z + ((float)rng.NextDouble() - 0.5f) * 2f);
+                        bool big = rng.NextDouble() < 0.4;    // a large family home (about 10 x 10 m)
+                        float jit = big ? 0f : 2f;
+                        Vector3 c = new Vector3(x + ((float)rng.NextDouble() - 0.5f) * jit, 0, z + ((float)rng.NextDouble() - 0.5f) * jit);
                         // face the nearer of the two big streets
                         Vector3 front = Mathf.Abs(c.x) < Mathf.Abs(c.z) ? (c.x > 0 ? Vector3.left : Vector3.right)
                                                                          : (c.z > 0 ? Vector3.back : Vector3.forward);
                         double r = rng.NextDouble();
                         var kind = r < 0.55 ? BuildingKind.Domus : r < 0.9 ? BuildingKind.Insula : BuildingKind.Garden;
-                        AddLot(rng, kind, c, front, 6.5f + (float)rng.NextDouble() * 2.5f, 6.5f + (float)rng.NextDouble() * 2.5f);
+                        if (big)
+                        {
+                            AddLot(rng, BuildingKind.Domus, c, front, 9.6f + (float)rng.NextDouble() * 0.5f, 9.8f + (float)rng.NextDouble() * 0.4f);
+                            Lots[Lots.Count - 1].Large = true;
+                            Lots[Lots.Count - 1].Floors = 1;
+                        }
+                        else AddLot(rng, kind, c, front, 6.5f + (float)rng.NextDouble() * 2.5f, 6.5f + (float)rng.NextDouble() * 2.5f);
                     }
             }
             Fill(26f, 59f, 27f, 60f);
@@ -271,7 +281,7 @@ namespace Gladiator.Town
                 TownLot pick = null; float bestScore = -1f;
                 foreach (var lot in Lots)
                 {
-                    if (lot.Kind != BuildingKind.Domus || lot.ForSale) continue;
+                    if (lot.Kind != BuildingKind.Domus || lot.ForSale || lot.Large) continue;
                     Vector3 l = inv * lot.Center; if (Mirrored) l.x = -l.x;
                     int qd = (l.x >= 0 ? 1 : 0) + (l.z >= 0 ? 2 : 0);
                     if (qd != quarter) continue;
@@ -289,7 +299,7 @@ namespace Gladiator.Town
                 if (lot.Kind == BuildingKind.Garden) continue;
                 if (lot.ForSale) { homes++; continue; } // empty: nobody lives there
                 bool home = lot.IsHome;
-                string name = home ? (lot.Kind == BuildingKind.Insula ? "Insula " : "Casa ") + (++homes) : KindName(lot.Kind);
+                string name = home ? (lot.Kind == BuildingKind.Insula ? "Insula " : lot.Large ? "Casa grande " : "Casa ") + (++homes) : KindName(lot.Kind);
                 Places.Add(new TownPlace { Id = (home ? "home" : "work") + lot.Id, Name = name, Kind = home ? PlaceKind.Home : PlaceKind.Work, Position = lot.Door, LotId = lot.Id });
             }
         }

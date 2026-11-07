@@ -113,7 +113,7 @@ namespace Gladiator.Town
             }
             builder.Household = (lotId, floor) =>
             {
-                if (floor > 0) return (true, 1, 3);   // the flat upstairs: a couple and a child
+                if (floor > 0) return (true, 0, 2);   // the flat upstairs: a couple
                 if (!homes.TryGetValue("home" + lotId, out var people) || people.Count == 0) return (true, 0, 2);
                 bool man = people.Exists(c => !c.Female && c.Age >= 16), woman = people.Exists(c => c.Female && c.Age >= 16);
                 bool couple = man && woman;

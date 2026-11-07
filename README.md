@@ -400,6 +400,10 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   - **Baño**: bañera grande de piedra con agua, letrina de piedra con canal de agua, vela.
   - **Habitacion**: cama doble si vive una pareja y camas simples para hijos o ancianos, cofre a los pies de la cama,
     comoda (o el cofre) con vela.
+- **Una cama por habitacion como maximo**: doble si vive una pareja, simple si vive una persona.
+- **Casas grandes** (unas 30, en las manzanas de atras, ~10 x 10 m): cocina, pasillo central, **2 habitaciones**
+  (cama doble y cama simple), **2 baños** y un **trastero de 2 x 2 m** al fondo del pasillo con dos estanterias y el cofre.
+  Ahi viven las familias de 3; en las casas normales vive una pareja o una persona.
 - **Las 4 casas en venta estan vacias** y siguen vacias despues de comprarlas.
 
 ## El bucle de juego

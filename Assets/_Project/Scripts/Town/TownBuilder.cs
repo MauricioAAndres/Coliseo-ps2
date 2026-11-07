@@ -405,31 +405,81 @@ namespace Gladiator.Town
                 Box(darkWood, LP(lot, dx, y0 + 2.36f, hz + 0.05f), new Vector3(1.5f, 0.16f, 0.12f), q);
             }
 
-            // rooms: kitchen in front; bedroom + bathroom at the back
+            // rooms. A normal home: kitchen in front; bedroom + bathroom at the back. A large home: kitchen in front, a
+            // hallway down the middle with a 2 x 2 m storeroom at its end, two bedrooms at the back and two bathrooms.
             float ix0 = -hx + t, ix1 = hx - t, iz0 = -hz + t, iz1 = hz - t;
-            float zs = iz0 + (iz1 - iz0) * 0.45f;
-            bool bathRight = (lot.DoorOffset < 0f) ^ (level == 1);
-            float xs = bathRight ? ix1 - (ix1 - ix0) * 0.4f : ix0 + (ix1 - ix0) * 0.4f;
-            float bedX0 = bathRight ? ix0 : xs, bedX1 = bathRight ? xs : ix1;
-            float bathX0 = bathRight ? xs : ix0, bathX1 = bathRight ? ix1 : xs;
-            float bedC = (bedX0 + bedX1) * 0.5f, bathC = (bathX0 + bathX1) * 0.5f;
-            var cuts = new List<float> { ix0 };
-            foreach (float g in bedC < bathC ? new[] { bedC, bathC } : new[] { bathC, bedC }) { cuts.Add(g - 0.5f); cuts.Add(g + 0.5f); }
-            cuts.Add(ix1);
-            for (int i = 0; i + 1 < cuts.Count; i += 2) Seg(cuts[i], cuts[i + 1], zs - pt * 0.5f, zs + pt * 0.5f, y0, y1, false);
-            Seg(bedC - 0.5f, bedC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
-            Seg(bathC - 0.5f, bathC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
-            Seg(xs - pt * 0.5f, xs + pt * 0.5f, iz0, zs, y0, y1, false);
-            float fy = y0 + (level == 0 ? 0.03f : 0.17f);
-            Box(stoneDark, LP(lot, 0, fy, (zs + iz1) * 0.5f), new Vector3(ix1 - ix0, 0.04f, iz1 - zs), q, 0.5f);
-            Box(wood, LP(lot, bedC, fy, (iz0 + zs) * 0.5f), new Vector3(bedX1 - bedX0, 0.04f, zs - iz0), q, 0.5f);
-            Box(paving, LP(lot, bathC, fy, (iz0 + zs) * 0.5f), new Vector3(bathX1 - bathX0, 0.04f, zs - iz0), q, 0.8f);
-            house.PartitionZ = zs; house.BedGapX = bedC; house.BathGapX = bathC;
-            house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
-            house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = bedX0, X1 = bedX1, Z0 = iz0, Z1 = zs });
-            house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = bathX0, X1 = bathX1, Z0 = iz0, Z1 = zs });
+            bool large = lot.Large && level == 0;
+            float zs, xs = 0f, bedX0 = 0f, bedX1 = 0f, bathX0 = 0f, bathX1 = 0f, bedC = 0f, bathC = 0f;
+            const float cx0 = -1f, cx1 = 1f;                 // hallway (large homes)
+            float zStore = iz0 + 2f, zb = iz0 + 3.5f;        // storeroom front wall, bedroom | bathroom wall
+            if (!large)
+            {
+                zs = iz0 + (iz1 - iz0) * 0.45f;
+                bool bathRight = (lot.DoorOffset < 0f) ^ (level == 1);
+                xs = bathRight ? ix1 - (ix1 - ix0) * 0.4f : ix0 + (ix1 - ix0) * 0.4f;
+                bedX0 = bathRight ? ix0 : xs; bedX1 = bathRight ? xs : ix1;
+                bathX0 = bathRight ? xs : ix0; bathX1 = bathRight ? ix1 : xs;
+                bedC = (bedX0 + bedX1) * 0.5f; bathC = (bathX0 + bathX1) * 0.5f;
+                var cuts = new List<float> { ix0 };
+                foreach (float g in bedC < bathC ? new[] { bedC, bathC } : new[] { bathC, bedC }) { cuts.Add(g - 0.5f); cuts.Add(g + 0.5f); }
+                cuts.Add(ix1);
+                for (int i = 0; i + 1 < cuts.Count; i += 2) Seg(cuts[i], cuts[i + 1], zs - pt * 0.5f, zs + pt * 0.5f, y0, y1, false);
+                Seg(bedC - 0.5f, bedC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
+                Seg(bathC - 0.5f, bathC + 0.5f, zs - pt * 0.5f, zs + pt * 0.5f, y0 + 2.3f, y1, false);
+                Seg(xs - pt * 0.5f, xs + pt * 0.5f, iz0, zs, y0, y1, false);
+                float fy = y0 + (level == 0 ? 0.03f : 0.17f);
+                Box(stoneDark, LP(lot, 0, fy, (zs + iz1) * 0.5f), new Vector3(ix1 - ix0, 0.04f, iz1 - zs), q, 0.5f);
+                Box(wood, LP(lot, bedC, fy, (iz0 + zs) * 0.5f), new Vector3(bedX1 - bedX0, 0.04f, zs - iz0), q, 0.5f);
+                Box(paving, LP(lot, bathC, fy, (iz0 + zs) * 0.5f), new Vector3(bathX1 - bathX0, 0.04f, zs - iz0), q, 0.8f);
+                house.PartitionZ = zs; house.BedGapX = bedC; house.BathGapX = bathC;
+                house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
+                house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = bedX0, X1 = bedX1, Z0 = iz0, Z1 = zs });
+                house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = bathX0, X1 = bathX1, Z0 = iz0, Z1 = zs });
+            }
+            else
+            {
+                zs = iz1 - 3.2f;
+                float h2 = pt * 0.5f;
+                // kitchen | back part: one opening into the hallway
+                Seg(ix0, cx0 + 0.4f, zs - h2, zs + h2, y0, y1, false);
+                Seg(cx1 - 0.4f, ix1, zs - h2, zs + h2, y0, y1, false);
+                Seg(cx0 + 0.4f, cx1 - 0.4f, zs - h2, zs + h2, y0 + 2.3f, y1, false);
+                // hallway walls, with an opening into each bedroom and each bathroom
+                float gBed = iz0 + 2.75f, gBath = (zb + zs) * 0.5f;
+                foreach (float x in new[] { cx0, cx1 })
+                {
+                    var c = new List<float> { iz0, gBed - 0.45f, gBed + 0.45f, gBath - 0.45f, gBath + 0.45f, zs - h2 };
+                    for (int i = 0; i + 1 < c.Count; i += 2) Seg(x - h2, x + h2, c[i], c[i + 1], y0, y1, false);
+                    Seg(x - h2, x + h2, gBed - 0.45f, gBed + 0.45f, y0 + 2.3f, y1, false);
+                    Seg(x - h2, x + h2, gBath - 0.45f, gBath + 0.45f, y0 + 2.3f, y1, false);
+                }
+                // storeroom at the end of the hallway (opening in the middle)
+                Seg(cx0, -0.45f, zStore - h2, zStore + h2, y0, y1, false);
+                Seg(0.45f, cx1, zStore - h2, zStore + h2, y0, y1, false);
+                Seg(-0.45f, 0.45f, zStore - h2, zStore + h2, y0 + 2.3f, y1, false);
+                // bedroom | bathroom on each side
+                Seg(ix0, cx0, zb - h2, zb + h2, y0, y1, false);
+                Seg(cx1, ix1, zb - h2, zb + h2, y0, y1, false);
+                float fy = y0 + 0.03f;
+                Box(stoneDark, LP(lot, 0, fy, (zs + iz1) * 0.5f), new Vector3(ix1 - ix0, 0.04f, iz1 - zs), q, 0.5f);
+                Box(wood, LP(lot, 0, fy, (zStore + zs) * 0.5f), new Vector3(cx1 - cx0, 0.04f, zs - zStore), q, 0.5f);
+                Box(stoneDark, LP(lot, 0, fy, (iz0 + zStore) * 0.5f), new Vector3(cx1 - cx0, 0.04f, zStore - iz0), q, 0.5f);
+                foreach (var (a, b) in new[] { (ix0, cx0), (cx1, ix1) })
+                {
+                    Box(wood, LP(lot, (a + b) * 0.5f, fy, (iz0 + zb) * 0.5f), new Vector3(b - a, 0.04f, zb - iz0), q, 0.5f);
+                    Box(paving, LP(lot, (a + b) * 0.5f, fy, (zb + zs) * 0.5f), new Vector3(b - a, 0.04f, zs - zb), q, 0.8f);
+                }
+                house.PartitionZ = zs; house.BedGapX = cx0 - 1.6f; house.BathGapX = cx1 + 1.6f;
+                house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
+                house.Rooms.Add(new HouseInterior.Room { Name = "PASILLO", X0 = cx0, X1 = cx1, Z0 = zStore, Z1 = zs });
+                house.Rooms.Add(new HouseInterior.Room { Name = "TRASTERO", X0 = cx0, X1 = cx1, Z0 = iz0, Z1 = zStore });
+                house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = ix0, X1 = cx0, Z0 = iz0, Z1 = zb });
+                house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = ix0, X1 = cx0, Z0 = zb, Z1 = zs });
+                house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = cx1, X1 = ix1, Z0 = iz0, Z1 = zb });
+                house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = cx1, X1 = ix1, Z0 = zb, Z1 = zs });
+            }
 
-            // ---- furniture (empty houses for sale stay empty, also once bought)
+            // ---- furniture (empty houses for sale stay empty, also once bought). At most one bed per bedroom.
             if (!lot.ForSale)
             {
                 var hh = Household != null ? Household(lot.Id, level) : (true, 1, 3);
@@ -446,13 +496,85 @@ namespace Gladiator.Town
                     Box(waxMat, P(x, y + 0.08f, z), new Vector3(0.07f, 0.16f, 0.07f), q, 0f);
                     Box(ember, P(x, y + 0.2f, z), new Vector3(0.04f, 0.07f, 0.04f), q * Quaternion.Euler(0, 45f, 0), 0f);
                 }
+                Material blanket = PS2Materials.Get("blanket_" + (lot.Tint % 3), PS2Textures.Cloth,
+                    lot.Tint % 3 == 0 ? new Color(0.62f, 0.12f, 0.1f) : lot.Tint % 3 == 1 ? new Color(0.22f, 0.32f, 0.58f) : new Color(0.55f, 0.45f, 0.25f));
 
-                // which way is "away from the door" in the kitchen
+                // a chest (wood with iron bands)
+                void Chest(float x, float z)
+                {
+                    Solid(darkWood, x, 0.25f, z, new Vector3(0.85f, 0.5f, 0.5f));
+                    Box(wood, P(x, 0.52f, z), new Vector3(0.88f, 0.08f, 0.53f), q, 0f);
+                    foreach (float e in new[] { -0.3f, 0.3f })
+                        Box(iron, P(x + e, 0.3f, z), new Vector3(0.06f, 0.56f, 0.55f), q, 0f);
+                    Box(iron, P(x, 0.38f, z + 0.26f), new Vector3(0.1f, 0.1f, 0.03f), q, 0f);
+                }
+                // a standing shelf against a side wall (x), running along z, with jars
+                void Shelf(float x, float z, float len)
+                {
+                    Solid(wood, x, 0.95f, z, new Vector3(0.36f, 1.9f, 0.08f), false);
+                    for (int k = 0; k < 4; k++) Box(wood, P(x, 0.15f + k * 0.55f, z), new Vector3(0.38f, 0.05f, len), q, 0f);
+                    foreach (float e in new[] { -len * 0.48f, len * 0.48f }) Box(darkWood, P(x, 0.95f, z + e), new Vector3(0.38f, 1.9f, 0.05f), q, 0f);
+                    int n = Mathf.Max(2, Mathf.FloorToInt(len / 0.38f));
+                    for (int k = 0; k < 3; k++)
+                        for (int j = 0; j < n; j++)
+                            if ((k + j + lot.Id) % 3 != 0)
+                                Box(clay, P(x, 0.32f + k * 0.55f, z - len * 0.5f + (j + 0.5f) * len / n), new Vector3(0.2f, 0.26f, 0.2f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                    Collider(P(x, 0.95f, z), new Vector3(0.4f, 1.9f, len + 0.05f), q);
+                }
+                // a bedroom: ONE bed with its head on the back wall (z0) at the far side, a chest of drawers with a candle,
+                // and (normal homes, which have no storeroom) a chest at the foot of the bed
+                void Bedroom(float x0, float x1, float z0, float z1, int farSide, bool dbl, bool chest)
+                {
+                    float width = dbl ? 1.5f : 0.9f;
+                    float cx = farSide < 0 ? x0 + 0.12f + width * 0.5f : x1 - 0.12f - width * 0.5f, bz = z0 + 1.05f;
+                    Solid(darkWood, cx, 0.2f, bz, new Vector3(width, 0.4f, 2.0f));
+                    Box(darkWood, P(cx, 0.55f, z0 + 0.08f), new Vector3(width, 0.7f, 0.08f), q, 0f);
+                    Box(awningA, P(cx, 0.46f, bz), new Vector3(width - 0.1f, 0.14f, 1.9f), q, 0f);
+                    Box(blanket, P(cx, 0.55f, bz + 0.25f), new Vector3(width - 0.06f, 0.05f, 1.3f), q, 0f);
+                    for (int k = 0; k < (dbl ? 2 : 1); k++)
+                        Box(awningA, P(cx + (dbl ? (k == 0 ? -0.35f : 0.35f) : 0f), 0.58f, z0 + 0.38f), new Vector3(0.5f, 0.1f, 0.32f), q, 0f);
+                    house.Beds.Add(cx + "," + bz);
+                    if (chest && z0 + 2.7f < z1 - 0.1f) Chest(cx, z0 + 2.4f);
+                    // chest of drawers on the back wall at the other end, if it fits; candle on it
+                    float room = (x1 - x0) - 0.24f - width - 0.15f;
+                    if (room >= 1.1f)
+                    {
+                        float dxD = farSide < 0 ? x1 - 0.12f - 0.55f : x0 + 0.12f + 0.55f;
+                        Solid(wood, dxD, 0.45f, z0 + 0.3f, new Vector3(1.1f, 0.9f, 0.48f));
+                        for (int k = 0; k < 3; k++)
+                            Box(darkWood, P(dxD, 0.18f + k * 0.27f, z0 + 0.55f), new Vector3(1.0f, 0.03f, 0.02f), q, 0f);
+                        Candle(dxD + 0.35f, 0.9f, z0 + 0.3f);
+                    }
+                    else if (chest && z0 + 2.7f < z1 - 0.1f) Candle(cx + 0.25f, 0.56f, z0 + 2.4f);
+                }
+                // a bathroom: a big tub along wall z0 (the far one), a latrine against the far side near z1, a candle
+                void Bathroom(float x0, float x1, float z0, float z1, int farSide)
+                {
+                    float bw = x1 - x0, depth = z1 - z0;
+                    float tubW = Mathf.Max(1.4f, bw - 0.3f), tubD = Mathf.Min(1.35f, depth - 1.2f);
+                    if (tubD < 0.9f) tubD = 0.9f;
+                    float tcx = (x0 + x1) * 0.5f, tcz = z0 + 0.1f + tubD * 0.5f;
+                    Box(stone, P(tcx, 0.3f, tcz - tubD * 0.5f + 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
+                    Box(stone, P(tcx, 0.3f, tcz + tubD * 0.5f - 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
+                    Box(stone, P(tcx - tubW * 0.5f + 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
+                    Box(stone, P(tcx + tubW * 0.5f - 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
+                    Box(stone, P(tcx, 0.05f, tcz), new Vector3(tubW, 0.1f, tubD), q);
+                    Box(water, P(tcx, 0.42f, tcz), new Vector3(tubW - 0.3f, 0.03f, tubD - 0.3f), q, 0f);
+                    Collider(P(tcx, 0.3f, tcz), new Vector3(tubW, 0.6f, tubD), q);
+                    Candle(tcx + tubW * 0.5f - 0.1f, 0.6f, tcz + tubD * 0.5f - 0.1f);
+                    float lx = farSide < 0 ? x0 + 0.3f : x1 - 0.3f, lz = z1 - 0.6f;
+                    if (lz - 0.45f > tcz + tubD * 0.5f + 0.1f)
+                    {
+                        Solid(stone, lx, 0.22f, lz, new Vector3(0.6f, 0.44f, 0.9f));
+                        Box(dark, P(lx, 0.445f, lz), new Vector3(0.24f, 0.01f, 0.3f), q, 0f);
+                        Box(water, P(lx + (farSide < 0 ? 0.42f : -0.42f), 0.03f, lz), new Vector3(0.14f, 0.03f, 0.9f), q, 0f);
+                    }
+                }
+
+                // KITCHEN: hearth in the far front corner, table with chairs, a shelf, a hanging shelf, a candle
                 float f = sideDoor ? -ss : (dx >= 0f ? -1f : 1f);
                 float xFar = f > 0 ? ix1 : ix0, xNear = f > 0 ? ix0 : ix1;
                 float kMid = (zs + iz1) * 0.5f;
-
-                // KITCHEN: hearth in the far front corner, table with chairs, a shelf, a hanging shelf, a candle
                 {
                     float hx0 = xFar - f * 0.62f, hz0 = iz1 - 0.62f;
                     for (int k = 0; k < 8; k++)
@@ -464,7 +586,6 @@ namespace Gladiator.Town
                     Box(darkWood, P(hx0 - 0.12f, 0.14f, hz0), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, 30f, 0), 0f);
                     Box(darkWood, P(hx0 + 0.1f, 0.14f, hz0 + 0.05f), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, -40f, 0), 0f);
                     Collider(P(hx0, 0.3f, hz0), new Vector3(1.0f, 0.6f, 1.0f), q);
-                    // fire: its own little object (flickers) and the house's light, on only while you are inside
                     var fire = new GameObject("Hearth").transform;
                     fire.SetParent(house.transform, false);
                     fire.position = P(hx0, 0.1f, hz0);
@@ -482,7 +603,6 @@ namespace Gladiator.Town
                     tf.Light = li; tf.Flame = fl; tf.BaseIntensity = li.intensity;
                     house.Lights.Add(li);
 
-                    // table + chairs (one per person, 2..4), candle on the table
                     float tx = xFar - f * 1.75f, tz = kMid - 0.35f;
                     Solid(wood, tx, 0.74f, tz, new Vector3(1.25f, 0.07f, 0.72f));
                     foreach (float sx in new[] { -0.52f, 0.52f })
@@ -503,21 +623,8 @@ namespace Gladiator.Town
                     }
                     Candle(tx + 0.25f, 0.78f, tz);
                     Box(clay, P(tx - 0.25f, 0.84f, tz + 0.05f), new Vector3(0.16f, 0.16f, 0.16f), q * Quaternion.Euler(0, 45f, 0), 0f);
-
-                    // standing shelf against the near side wall, by the partition
-                    float sxw = xNear + f * 0.22f, sz0 = zs + 0.95f;
-                    Solid(wood, sxw, 0.95f, sz0, new Vector3(0.36f, 1.9f, 0.08f), false);           // back... (thin, along the wall)
-                    for (int k = 0; k < 4; k++)
-                        Box(wood, P(sxw, 0.15f + k * 0.55f, sz0), new Vector3(0.38f, 0.05f, 1.2f), q, 0f);
-                    foreach (float e in new[] { -0.58f, 0.58f })
-                        Box(darkWood, P(sxw, 0.95f, sz0 + e), new Vector3(0.38f, 1.9f, 0.05f), q, 0f);
-                    for (int k = 0; k < 3; k++)
-                        for (int j = 0; j < 3; j++)
-                            if ((k + j + lot.Id) % 3 != 0)
-                                Box(clay, P(sxw, 0.32f + k * 0.55f, sz0 - 0.35f + j * 0.35f), new Vector3(0.2f, 0.26f, 0.2f), q * Quaternion.Euler(0, 45f, 0), 0f);
-                    Collider(P(sxw, 0.95f, sz0), new Vector3(0.4f, 1.9f, 1.25f), q);
-
-                    // hanging shelf on the front wall, beside the hearth
+                    // standing shelf on the near side wall by the partition (in a large home the storeroom has the shelves)
+                    if (!large) Shelf(xNear + f * 0.22f, zs + 0.95f, 1.2f);
                     float hsx = xFar - f * 2.1f, hsz = iz1 - 0.16f;
                     Box(wood, P(hsx, 1.65f, hsz), new Vector3(1.2f, 0.05f, 0.28f), q, 0f);
                     foreach (float e in new[] { -0.5f, 0.5f })
@@ -526,85 +633,27 @@ namespace Gladiator.Town
                         Box(k == 1 ? iron : clay, P(hsx - 0.35f + k * 0.35f, 1.77f, hsz), new Vector3(0.16f, 0.2f, 0.16f), q, 0f);
                 }
 
-                // BEDROOM: beds against the back wall (a double for a couple, singles for the rest), chest, chest of drawers, candle
+                if (!large)
                 {
-                    bool outerLeft = bedX0 <= ix0 + 0.01f;            // the bedroom's outer wall is on the left?
-                    float dir = outerLeft ? 1f : -1f;
-                    float cursor = outerLeft ? bedX0 + 0.12f : bedX1 - 0.12f;
-                    float limit = outerLeft ? bedX1 - 0.12f : bedX0 + 0.12f;
-                    Material blanket = PS2Materials.Get("blanket_" + (lot.Tint % 3), PS2Textures.Cloth,
-                        lot.Tint % 3 == 0 ? new Color(0.62f, 0.12f, 0.1f) : lot.Tint % 3 == 1 ? new Color(0.22f, 0.32f, 0.58f) : new Color(0.55f, 0.45f, 0.25f));
-                    float doubleX = float.NaN;
-                    void Bed(float width)
-                    {
-                        float cx = cursor + dir * width * 0.5f;
-                        float bz = iz0 + 1.05f;
-                        Solid(darkWood, cx, 0.2f, bz, new Vector3(width, 0.4f, 2.0f));
-                        Box(darkWood, P(cx, 0.55f, iz0 + 0.08f), new Vector3(width, 0.7f, 0.08f), q, 0f);       // headboard
-                        Box(awningA, P(cx, 0.46f, bz), new Vector3(width - 0.1f, 0.14f, 1.9f), q, 0f);         // mattress
-                        Box(blanket, P(cx, 0.55f, bz + 0.25f), new Vector3(width - 0.06f, 0.05f, 1.3f), q, 0f); // blanket
-                        int pillows = width > 1.2f ? 2 : 1;
-                        for (int k = 0; k < pillows; k++)
-                            Box(awningA, P(cx + (pillows == 2 ? (k == 0 ? -0.35f : 0.35f) : 0f), 0.58f, iz0 + 0.38f), new Vector3(0.5f, 0.1f, 0.32f), q, 0f);
-                        cursor += dir * (width + 0.15f);
-                    }
-                    if (hh.Item1) { doubleX = cursor + dir * 0.75f; Bed(1.5f); }
-                    for (int k = 0; k < hh.Item2; k++)
-                    {
-                        if (Mathf.Abs(limit - cursor) < 1.0f) break;
-                        Bed(0.9f);
-                    }
-                    if (float.IsNaN(doubleX) && hh.Item2 == 0) Bed(0.9f);          // somebody sleeps here
-                    // chest at the foot of the first bed
-                    float chestX = float.IsNaN(doubleX) ? (outerLeft ? bedX0 + 0.6f : bedX1 - 0.6f) : doubleX;
-                    float chestZ = iz0 + 2.4f;
-                    if (chestZ + 0.3f < zs - 0.1f)
-                    {
-                        Solid(darkWood, chestX, 0.25f, chestZ, new Vector3(0.85f, 0.5f, 0.5f));
-                        Box(wood, P(chestX, 0.52f, chestZ), new Vector3(0.88f, 0.08f, 0.53f), q, 0f);
-                        foreach (float e in new[] { -0.3f, 0.3f })
-                            Box(iron, P(chestX + e, 0.3f, chestZ), new Vector3(0.06f, 0.56f, 0.55f), q, 0f);
-                        Box(iron, P(chestX, 0.38f, chestZ + 0.26f), new Vector3(0.1f, 0.1f, 0.03f), q, 0f);
-                    }
-                    // chest of drawers in what is left of the back wall, else against the partition; candle on it
-                    float left = Mathf.Abs(limit - cursor);
-                    float dxD, dzD; bool along = left >= 1.2f;
-                    if (along) { dxD = cursor + dir * 0.6f; dzD = iz0 + 0.3f; }
-                    else { dxD = outerLeft ? bedX0 + 0.75f : bedX1 - 0.75f; dzD = zs - 0.35f; }
-                    if (along || Mathf.Abs(dxD - bedC) > 1.1f)
-                    {
-                        Solid(wood, dxD, 0.45f, dzD, new Vector3(1.1f, 0.9f, 0.48f));
-                        for (int k = 0; k < 3; k++)
-                            Box(darkWood, P(dxD, 0.18f + k * 0.27f, dzD + (along ? 0.25f : -0.25f)), new Vector3(1.0f, 0.03f, 0.02f), q, 0f);
-                        Candle(dxD + 0.35f, 0.9f, dzD);
-                    }
-                    else if (chestZ + 0.3f < zs - 0.1f) Candle(chestX + 0.25f, 0.56f, chestZ);
+                    bool outerLeft = bedX0 <= ix0 + 0.01f, outerLeftB = bathX0 <= ix0 + 0.01f;
+                    Bedroom(bedX0, bedX1, iz0, zs, outerLeft ? -1 : 1, hh.Item1, true);
+                    Bathroom(bathX0, bathX1, iz0, zs, outerLeftB ? -1 : 1);
                 }
-
-                // BATHROOM: a big tub along the back wall, a stone latrine by the outer wall, a candle on the tub
+                else
                 {
-                    float bw = bathX1 - bathX0;
-                    float tubW = Mathf.Max(1.4f, bw - 0.3f), tubD = 1.35f, tcx = (bathX0 + bathX1) * 0.5f, tcz = iz0 + 0.1f + tubD * 0.5f;
-                    Material tubM = stone;
-                    Box(tubM, P(tcx, 0.3f, tcz - tubD * 0.5f + 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
-                    Box(tubM, P(tcx, 0.3f, tcz + tubD * 0.5f - 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
-                    Box(tubM, P(tcx - tubW * 0.5f + 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
-                    Box(tubM, P(tcx + tubW * 0.5f - 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
-                    Box(tubM, P(tcx, 0.05f, tcz), new Vector3(tubW, 0.1f, tubD), q);
-                    Box(water, P(tcx, 0.42f, tcz), new Vector3(tubW - 0.3f, 0.03f, tubD - 0.3f), q, 0f);
-                    Collider(P(tcx, 0.3f, tcz), new Vector3(tubW, 0.6f, tubD), q);
-                    Candle(tcx + tubW * 0.5f - 0.1f, 0.6f, tcz + tubD * 0.5f - 0.1f);
-                    // latrine: a stone bench with a hole, against the outer wall, near the partition
-                    bool outerLeftB = bathX0 <= ix0 + 0.01f;
-                    float lx = outerLeftB ? bathX0 + 0.3f : bathX1 - 0.3f, lz = zs - 0.75f;
-                    if (lz - 0.45f > tcz + tubD * 0.5f + 0.1f)
-                    {
-                        Solid(stone, lx, 0.22f, lz, new Vector3(0.6f, 0.44f, 0.9f));
-                        Box(dark, P(lx, 0.445f, lz), new Vector3(0.24f, 0.01f, 0.3f), q, 0f);
-                        Box(water, P(lx + (outerLeftB ? 0.42f : -0.42f), 0.03f, lz), new Vector3(0.14f, 0.03f, 0.9f), q, 0f); // water channel
-                    }
+                    // two bedrooms (the couple's double bed in one, a single bed in the other), two bathrooms, the storeroom
+                    Bedroom(ix0, cx0, iz0, zb, -1, hh.Item1, false);
+                    Bedroom(cx1, ix1, iz0, zb, 1, false, false);
+                    Bathroom(ix0, cx0, zb, zs, -1);
+                    Bathroom(cx1, ix1, zb, zs, 1);
+                    // storeroom 2 x 2: shelves along both side walls, the chest against the back wall, a candle on it
+                    Shelf(cx0 + 0.27f, iz0 + 0.95f, 1.2f);
+                    Shelf(cx1 - 0.27f, iz0 + 0.95f, 1.2f);
+                    Chest(0f, iz0 + 0.35f);
+                    Candle(0.25f, 0.56f, iz0 + 0.35f);
                 }
             }
+
 
             // front windows
             int nwin = level == 0 ? 2 : Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));

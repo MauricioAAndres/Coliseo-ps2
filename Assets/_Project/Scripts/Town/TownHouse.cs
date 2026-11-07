@@ -24,6 +24,8 @@ namespace Gladiator.Town
         public GameObject SaleSign;
         /// <summary>The hearth's light: on only while the player is in this storey.</summary>
         public readonly List<Light> Lights = new List<Light>();
+        /// <summary>One entry per bed placed (tests: never two in one bedroom).</summary>
+        public readonly List<string> Beds = new List<string>();
 
         public void SetLights(bool on) { foreach (var l in Lights) if (l != null) l.enabled = on; }
         /// <summary>First floor: foot and top of the outside stairs, and the way up (tests).</summary>

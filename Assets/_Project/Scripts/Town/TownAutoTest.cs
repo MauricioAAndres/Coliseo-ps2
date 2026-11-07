@@ -289,6 +289,43 @@ namespace Gladiator.Town
                 Log($"LEAVE roofShown={hs.Upper.activeSelf} (expected True)");
             }
 
+            // ---- large homes: 2 bedrooms, 2 bathrooms, a 2 x 2 storeroom; never more than one bed in a bedroom
+            {
+                var larges = town.Houses.FindAll(hh => hh.Lot.Large && hh.Floor == 0);
+                int okRooms = 0, overBeds = 0;
+                foreach (var hh in larges)
+                {
+                    int beds = hh.Rooms.FindAll(r => r.Name == "HABITACION").Count, baths = hh.Rooms.FindAll(r => r.Name == "BANO").Count;
+                    var store = hh.Rooms.Find(r => r.Name == "TRASTERO");
+                    if (beds == 2 && baths == 2 && Mathf.Abs(store.X1 - store.X0 - 2f) < 0.01f && Mathf.Abs(store.Z1 - store.Z0 - 2f) < 0.01f) okRooms++;
+                }
+                foreach (var hh in town.Houses)
+                {
+                    int bedrooms = hh.Rooms.FindAll(r => r.Name == "HABITACION").Count;
+                    if (hh.Beds.Count > bedrooms) overBeds++;
+                }
+                int maxHousehold = 0;
+                var perHome = new System.Collections.Generic.Dictionary<string, int>();
+                foreach (var c in sim.Citizens) perHome[c.HomeId] = perHome.TryGetValue(c.HomeId, out int n0) ? n0 + 1 : 1;
+                foreach (var kv in perHome) maxHousehold = Mathf.Max(maxHousehold, kv.Value);
+                Log($"LARGE homes={larges.Count} rightRooms={okRooms} housesWithMoreBedsThanBedrooms={overBeds} (expected 0) maxHousehold={maxHousehold} citizens={sim.Citizens.Count}");
+                var lh = larges.Find(hh => !hh.Lot.ForSale);
+                if (lh != null)
+                {
+                    var camL = town.Cam;
+                    float d0 = camL.Distance, p0 = camL.Pitch, yaw0 = camL.Yaw;
+                    Teleport(town.Player, lh.RoomCenter("PASILLO"), -lh.transform.forward);
+                    yield return Wait(0.6f);
+                    camL.FocusOverride = lh.transform.position; camL.Distance = 13f; camL.Pitch = 72f;
+                    camL.Yaw = Quaternion.LookRotation(-lh.transform.forward).eulerAngles.y;
+                    yield return Wait(1.5f);
+                    var tmL = town.GetComponent<TownManager>();
+                    Log($"LARGE inside room={lh.RoomAt(town.Player.transform.position)} roofHidden={!lh.Upper.activeSelf}");
+                    yield return Shot("31_casa_grande");
+                    camL.FocusOverride = null; camL.Distance = d0; camL.Pitch = p0; camL.Yaw = yaw0;
+                }
+            }
+
             // ---- houses for sale: four, spread over the town; buy one
             {
                 var sale = town.Houses.FindAll(hh => hh.Floor == 0 && hh.Lot.ForSale);
