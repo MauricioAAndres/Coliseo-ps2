@@ -62,6 +62,8 @@ namespace Gladiator.Net
         public bool Host;
         public string Address;
         public NetGladiator G;
+        /// <summary>Team colour chosen in the room: 0 rojo, 1 verde, 2 azul, 3 gris.</summary>
+        public int Color;
     }
 
     [Serializable]
@@ -69,6 +71,8 @@ namespace Gladiator.Net
     {
         public string Phase;
         public List<NetPlayer> Players = new List<NetPlayer>();
+        public bool Teams, Upgrades;
+        public int Seed;
     }
 
     /// <summary>One TCP connection: length-prefixed UTF-8 messages, read on a background thread into a queue.</summary>
@@ -154,8 +158,18 @@ namespace Gladiator.Net
     public class NetSession : MonoBehaviour
     {
         public const int DefaultPort = 7777, DiscoveryPort = 7778, MaxPlayers = 4;
-        public const string Version = "COLISEO-MP1";
-        public const string PhaseLobby = "lobby", PhaseLudus = "ludus";
+        public const string Version = "COLISEO-MP2";
+        public const string PhaseLobby = "lobby", PhaseLudus = "ludus", PhaseArena = "arena";
+        public static readonly string[] ColorNames = { "ROJO", "VERDE", "AZUL", "GRIS" };
+        public static readonly Color[] TeamColors =
+        {
+            new Color(0.78f, 0.12f, 0.1f), new Color(0.2f, 0.55f, 0.2f), new Color(0.2f, 0.32f, 0.72f), new Color(0.52f, 0.52f, 0.55f),
+        };
+
+        /// <summary>Online arena settings (MP2): by teams of colour or everyone for himself; own upgrades or all equal.</summary>
+        public bool ArenaTeams { get; private set; }
+        public bool ArenaUpgrades { get; private set; }
+        public int ArenaSeed { get; private set; }
 
         public static NetSession Instance { get; private set; }
 
@@ -263,7 +277,7 @@ namespace Gladiator.Net
             nextId = 2;
             Phase = PhaseLobby;
             Players.Clear();
-            Players.Add(new NetPlayer { Id = 1, Host = true, Address = "", G = LocalGladiator() });
+            Players.Add(new NetPlayer { Id = 1, Host = true, Address = "", G = LocalGladiator(), Color = 0 });
             var l = listener;
             new Thread(() =>
             {
@@ -288,6 +302,38 @@ namespace Gladiator.Net
             Debug.Log("[NET] start " + Phase + " players=" + Players.Count);
             LoadPhase();
         }
+
+        /// <summary>Host: everybody to the arena (MP2). Teams = by colour; upgrades = each with their own stats and gear.</summary>
+        public void StartArena(bool teams, bool upgrades)
+        {
+            if (!IsHost) return;
+            ArenaTeams = teams;
+            ArenaUpgrades = upgrades;
+            ArenaSeed = UnityEngine.Random.Range(1, 1000000);
+            Phase = PhaseArena;
+            BroadcastRoster();
+            Broadcast("START\n" + Phase);
+            Debug.Log($"[NET] start arena teams={teams} upgrades={upgrades} players={Players.Count}");
+            LoadPhase();
+        }
+
+        /// <summary>Choose your colour (the team in the arena by teams).</summary>
+        public void SetColor(int color)
+        {
+            if (!Active || LocalId <= 0) return;
+            color = Mathf.Clamp(color, 0, ColorNames.Length - 1);
+            if (IsHost) { var me = Local; if (me != null) me.Color = color; BroadcastRoster(); }
+            else hostConn?.Send("COL\n" + color);
+        }
+
+        int FreeColor()
+        {
+            for (int c = 0; c < ColorNames.Length; c++) if (!Players.Exists(p => p.Color == c)) return c;
+            return Players.Count % ColorNames.Length;
+        }
+
+        /// <summary>Different colours in the room (an arena by teams needs at least two).</summary>
+        public int ColorsInUse { get { var set = new HashSet<int>(); foreach (var p in Players) set.Add(p.Color); return set.Count; } }
 
         public void Kick(int id)
         {
@@ -363,7 +409,7 @@ namespace Gladiator.Net
                 if (g == null) { Reject(c, "datos del gladiador invalidos"); return; }
                 c.Id = nextId++;
                 c.Welcomed = true;
-                Players.Add(new NetPlayer { Id = c.Id, Address = c.Address, G = g });
+                Players.Add(new NetPlayer { Id = c.Id, Address = c.Address, G = g, Color = FreeColor() });
                 c.Send("WELCOME\n" + c.Id);
                 BroadcastRoster();
                 if (Phase != PhaseLobby) c.Send("START\n" + Phase);
@@ -388,6 +434,10 @@ namespace Gladiator.Net
                 case "BYE":
                     c.Close();
                     break;
+                case "COL":
+                    var pc = Get(c.Id);
+                    if (pc != null && int.TryParse(body, out int col)) { pc.Color = Mathf.Clamp(col, 0, ColorNames.Length - 1); BroadcastRoster(); }
+                    break;
             }
         }
 
@@ -405,7 +455,7 @@ namespace Gladiator.Net
 
         void BroadcastRoster()
         {
-            var r = new RosterMsg { Phase = Phase, Players = Players };
+            var r = new RosterMsg { Phase = Phase, Players = Players, Teams = ArenaTeams, Upgrades = ArenaUpgrades, Seed = ArenaSeed };
             Broadcast("ROSTER\n" + JsonUtility.ToJson(r));
             RosterChanged?.Invoke();
         }
@@ -496,6 +546,7 @@ namespace Gladiator.Net
                     Players.Clear();
                     if (r.Players != null) Players.AddRange(r.Players);
                     Phase = string.IsNullOrEmpty(r.Phase) ? PhaseLobby : r.Phase;
+                    ArenaTeams = r.Teams; ArenaUpgrades = r.Upgrades; ArenaSeed = r.Seed;
                     RosterChanged?.Invoke();
                     break;
                 case "START":
@@ -663,6 +714,7 @@ namespace Gladiator.Net
             if (ChoiceMenu.Instance != null) ChoiceMenu.Instance.Close();
             Time.timeScale = 1f;
             if (Phase == PhaseLudus) SceneManager.LoadScene("Training");
+            else if (Phase == PhaseArena) SceneManager.LoadScene("Arena");
         }
 
         void Update()

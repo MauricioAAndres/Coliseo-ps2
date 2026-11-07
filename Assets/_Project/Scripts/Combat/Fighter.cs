@@ -1003,8 +1003,12 @@ namespace Gladiator.Combat
             }
         }
 
+        /// <summary>Damage of the last blow before armour / guard (online: the owner of the target applies it).</summary>
+        public float LastRawDamage { get; private set; }
+
         public HitResult ReceiveHit(Fighter attacker, float damage, AttackType type, Vector3 dir)
         {
+            LastRawDamage = damage;
             var r = new HitResult
             {
                 Attacker = attacker,

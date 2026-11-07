@@ -18,7 +18,9 @@ namespace Gladiator.Combat
         public WeaponStats Stats { get; private set; }
         public Fighter Holder { get; private set; }
         public bool OnGround => Holder == null;
-        public bool CanBePickedUp => Holder == null && Time.time >= pickupBlockedUntil;
+        public bool CanBePickedUp => Holder == null && !Ghost && Time.time >= pickupBlockedUntil;
+        /// <summary>Online: the copy of a weapon another player threw. It flies and lands but cannot be picked up or hurt.</summary>
+        public bool Ghost;
 
         Rigidbody body;
         Collider col;
@@ -95,7 +97,7 @@ namespace Gladiator.Combat
             // Safety net: anything that escapes the arena comes back.
             if (OnGround && transform.position.y < -5f) PlaceAt(safeSpawn);
             if (thrownBy == null) return;
-            if (Time.time > thrownUntil) { thrownBy = null; return; }
+            if (Time.time > thrownUntil || thrownBy.Harmless) { thrownBy = null; return; } // a copy never hurts (its owner decides)
             var hits = Physics.OverlapSphere(col.bounds.center, Mathf.Max(0.35f, Stats.Length * 0.35f), ~0, QueryTriggerInteraction.Ignore);
             foreach (var h in hits)
             {

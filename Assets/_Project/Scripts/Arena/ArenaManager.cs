@@ -35,6 +35,9 @@ namespace Gladiator.Arena
         static readonly Color Blood = new Color(0.55f, 0.03f, 0.02f);
         static readonly Color Spark = new Color(1f, 0.85f, 0.35f);
 
+        /// <summary>Online arena (MP2): NetArena decides the end; no rewards, the campaign day does not change.</summary>
+        public bool Online;
+
         public void Begin(EncounterType encounter, Fighter player, IEnumerable<Fighter> enemies, GameHUD gameHud, ArenaBootstrap bootstrap = null)
         {
             boot = bootstrap;
@@ -45,6 +48,7 @@ namespace Gladiator.Arena
             hud = gameHud;
             Fighter.AnyDied += OnDied;
             Fighter.AnyHitResolved += OnHit;
+            if (Online) return; // NetArena shows its own messages
             string day = GameManager.Instance != null ? "DIA " + GameManager.Instance.DayCycle.Day + "  -  " : "";
             string title = encounter == EncounterType.Duel ? "DUELO  -  ¡LUCHA!" : encounter == EncounterType.Champion ? "¡EL CAMPEON TE ESPERA!" :
                            encounter == EncounterType.Waves ? "OLEADAS  -  OLEADA 1" : Encounters.Title(encounter);
@@ -96,7 +100,7 @@ namespace Gladiator.Arena
 
         void OnDied(Fighter f)
         {
-            if (MatchOver) return;
+            if (MatchOver || Online) return;
             if (f != Player && f.LastAttacker == Player) PlayerKills++;
             if (f != Player) EnemiesDown++;
             if (f == Player) { End(false); return; }

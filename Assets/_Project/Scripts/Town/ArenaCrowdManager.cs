@@ -104,6 +104,8 @@ namespace Gladiator.Town
             return Planned;
         }
 
+        public static void ClearPlan() { Planned = new List<Seat>(); }
+
         /// <summary>The painted crowd leaves a gap where a real townsperson sits.</summary>
         public static bool Reserved(int tier, float angle, float radius)
         {

@@ -32,6 +32,13 @@ namespace Gladiator.Combat
             if (Current <= 0f) Died?.Invoke();
         }
 
+        /// <summary>Online copy of another player: show their real health (no events).</summary>
+        public void SetNet(float current, float maxValue)
+        {
+            max = Mathf.Max(1f, maxValue);
+            Current = Mathf.Clamp(current, 0f, max);
+        }
+
         public void Heal(float amount)
         {
             if (IsDead) return;

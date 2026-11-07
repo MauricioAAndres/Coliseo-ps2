@@ -143,6 +143,8 @@ namespace Gladiator.UI
         Text statusText;
         readonly List<GameObject> enemyBarObjects = new List<GameObject>();
 
+        public int EnemyBarCount => bars.Count - 1;
+
         /// <summary>Rebuilds the opponents' health bars (waves bring new ones); tighter spacing when there are many.</summary>
         public void ResetEnemies(IList<Fighter> enemies)
         {

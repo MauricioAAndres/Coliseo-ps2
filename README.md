@@ -344,6 +344,20 @@ En la puerta norte del ludus, **E** abre el menu de combate:
 - **Complexion**: el deslizador COMPLEXION del creador ahora agranda el busto a medida que se acerca a femenina (desde el 35%),
   y la ropa y la armadura lo siguen. En el pueblo, las mujeres tienen complexion del 50% al 100% y los hombres del 0% al 50%.
 
+## Multijugador (MP2): arena online
+- **Tu color** (ROJO, VERDE, AZUL, GRIS): ESC > MULTIJUGADOR, en la sala. Es tu equipo en el modo por equipos y el color de
+  tu tunica en la arena.
+- **El anfitrion** va a la puerta de la arena del ludus (o ESC > MULTIJUGADOR > ARENA ONLINE...) y elige:
+  - MODO: **TODOS CONTRA TODOS** (gana el ultimo en pie) o **POR EQUIPOS** (gana el ultimo color en pie; hacen falta dos colores).
+  - MEJORAS: **SI** (cada uno con su fuerza, armas, escudo y armadura) o **NO** (todos con gladius, sin armadura, iguales).
+- En la arena cada uno aparece alrededor de la arena con su tunica de color; las barras de vida de los rivales salen arriba
+  a la derecha. Cada juego decide lo que le pasa a su gladiador: cuando golpeas la copia de otro, tu juego le envia el golpe
+  y el suyo lo aplica (su guardia, su esquiva y su armadura cuentan); la vida y las muertes se comparten.
+- Al final sale el ganador y, a los pocos segundos, el anfitrion os devuelve a todos al ludus. No da denarios ni pasa el dia.
+- En el ludus compartido ahora tambien se ven **las armas que lanza el otro** (vuelan y caen; desaparecen cuando las recoge)
+  y **los golpes a los compañeros de entrenamiento** (si uno le pega a Priscus, el otro lo ve quejarse).
+- Version de red **COLISEO-MP2**: todos tienen que tener esta misma version del juego.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

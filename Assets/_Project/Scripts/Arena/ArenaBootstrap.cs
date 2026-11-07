@@ -45,11 +45,32 @@ namespace Gladiator.Arena
         /// <summary>"Name: weapon + second weapon/shield" per opponent (autotest log).</summary>
         public List<string> EnemyLoadouts { get; } = new List<string>();
 
+        /// <summary>Online arena (MP2): the players fight each other, no AI rivals, no rewards.</summary>
+        public bool Online { get; private set; }
+
+        /// <summary>
+        /// The body a player fights with online: their gladiator in a tunic of their colour; with upgrades their own
+        /// armour, without them no armour (everybody equal).
+        /// </summary>
+        public static (Gladiator.Character.CharacterAppearance look, Gladiator.Character.ArmorSet armor) OnlineLook(
+            Gladiator.Character.CharacterAppearance baseLook, Gladiator.Character.ArmorSet armor, int color, bool upgrades)
+        {
+            var a = JsonUtility.FromJson<Gladiator.Character.CharacterAppearance>(JsonUtility.ToJson(baseLook));
+            a.Name = baseLook.Name;
+            Color c = Gladiator.Net.NetSession.TeamColors[Mathf.Clamp(color, 0, Gladiator.Net.NetSession.TeamColors.Length - 1)];
+            a.ClothOverride = c;
+            a.CrestOverride = c;
+            if (a.Outfit == 0) a.Outfit = 1; // a tunic, so the colour shows
+            return (a, upgrades ? armor : Gladiator.Character.ArmorSet.Empty);
+        }
+
         void Awake()
         {
             Time.timeScale = 1f;
             var gm = GameManager.Ensure();
-            gm.DayCycle.NotifySceneStarted(DayPhase.Arena);
+            var net = Gladiator.Net.NetSession.Instance;
+            Online = net != null && net.InGame && net.Phase == Gladiator.Net.NetSession.PhaseArena;
+            if (!Online) gm.DayCycle.NotifySceneStarted(DayPhase.Arena);
             if (Seed != 0) Random.InitState(Seed);
             PS2Materials.Init(PS2LitShader);
             SetupRenderSettings();
@@ -67,20 +88,35 @@ namespace Gladiator.Arena
             if (UseDayCycleEncounter) Encounter = gm.DayCycle.NextEncounter;
             bool ffa = Encounter == EncounterType.FreeForAll;
 
-            Player = CharacterFactory.Create(profile.Name, profile.Appearance,
-                new Vector3(0, 0.05f, ffa ? -7f : -5f), Quaternion.identity, 0, profile.ArmorSet);
-            // Loadout chosen at the mercator: right hand, then a second weapon or a shield.
-            Player.Equip(WeaponFactory.Create(WeaponLibrary.ByName(profile.MainHand) ?? WeaponLibrary.Gladius));
-            var off = WeaponLibrary.ByName(profile.OffHand);
-            if (off != null) Player.EquipOff(WeaponFactory.Create(off));
-            StatEffects.ApplyToPlayer(Player, profile);
-            var playerShield = ShieldLibrary.ById(profile.ShieldId);
-            if (playerShield != null) Shield.Attach(Player, playerShield, profile.Appearance.ShieldTint);
+            if (Online)
+            {
+                // our gladiator in our colour, at our place around the sand; with upgrades our gear and stats, else a gladius
+                var me = net.Local;
+                int slot = net.SlotOf(net.LocalId);
+                var lk = OnlineLook(profile.Appearance, profile.ArmorSet, me != null ? me.Color : 0, net.ArenaUpgrades);
+                Vector3 at = Gladiator.Net.NetArena.SpawnFor(slot, net.Players.Count);
+                Player = CharacterFactory.Create(profile.Name, lk.look, at, Quaternion.LookRotation(-new Vector3(at.x, 0f, at.z)), 0, lk.armor);
+                Player.TeamId = me != null ? Gladiator.Net.NetArena.TeamOf(net, me) : 100;
+            }
+            else
+                Player = CharacterFactory.Create(profile.Name, profile.Appearance,
+                    new Vector3(0, 0.05f, ffa ? -7f : -5f), Quaternion.identity, 0, profile.ArmorSet);
+            if (!Online || net.ArenaUpgrades)
+            {
+                // Loadout chosen at the mercator: right hand, then a second weapon or a shield.
+                Player.Equip(WeaponFactory.Create(WeaponLibrary.ByName(profile.MainHand) ?? WeaponLibrary.Gladius));
+                var off = WeaponLibrary.ByName(profile.OffHand);
+                if (off != null) Player.EquipOff(WeaponFactory.Create(off));
+                StatEffects.ApplyToPlayer(Player, profile);
+                var playerShield = ShieldLibrary.ById(profile.ShieldId);
+                if (playerShield != null) Shield.Attach(Player, playerShield, profile.Appearance.ShieldTint);
+            }
+            else Player.Equip(WeaponFactory.Create(WeaponLibrary.Gladius)); // all equal: a gladius, base stats
             var pc = Player.gameObject.AddComponent<PlayerController>();
             pc.AimCamera = cam;
 
             day0 = day;
-            switch (Encounter)
+            switch (Online ? (EncounterType)(-1) : Encounter)
             {
                 case EncounterType.FreeForAll:
                     // The other three corners of a square (player at the south one); every gladiator its own team.
@@ -100,6 +136,8 @@ namespace Gladiator.Arena
                 case EncounterType.Waves:
                     SpawnWave(1);
                     break;
+                case (EncounterType)(-1):
+                    break; // online: the rivals are the other players
                 default:
                     SpawnEnemy(new Vector3(0, 0, 5f), 1, false);
                     break;
@@ -130,10 +168,21 @@ namespace Gladiator.Arena
             var hud = new GameObject("HUD", typeof(RectTransform)).AddComponent<GameHUD>();
             hud.Init(cam, Player, pc, Enemies);
             Manager = new GameObject("ArenaManager").AddComponent<ArenaManager>();
+            Manager.Online = Online;
             Manager.Begin(Encounter, Player, Enemies, hud, this);
-            new GameObject("TownCrowd").AddComponent<Gladiator.Town.ArenaCrowdManager>().Init(Manager, hud);
+            if (Online)
+            {
+                // the other players: copies in their colours and teams; the blows go to their owners (NetArena)
+                var nav = gameObject.AddComponent<Gladiator.Net.NetAvatars>();
+                nav.TeamFor = pl => Gladiator.Net.NetArena.TeamOf(net, pl);
+                nav.LookFor = pl => OnlineLook(pl.G.Appearance(), pl.G.ArmorSet, pl.Color, net.ArenaUpgrades);
+                nav.Init(Player, cam, slotIdx => Gladiator.Net.NetArena.SpawnFor(slotIdx, net.Players.Count), msg => hud.ShowMessage(msg, 2.5f));
+                gameObject.AddComponent<Gladiator.Net.NetArena>().Init(Player, nav, hud);
+            }
+            else
+                new GameObject("TownCrowd").AddComponent<Gladiator.Town.ArenaCrowdManager>().Init(Manager, hud);
 
-            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-autotest") >= 0)
+            if (!Online && System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-autotest") >= 0)
                 gameObject.AddComponent<AutoTestRunner>().Init(this, pc);
         }
 
@@ -257,7 +306,8 @@ namespace Gladiator.Arena
             var bannerGo = Spawn(parent, "BannerBand", bannerB.Build("Banner"), Vector3.zero, banner);
 
             // Townsfolk who come to watch (phase 4): their seats are planned first so the painted crowd leaves them free.
-            Gladiator.Town.ArenaCrowdManager.Plan(R);
+            if (Online) Gladiator.Town.ArenaCrowdManager.ClearPlan(); // online: just the painted crowd
+            else Gladiator.Town.ArenaCrowdManager.Plan(R);
 
             // Stepped stands + crowd (one combined mesh, colours baked per vertex).
             var standB = new MeshBuilder();

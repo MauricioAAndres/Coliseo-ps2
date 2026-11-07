@@ -31,6 +31,16 @@ namespace Gladiator.Net
         float lastSentTime;
         string lastEquip = "", lastProfile;
 
+        /// <summary>Arena (MP2): each player's team id and the body they fight with (colour tunic, gear or not).</summary>
+        public Func<NetPlayer, int> TeamFor;
+        public Func<NetPlayer, (Gladiator.Character.CharacterAppearance look, Gladiator.Character.ArmorSet armor)> LookFor;
+        /// <summary>A copy appeared (the arena refreshes its health bars).</summary>
+        public event Action<RemoteFighter> RemoteSpawned;
+        /// <summary>Copies of weapons the others threw (they fly and land; gone when the owner picks it up again).</summary>
+        public int GhostCount => ghosts.Count;
+        readonly List<(Weapon w, int owner, float until)> ghosts = new List<(Weapon, int, float)>();
+        public RemoteFighter Remote(int id) => remotes.TryGetValue(id, out var r) ? r : null;
+
         public int RemoteCount => remotes.Count;
         public IEnumerable<RemoteFighter> Remotes => remotes.Values;
         public Fighter Local => local;
@@ -46,6 +56,8 @@ namespace Gladiator.Net
             lastSentTime = Time.time;
             Fighter.AnyAttackStarted += OnAttack;
             Fighter.AnyMove += OnMove;
+            Fighter.AnyWeaponThrown += OnThrown;
+            Fighter.AnyHitResolved += OnHitLocal;
         }
 
         void OnDestroy()
@@ -53,6 +65,9 @@ namespace Gladiator.Net
             if (Instance == this) Instance = null;
             Fighter.AnyAttackStarted -= OnAttack;
             Fighter.AnyMove -= OnMove;
+            Fighter.AnyWeaponThrown -= OnThrown;
+            Fighter.AnyHitResolved -= OnHitLocal;
+            foreach (var g in ghosts) if (g.w != null) Destroy(g.w.gameObject);
             Unhook();
         }
 
@@ -96,6 +111,9 @@ namespace Gladiator.Net
                 SendState(s);
             }
 
+            for (int i = ghosts.Count - 1; i >= 0; i--)
+                if (ghosts[i].w == null || Time.time > ghosts[i].until) { if (ghosts[i].w != null) Destroy(ghosts[i].w.gameObject); ghosts.RemoveAt(i); }
+
             string eq = EquipString(local);
             if (eq != lastEquip) { lastEquip = eq; s.Send("EQ", eq); }
 
@@ -125,11 +143,12 @@ namespace Gladiator.Net
             foreach (var p in s.Players)
             {
                 if (p.Id == s.LocalId || p.G == null) continue;
-                if (!remotes.TryGetValue(p.Id, out var r)) { remotes[p.Id] = Spawn(p, s); continue; }
+                if (!remotes.TryGetValue(p.Id, out var r)) { var nr = Spawn(p, s); remotes[p.Id] = nr; RemoteSpawned?.Invoke(nr); continue; }
                 if (r.LookSignature != p.G.LookSignature)
                 {
                     r.LookSignature = p.G.LookSignature;
-                    CharacterFactory.RebuildBody(r.Fighter, p.G.Appearance(), p.G.ArmorSet);
+                    var lk = LookFor != null ? LookFor(p) : (p.G.Appearance(), p.G.ArmorSet);
+                    CharacterFactory.RebuildBody(r.Fighter, lk.Item1, lk.Item2);
                     r.Fighter.DisplayName = p.G.Name;
                     r.SetName(p.G.Name);
                 }
@@ -139,14 +158,17 @@ namespace Gladiator.Net
         RemoteFighter Spawn(NetPlayer p, NetSession s)
         {
             Vector3 pos = spawnFor != null ? spawnFor(s.SlotOf(p.Id)) : Vector3.zero;
-            var f = CharacterFactory.Create(p.G.Name, p.G.Appearance(), pos, Quaternion.identity, local != null ? local.TeamId : 0, p.G.ArmorSet);
-            f.Harmless = true;            // the ludus: nobody gets hurt
+            var lk = LookFor != null ? LookFor(p) : (p.G.Appearance(), p.G.ArmorSet);
+            int team = TeamFor != null ? TeamFor(p) : (local != null ? local.TeamId : 0);
+            var f = CharacterFactory.Create(p.G.Name, lk.Item1, pos, Quaternion.identity, team, lk.Item2);
+            // A copy never deals or takes damage here: each player's own game decides what happens to their gladiator.
+            f.Harmless = true;
             f.DisarmResistance = 1f;
             f.Equip(WeaponFactory.Create(WeaponLibrary.Rudis));
             var r = f.gameObject.AddComponent<RemoteFighter>();
             r.Init(p.Id, f, cam, p.G.Name, p.G.Appearance().ShieldTint);
             r.LookSignature = p.G.LookSignature;
-            Debug.Log("[NET] avatar for player " + p.Id + " " + p.G.Name + " at " + pos);
+            Debug.Log("[NET] avatar for player " + p.Id + " " + p.G.Name + " at " + pos + " team " + team);
             return r;
         }
 
@@ -195,6 +217,25 @@ namespace Gladiator.Net
             }
         }
 
+        /// <summary>Our weapon flew: the others see a copy fly the same way.</summary>
+        void OnThrown(Fighter f, Weapon w)
+        {
+            if (f != local || w == null || NetSession.Instance == null || !NetSession.Instance.InGame) return;
+            Vector3 p = w.transform.position, v = w.GetComponent<Rigidbody>() != null ? w.GetComponent<Rigidbody>().linearVelocity : f.transform.forward * 17f;
+            NetSession.Instance.Send("TH", w.Stats.Id + "|" + NetSession.F(p.x) + "|" + NetSession.F(p.y) + "|" + NetSession.F(p.z) + "|" +
+                                     NetSession.F(v.x) + "|" + NetSession.F(v.y) + "|" + NetSession.F(v.z));
+        }
+
+        /// <summary>We hit a training partner: the others see that partner take the blow too.</summary>
+        void OnHitLocal(HitResult r)
+        {
+            if (r.Attacker != local || r.Target == null || NetSession.Instance == null || !NetSession.Instance.InGame) return;
+            var npc = r.Target.GetComponent<Gladiator.Training.TrainingNPC>();
+            if (npc == null) return;
+            Vector3 d = r.Target.transform.position - local.transform.position; d.y = 0f; d = d.sqrMagnitude > 0.01f ? d.normalized : local.transform.forward;
+            NetSession.Instance.Send("NH", r.Target.DisplayName + "|" + (int)r.Type + "|" + NetSession.F(d.x) + "|" + NetSession.F(d.z));
+        }
+
         static string EquipString(Fighter f)
         {
             string main = f.CurrentWeapon != null ? f.CurrentWeapon.Stats.Id : "";
@@ -228,6 +269,31 @@ namespace Gladiator.Net
                 case "EQ":
                     if (a.Length < 3) return;
                     r.OnEquip(a[0], a[1], a[2]);
+                    // picked something up again: their thrown weapon is in their hand, not on the ground
+                    if (!string.IsNullOrEmpty(a[0]))
+                        for (int i = ghosts.Count - 1; i >= 0; i--)
+                            if (ghosts[i].owner == from) { if (ghosts[i].w != null) Destroy(ghosts[i].w.gameObject); ghosts.RemoveAt(i); }
+                    break;
+                case "TH":
+                    if (a.Length < 7) return;
+                    var stats = WeaponLibrary.ByName(a[0]);
+                    if (stats == null) return;
+                    var gw = WeaponFactory.Create(stats);
+                    gw.Ghost = true;
+                    gw.transform.position = new Vector3(NetSession.PF(a[1]), NetSession.PF(a[2]), NetSession.PF(a[3]));
+                    gw.Drop(Vector3.zero);
+                    gw.Throw(r.Fighter, new Vector3(NetSession.PF(a[4]), NetSession.PF(a[5]), NetSession.PF(a[6])), 0f);
+                    ghosts.Add((gw, from, Time.time + 60f));
+                    break;
+                case "NH":
+                    if (a.Length < 4) return;
+                    foreach (var npc in Gladiator.Training.TrainingNPC.All)
+                    {
+                        if (npc == null || npc.Fighter == null || npc.DisplayName != a[0]) continue;
+                        var dir = new Vector3(NetSession.PF(a[2]), 0f, NetSession.PF(a[3]));
+                        npc.Fighter.ReceiveHit(r.Fighter, 0f, (AttackType)Mathf.Clamp(int.TryParse(a[1], out int ht) ? ht : 0, 0, 2), dir);
+                        break;
+                    }
                     break;
             }
         }

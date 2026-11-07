@@ -214,8 +214,12 @@ namespace Gladiator.Training
             var net = Gladiator.Net.NetSession.Instance;
             if (net != null && net.InGame)
             {
-                Hud.ShowMessage(net.IsHost ? "COMBATES MULTIJUGADOR: LLEGAN EN LA PROXIMA FASE (MP2)"
-                                           : "SOLO EL ANFITRION PUEDE ELEGIR EL COMBATE (PROXIMA FASE, MP2)", 3f);
+                if (net.IsHost && UI.PauseMenu.Instance != null)
+                {
+                    UI.PauseMenu.Instance.Open();
+                    UI.PauseMenu.Instance.ShowPage(UI.PauseMenu.Page.ArenaOnline);
+                }
+                else Hud.ShowMessage("SOLO EL ANFITRION ELIGE EL COMBATE ONLINE  (TU COLOR: ESC > MULTIJUGADOR)", 3f);
                 return;
             }
             UI.ArenaGateMenu.Ensure().Open(gm.DayCycle.Day, mode => GoToArena(mode));

@@ -23,7 +23,7 @@ namespace Gladiator.UI
         public static PauseMenu Instance { get; private set; }
         public bool IsOpen { get; private set; }
 
-        public enum Page { Main, Sound, Graphics, Camera, Controls, ConfirmNew, ConfirmQuit, Multi, Lobby, ConfirmKick }
+        public enum Page { Main, Sound, Graphics, Camera, Controls, ArenaOnline, ConfirmNew, ConfirmQuit, Multi, Lobby, ConfirmKick }
         public Page Current { get; private set; }
 
         class Row
@@ -185,6 +185,24 @@ namespace Gladiator.UI
                     Add("VOLVER", () => Show(Page.Main));
                     note.text = "Elige una accion y pulsa la tecla, el boton del raton o del mando nuevo\n(teclado | mando).  ESC cancela.  Si ya la usaba otra accion, se intercambian.";
                     break;
+                case Page.ArenaOnline:
+                {
+                    var ns = NetSession.Instance;
+                    title.text = "ARENA ONLINE";
+                    AddValue("MODO", () => arenaTeams ? "POR EQUIPOS (COLORES)" : "TODOS CONTRA TODOS", d => arenaTeams = !arenaTeams);
+                    AddValue("MEJORAS", () => arenaUpgrades ? "SI (CADA UNO LAS SUYAS)" : "NO (TODOS IGUALES)", d => arenaUpgrades = !arenaUpgrades);
+                    Add("¡A LA ARENA!", () =>
+                    {
+                        if (ns == null || !ns.IsHost) { Show(Page.Main); return; }
+                        if (ns.Players.Count < 2) { note.text = "Hace falta al menos otro jugador en la sala."; return; }
+                        if (arenaTeams && ns.ColorsInUse < 2) { note.text = "Por equipos hacen falta al menos dos colores distintos\n(cada uno elige TU COLOR en la sala)."; return; }
+                        Close();
+                        ns.StartArena(arenaTeams, arenaUpgrades);
+                    });
+                    Add("VOLVER", () => Show(Page.Main));
+                    note.text = "Todos contra todos: gana el ultimo en pie. Por equipos: gana el ultimo color en pie.\nCon mejoras: fuerza, armas y armadura de cada uno. Sin mejoras: gladius y nada mas.";
+                    break;
+                }
                 case Page.ConfirmNew:
                     title.text = "NUEVA PARTIDA";
                     note.text = "Se pierde el progreso de esta partida\n(dias, denarios, estadisticas y equipo).";
@@ -271,6 +289,13 @@ namespace Gladiator.UI
             }
             if (ns.IsHost && ns.Phase == NetSession.PhaseLobby)
                 Add("INICIAR: LUDUS COMPARTIDO", () => { Close(); ns.StartGame(); });
+            {
+                var me = ns.Local;
+                AddValue("TU COLOR", () => ns.Local != null ? NetSession.ColorNames[ns.Local.Color] : "-",
+                    d => { if (ns.Local != null) ns.SetColor((ns.Local.Color + d + NetSession.ColorNames.Length) % NetSession.ColorNames.Length); });
+            }
+            if (ns.IsHost && ns.Phase == NetSession.PhaseLudus)
+                Add("ARENA ONLINE...", () => Show(Page.ArenaOnline));
             Add("VOLVER AL JUEGO", Close);
             Add(ns.IsHost ? "CERRAR LA SALA" : "SALIR DE LA SALA", () => { ns.Leave(); Show(Page.Multi); });
             if (ns.IsHost)
@@ -349,6 +374,7 @@ namespace Gladiator.UI
             return "";
         }
 
+        bool arenaTeams, arenaUpgrades = true;
         GameAction? capturing;
         float captureDelay;
 
