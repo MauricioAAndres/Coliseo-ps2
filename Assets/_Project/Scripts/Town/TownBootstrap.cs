@@ -36,6 +36,7 @@ namespace Gladiator.Town
         public ArenaCamera Cam { get; private set; }
         public TrainingHUD Hud { get; private set; }
         public int Buildings { get; private set; }
+        public TownInfoPanel Info { get; private set; }
 
         /// <summary>The town of this PC: the seed is made once and kept (-townseed N overrides it, for tests).</summary>
         public static int CurrentSeed()
@@ -56,7 +57,9 @@ namespace Gladiator.Town
             PS2Materials.Init(PS2LitShader);
             SetupRenderSettings();
 
-            Layout = TownLayout.Generate(CurrentSeed());
+            // The same plan the simulation uses (same seed): houses and workplaces match the citizens' data.
+            var sim = TownSimulation.Ensure();
+            Layout = sim.Layout;
             var env = new GameObject("Environment").transform;
             BuildLighting(env);
             var builder = new TownBuilder(Layout, env);
@@ -83,7 +86,9 @@ namespace Gladiator.Town
 
             Hud = new GameObject("TownHUD", typeof(RectTransform)).AddComponent<TrainingHUD>();
             Hud.Init(cam);
-            Hud.SetHint("WASD mover   E interactuar   puerta del ludus: volver   puerta de la arena: elegir combate   ESC menu");
+            Hud.SetHint("WASD mover   E interactuar   puerta del ludus: volver   puerta de la arena: elegir combate   F3 el pueblo   F4 donde esta cada uno   ESC menu");
+            Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
+            Info.Init(this, cam);
             gameObject.AddComponent<TownManager>().Init(this, pc);
             Hud.ShowMessage("EL PUEBLO", 2.5f);
             Debug.Log($"[TOWN] seed={Layout.Seed} rot={Layout.RotationDeg} mirrored={Layout.Mirrored} lots={Layout.Lots.Count} places={Layout.Places.Count} buildings={Buildings}");

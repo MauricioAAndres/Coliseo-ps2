@@ -62,8 +62,63 @@ namespace Gladiator.Town
             int cols = FindObjectsByType<Collider>(FindObjectsSortMode.None).Length;
             Log($"SCENE renderers={renderers} colliders={cols} fps~{1f / Mathf.Max(0.001f, Time.smoothDeltaTime):0}");
 
+            // ---- phase 2: the citizens as data
+            var sim = TownSimulation.Instance;
+            var jobs = new System.Collections.Generic.Dictionary<Job, int>();
+            foreach (var c in sim.Citizens) jobs[c.Job] = jobs.TryGetValue(c.Job, out int jn) ? jn + 1 : 1;
+            var fams = new System.Collections.Generic.HashSet<string>(); var homesUsed = new System.Collections.Generic.HashSet<string>();
+            foreach (var c in sim.Citizens) { fams.Add(c.Family); homesUsed.Add(c.HomeId); }
+            Log($"CITIZENS {sim.Citizens.Count} families={fams.Count} homesUsed={homesUsed.Count} [" + string.Join(", ", System.Linq.Enumerable.Select(jobs, kv => kv.Key + "=" + kv.Value)) + "]");
+            int missing = 0;
+            foreach (var c in sim.Citizens) foreach (var e in sim.ScheduleFor(c, sim.Day)) if (sim.Place(e.PlaceId) == null) missing++;
+            Log("SCHEDULES missingPlaces=" + missing + " (expected 0)");
+            string Sig() { var sb = new System.Text.StringBuilder(); foreach (var c in sim.Citizens) sb.Append(c).Append(string.Join("|", sim.ScheduleFor(c, sim.Day))); return sb.ToString(); }
+            string sig1 = Sig(); sim.Generate(town.Layout.Seed); string sig2 = Sig();
+            Log("DETERMINISTIC " + (sig1 == sig2) + " (same seed -> same people and timetables)");
+            var smith = sim.FindJob(Job.Herrero);
+            if (smith != null)
+            {
+                Log("SMITH " + smith);
+                foreach (var line in sim.Describe(smith, sim.Day).Split('\n')) if (line.Length > 0) Log("  " + line);
+                foreach (float hq in new[] { 2f, 8f, 10f, 14f, 16f, 20f })
+                    Log($"  WhereIs({smith.Name}, {TownSimulation.Clock(hq)}) = {sim.WhereIs(smith, hq)}  -> {sim.PlaceName(sim.WhereIs(smith, hq).PlaceId)}");
+            }
+            var baker = sim.FindJob(Job.Panadero);
+            if (baker != null) Log($"BAKER {baker.Name} at 04:00 = {sim.WhereIs(baker, 4f)} (expected Trabajar at {baker.WorkId}) | 12:00 = {sim.WhereIs(baker, 12f)}");
+            var guard = sim.Citizens.Find(c => c.Job == Job.Guardia && c.Shift == Shift.Noche);
+            if (guard != null) Log($"NIGHT GUARD {guard.Name} at 02:00 = {sim.WhereIs(guard, 2f)} | 10:00 = {sim.WhereIs(guard, 10f)}");
+            foreach (float hq in new[] { 3f, 7f, 10f, 12.5f, 14f, 17f, 20f, 23f })
+            {
+                var cen = sim.Census(hq);
+                Log($"CENSUS {TownSimulation.Clock(hq)} " + string.Join(" ", System.Linq.Enumerable.Select(cen, kv => kv.Key + "=" + kv.Value)) +
+                    $" | plaza={sim.At("plaza", hq).Count} fuente={sim.At("fountain", hq).Count} outdoorsNearPlaza={sim.Near(town.Layout.Fountain, 20f, hq).Count}");
+            }
+            int smithsWorking10 = 0, smiths = 0;
+            foreach (var c in sim.Citizens) if (c.Job == Job.Herrero) { smiths++; var l = sim.WhereIs(c, 10f); if (!l.Walking && l.Activity == Activity.Trabajar && l.PlaceId == c.WorkId) smithsWorking10++; }
+            int asleep3 = sim.Census(3f)["durmiendo"];
+            Log($"CHECK smithsAtWork@10={smithsWorking10}/{smiths} asleep@03={asleep3}/{sim.Citizens.Count}");
+
             yield return Wait(1.5f);
             yield return Shot("01_llegada");
+
+            // the simulation made visible: F3 panel + F4 markers at 10:00 and at 21:00, from the air
+            sim.Hour = 10f;
+            town.Info.SetMarkers(true);
+            town.Cam.FocusOverride = town.Layout.Fountain; town.Cam.Distance = 70f; town.Cam.Pitch = 60f;
+            yield return Wait(2.5f);
+            Log($"MARKERS 10:00 visible={town.Info.VisibleMarkers}");
+            yield return Shot("10_marcadores_10h");
+            sim.Hour = 21f;
+            yield return Wait(1f);
+            Log($"MARKERS 21:00 visible={town.Info.VisibleMarkers}");
+            yield return Shot("11_marcadores_21h");
+            town.Cam.FocusOverride = null; town.Cam.Distance = 11f; town.Cam.Pitch = 40f;
+            sim.Hour = 10.5f;
+            Teleport(town.Player, town.Layout.Find("plaza").Position, -town.Layout.ArenaFacing);
+            town.Info.SetPanel(true);
+            yield return Wait(2f);
+            yield return Shot("12_panel_plaza");
+            town.Info.SetPanel(false); town.Info.SetMarkers(false);
 
             var cam = town.Cam;
             var player = town.Player;

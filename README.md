@@ -302,6 +302,22 @@ En la puerta norte del ludus, **E** abre el menu de combate:
 - Camara clasica: si una casa o muro tapa al jugador, se inclina hacia arriba hasta verlo.
 - Prueba: `ColiseoPS2.exe -towntest -townseed 1` (lineas `[TOWNTEST]`).
 
+## El pueblo (Fase 2: ciudadanos como datos)
+- `Town/CitizenData.cs`: cada ciudadano es **solo datos** (sin GameObject): nombre, familia, edad, oficio (`Job`), turno
+  (`Shift`: manana / tarde / noche), casa (`HomeId`), lugar de trabajo (`WorkId`), relacion contigo (-100..100, se guarda)
+  y su horario: filas `ScheduleEntry` = **hora → actividad → lugar**.
+- `Town/TownSimulation.cs`: singleton que vive en todas las escenas. Crea **100 ciudadanos** a partir de la semilla del
+  pueblo (familias en las casas, un oficio y un sitio de trabajo cada adulto: herreros, panaderos de madrugada, taberneros,
+  sacerdotes, guardias de noche, mercaderes, ninos que juegan en la plaza...). Reloj: 1 minuto de juego por segundo real;
+  cada dia nuevo (tras un combate) empieza a las 07:00.
+- Consultas sin GameObjects:
+  - `WhereIs(ciudadano, 14f)` → actividad, lugar, si esta dentro o de camino (y por donde va).
+  - `At("plaza", 14f)` → quien esta en la plaza a esa hora. `Near(punto, 40f, hora)` → quien esta fuera cerca (para la fase 3).
+  - `Census(hora)`, `ScheduleFor(ciudadano, dia)`, `Describe(ciudadano, dia)`, `ChangeRelation(ciudadano, delta)`.
+- En el pueblo: reloj arriba a la derecha. **F3**: panel con lo que hace el pueblo (plaza, fuente, mercado, el ciudadano mas
+  cercano y su dia; RePag/AvPag mueven el reloj). **F4**: un poste de color donde esta "logicamente" cada persona que
+  esta en la calle (rojo trabajando, amarillo mercado, verde paseando, azul por agua, blanco de camino).
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 
