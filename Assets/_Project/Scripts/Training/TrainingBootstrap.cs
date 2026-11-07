@@ -53,10 +53,10 @@ namespace Gladiator.Training
 
             var net = Gladiator.Net.NetSession.Instance;
             bool multi = net != null && net.InGame;
-            bool fromTown = ArriveFromTown && !multi;
+            bool fromTown = ArriveFromTown;
             ArriveFromTown = false;
             Player = CharacterFactory.Create(gm.Profile.Name, gm.Profile.Appearance,
-                multi ? SlotSpawn(net.SlotOf(net.LocalId)) : fromTown ? TownDoorPoint + new Vector3(-0.8f, 0.05f, 0f) : new Vector3(0, 0.05f, -7.5f),
+                fromTown ? TownDoorPoint + new Vector3(-0.8f, 0.05f, 0f) : multi ? SlotSpawn(net.SlotOf(net.LocalId)) : new Vector3(0, 0.05f, -7.5f),
                 fromTown ? Quaternion.LookRotation(Vector3.left) : Quaternion.identity, 0, gm.Profile.ArmorSet);
             // Clothes / armour changed at the mercator: dress the gladiator at once.
             var profileRef = gm.Profile;
@@ -86,7 +86,8 @@ namespace Gladiator.Training
                 MakeStation<DodgeMinigame>("Station_Esquiva", new Vector3(6.5f, 0, -5.5f), 0f),
             };
             foreach (var s in stations) MakeStationMarker(env, s);
-            Vector3 shopPoint = BuildMerchant(env);
+            // The mercator's stall is gone: weapons, armour and shields are bought at the town's two smithies.
+            Vector3 shopPoint = new Vector3(100000f, 0f, 100000f);
 
             var camCtl = cam.GetComponent<ArenaCamera>();
             camCtl.Player = Player;

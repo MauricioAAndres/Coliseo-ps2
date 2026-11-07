@@ -61,8 +61,16 @@ namespace Gladiator.Town
             return best;
         }
 
-        /// <summary>The town of this PC: the seed is made once and kept (-townseed N overrides it, for tests).</summary>
+        /// <summary>The town in use: online, the host's; alone, this PC's.</summary>
         public static int CurrentSeed()
+        {
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != null && net.Active && net.LocalId > 0 && net.TownSeed > 0) return net.TownSeed;
+            return LocalSeed();
+        }
+
+        /// <summary>The town of this PC: the seed is made once and kept (-townseed N overrides it, for tests).</summary>
+        public static int LocalSeed()
         {
             var args = System.Environment.GetCommandLineArgs();
             int i = System.Array.IndexOf(args, "-townseed");
@@ -82,6 +90,7 @@ namespace Gladiator.Town
 
             // The same plan the simulation uses (same seed): houses and workplaces match the citizens' data.
             var sim = TownSimulation.Ensure();
+            sim.EnsureSeed(CurrentSeed()); // online: the host's town
             Layout = sim.Layout;
             var env = new GameObject("Environment").transform;
             BuildLighting(env);
@@ -100,6 +109,21 @@ namespace Gladiator.Town
             Player = CharacterFactory.Create(gm.Profile.Name, gm.Profile.Appearance, spawn, Quaternion.LookRotation(Layout.LudusFacing), 0, gm.Profile.ArmorSet);
             Player.Equip(WeaponFactory.Create(WeaponLibrary.Rudis));
             Player.DisarmResistance = 1f;
+            // bought clothes or armour at the smithy: dress the gladiator at once
+            var profileRef = gm.Profile;
+            var playerRef = Player;
+            string Dress() => string.Join(",", profileRef.Armor) + "|" + string.Join(",", profileRef.ArmorSides) + "|" + JsonUtility.ToJson(profileRef.Appearance);
+            string dressed = Dress();
+            System.Action onChanged = null;
+            onChanged = () =>
+            {
+                if (playerRef == null) { profileRef.Changed -= onChanged; return; }
+                string now = Dress();
+                if (now == dressed) return;
+                dressed = now;
+                CharacterFactory.RebuildBody(playerRef, profileRef.Appearance, profileRef.ArmorSet);
+            };
+            profileRef.Changed += onChanged;
             var pc = Player.gameObject.AddComponent<PlayerController>();
             pc.AimCamera = cam;
 
@@ -119,6 +143,14 @@ namespace Gladiator.Town
             Spawner.Init(Player);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
+            // online: the other players who are in the town too
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != null && net.InGame)
+            {
+                var nav = gameObject.AddComponent<Gladiator.Net.NetAvatars>();
+                nav.SceneCode = 1;
+                nav.Init(Player, cam, slot => Layout.LudusGate + Layout.LudusFacing * (3.5f + slot), msg => Hud.ShowMessage(msg, 3f));
+            }
             gameObject.AddComponent<TownManager>().Init(this, pc);
             Hud.ShowMessage("EL PUEBLO", 2.5f);
             Debug.Log($"[TOWN] seed={Layout.Seed} rot={Layout.RotationDeg} mirrored={Layout.Mirrored} lots={Layout.Lots.Count} places={Layout.Places.Count} buildings={Buildings}");
@@ -208,13 +240,71 @@ namespace Gladiator.Town
         PlayerController pc;
         bool leaving;
 
-        public void Init(TownBootstrap t, PlayerController controller) { town = t; pc = controller; }
+        public void Init(TownBootstrap t, PlayerController controller)
+        {
+            town = t; pc = controller;
+            town.Hud.Shop.Closed += () => { if (pc != null) pc.enabled = true; };
+        }
+
+        Gladiator.Net.NetSession hooked;
+
+        void OnEnable() { }
+
+        void OnDestroy() { if (hooked != null) hooked.GameMessage -= OnNet; }
+
+        void LateUpdate()
+        {
+            var s = Gladiator.Net.NetSession.Instance;
+            if (s != hooked) { if (hooked != null) hooked.GameMessage -= OnNet; hooked = s; if (s != null) s.GameMessage += OnNet; }
+        }
+
+        public static void SendDoor(TownDoor door)
+        {
+            var s = Gladiator.Net.NetSession.Instance;
+            var h = door != null ? door.GetComponent<HouseInterior>() : null;
+            if (s == null || !s.InGame || h == null) return;
+            s.Send("DR", h.Lot.Id + "|" + (door.IsOpen ? 1 : 0));
+        }
+
+        /// <summary>Another player opened or closed a door in the same town.</summary>
+        void OnNet(int from, string type, string payload)
+        {
+            if (type != "DR" || town == null || town.Houses == null) return;
+            var a = payload.Split('|');
+            if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
+            foreach (var h in town.Houses)
+                if (h.Lot.Id == lotId && h.Door != null) { h.Door.SetOpen(a[1] == "1"); break; }
+        }
+
+        /// <summary>The front of the nearest smithy (where the smith sells), within a range.</summary>
+        public TownLot NearestSmithy(Vector3 p, float range)
+        {
+            TownLot best = null; float bd = range;
+            foreach (var lot in town.Layout.Lots)
+            {
+                if (lot.Kind != BuildingKind.Smithy) continue;
+                Vector3 d = lot.Door - p; d.y = 0f;
+                if (d.magnitude < bd) { bd = d.magnitude; best = lot; }
+            }
+            return best;
+        }
+
+        public void OpenShop()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null || town.Hud.Shop.IsOpen) return;
+            if (pc != null) pc.enabled = false;
+            town.Player.Move(Vector3.zero);
+            town.Player.SetBlock(false);
+            town.Hud.Shop.Open(gm.Profile);
+        }
 
         void Update()
         {
             GameInput.UpdateDeviceMode();
             if (town == null || leaving) return;
             if (ArenaGateMenu.Instance != null && ArenaGateMenu.Instance.IsOpen) { town.Hud.SetPrompt(""); return; }
+            if (town.Hud.Shop.IsOpen) { town.Hud.SetPrompt(""); return; } // the shop has its own keys (Esc closes)
             string key = GameInput.UsingGamepad ? "(A) " : "[" + InputBindings.Short(GameAction.Interact) + "] ";
             Vector3 p = town.Player.transform.position;
             // inside a house, or at its door: its roof and ceiling go away so the camera sees in; say which room
@@ -236,11 +326,20 @@ namespace Gladiator.Town
                 string rn = house.RoomAt(p); // null at the door, outside
                 if (rn != null && rn != room) { room = rn; town.Hud.ShowMessage(rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn, 1.6f); }
             }
+            // the smithies: weapons, armour and shields
+            var smithy = NearestSmithy(p, 2.6f);
+            if (smithy != null)
+            {
+                var gmS = GameManager.Instance;
+                town.Hud.SetPrompt(key + "HERRERIA: ARMAS, ARMADURAS Y ESCUDOS   (" + (gmS != null ? gmS.Profile.Denarii : 0) + " denarios)");
+                if (GameInput.InteractPressed) OpenShop();
+                return;
+            }
             var door = town.NearestDoor(p, 1.7f);
             if (door != null)
             {
                 town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA"));
-                if (GameInput.InteractPressed) door.Toggle();
+                if (GameInput.InteractPressed) { door.Toggle(); SendDoor(door); }
                 return;
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;

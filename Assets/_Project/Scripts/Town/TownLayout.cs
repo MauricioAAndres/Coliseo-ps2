@@ -7,7 +7,7 @@ namespace Gladiator.Town
     public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum }
 
     /// <summary>A named spot the simulation can send citizens to (a home, a workplace, the plaza...).</summary>
-    public enum PlaceKind { Home, Work, Plaza, Fountain, Market, ArenaGate, LudusGate }
+    public enum PlaceKind { Home, Work, Plaza, Fountain, Market, ArenaGate, LudusGate, GuardPost }
 
     /// <summary>One building plot: a rectangle by a street, its front facing the street.</summary>
     public class TownLot
@@ -35,6 +35,8 @@ namespace Gladiator.Town
         public PlaceKind Kind;
         public Vector3 Position; // world, on the ground
         public int LotId = -1;
+        /// <summary>Where someone standing here looks (guard posts).</summary>
+        public Vector3 Facing;
     }
 
     /// <summary>A paved rectangle (plaza or street).</summary>
@@ -122,7 +124,8 @@ namespace Gladiator.Town
 
             // ---- the plaza's eight frontages hold the special buildings (shuffled by the seed)
             var specials = new List<BuildingKind> { BuildingKind.Temple, BuildingKind.Tavern, BuildingKind.Smithy, BuildingKind.Bakery,
-                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum, BuildingKind.Shop };
+                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum, BuildingKind.Smithy };
+            // two smithies in every town: weapons, armour and shields are bought there
             Shuffle(specials, rng);
             // Temple always on the north side (looking down the plaza from the arena road), as in a forum.
             specials.Remove(BuildingKind.Temple);
@@ -224,6 +227,17 @@ namespace Gladiator.Town
             for (int i = 0; i < Stalls.Count; i++)
                 Places.Add(new TownPlace { Id = "stall" + i, Name = "Puesto del mercado " + (i + 1), Kind = PlaceKind.Market, Position = Stalls[i].Key + Stalls[i].Value * 1.4f });
             Places.Add(new TownPlace { Id = "arena_gate", Name = "Puerta de la arena", Kind = PlaceKind.ArenaGate, Position = ArenaGate });
+            // guard posts: the plaza corners, the ends of the cross street and both sides of the arena forecourt
+            void Post(string id, Vector3 local, Vector3 lookLocal) =>
+                Places.Add(new TownPlace { Id = id, Name = "Puesto de guardia", Kind = PlaceKind.GuardPost, Position = W(local), Facing = Wd(lookLocal) });
+            Post("guard_plaza0", new Vector3(-PlazaHalf + 1.5f, 0, PlazaHalf - 1.5f), new Vector3(1, 0, -1));
+            Post("guard_plaza1", new Vector3(PlazaHalf - 1.5f, 0, PlazaHalf - 1.5f), new Vector3(-1, 0, -1));
+            Post("guard_plaza2", new Vector3(-PlazaHalf + 1.5f, 0, -PlazaHalf + 1.5f), new Vector3(1, 0, 1));
+            Post("guard_plaza3", new Vector3(PlazaHalf - 1.5f, 0, -PlazaHalf + 1.5f), new Vector3(-1, 0, 1));
+            Post("guard_east", new Vector3(CrossEnd - 2f, 0, 0), Vector3.left);
+            Post("guard_west", new Vector3(-CrossEnd + 2f, 0, 0), Vector3.right);
+            Post("guard_forum_l", new Vector3(-7f, 0, MainEnd + 1.5f), Vector3.back);
+            Post("guard_forum_r", new Vector3(7f, 0, MainEnd + 1.5f), Vector3.back);
             Places.Add(new TownPlace { Id = "ludus_gate", Name = "Puerta del ludus", Kind = PlaceKind.LudusGate, Position = LudusGate });
             int homes = 0;
             foreach (var lot in Lots)

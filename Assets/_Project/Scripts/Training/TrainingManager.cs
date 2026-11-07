@@ -106,7 +106,7 @@ namespace Gladiator.Training
                 return;
             }
 
-            if (Flat(ShopPoint - p).magnitude < ShopRadius)
+            if (ShopPoint.x < 50000f && Flat(ShopPoint - p).magnitude < ShopRadius)
             {
                 Hud.SetPrompt(key + "TIENDA DEL MERCATOR   (" + gm.Profile.Denarii + " denarios)");
                 if (GameInput.InteractPressed) OpenShop();
@@ -115,10 +115,8 @@ namespace Gladiator.Training
 
             if (TownDoor.HasValue && Flat(TownDoor.Value - p).magnitude < 1.8f)
             {
-                var net = Gladiator.Net.NetSession.Instance;
-                bool multi = net != null && net.InGame;
-                Hud.SetPrompt(multi ? "PUEBLO: AUN NO DISPONIBLE EN MULTIJUGADOR" : key + "SALIR AL PUEBLO");
-                if (!multi && GameInput.InteractPressed) GoToTown();
+                Hud.SetPrompt(key + "SALIR AL PUEBLO  (herrerias: armas, armaduras y escudos)");
+                if (GameInput.InteractPressed) GoToTown();
                 return;
             }
 

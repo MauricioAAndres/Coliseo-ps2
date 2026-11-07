@@ -174,6 +174,7 @@ namespace Gladiator.Arena
             {
                 // the other players: copies in their colours and teams; the blows go to their owners (NetArena)
                 var nav = gameObject.AddComponent<Gladiator.Net.NetAvatars>();
+                nav.SceneCode = 2;
                 nav.TeamFor = pl => Gladiator.Net.NetArena.TeamOf(net, pl);
                 nav.LookFor = pl => OnlineLook(pl.G.Appearance(), pl.G.ArmorSet, pl.Color, net.ArenaUpgrades);
                 nav.Init(Player, cam, slotIdx => Gladiator.Net.NetArena.SpawnFor(slotIdx, net.Players.Count), msg => hud.ShowMessage(msg, 2.5f));

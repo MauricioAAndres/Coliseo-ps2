@@ -63,11 +63,40 @@ namespace Gladiator.Town
 
         void OnApplicationQuit() { if (relDirty) SaveRelations(); }
 
+        /// <summary>Online: walk the host's town (rebuilt only if the seed differs).</summary>
+        public void EnsureSeed(int seed)
+        {
+            if (Layout != null && Layout.Seed == seed) return;
+            Generate(seed);
+        }
+
+        Gladiator.Net.NetSession hooked;
+        float clockSend;
+
+        void OnNet(int from, string type, string payload)
+        {
+            if (type != "TC") return;
+            var a = payload.Split('|');
+            if (a.Length < 2) return;
+            float h = Gladiator.Net.NetSession.PF(a[0]);
+            if (int.TryParse(a[1], out int d) && d != Day) { Day = d; scheduleCache.Clear(); }
+            Hour = Mathf.Repeat(h, 24f);
+        }
+
         void Update()
         {
-            // A fight ends the game day: the town wakes up to a new morning.
+            // Online: the host keeps the town's clock for everybody.
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != hooked) { if (hooked != null) hooked.GameMessage -= OnNet; hooked = net; if (net != null) net.GameMessage += OnNet; }
+            bool online = net != null && net.InGame;
+            if (online && net.IsHost && (clockSend -= Time.unscaledDeltaTime) <= 0f)
+            {
+                clockSend = 2f;
+                net.Send("TC", Gladiator.Net.NetSession.F(Hour) + "|" + Day);
+            }
+            // A fight ends the game day: the town wakes up to a new morning (online, the host's day).
             var gm = GameManager.Instance;
-            if (gm != null && gm.DayCycle != null && gm.DayCycle.Day != Day)
+            if (!(online && !net.IsHost) && gm != null && gm.DayCycle != null && gm.DayCycle.Day != Day)
             {
                 Day = gm.DayCycle.Day;
                 Hour = DayStartHour;
@@ -120,8 +149,14 @@ namespace Gladiator.Town
             Need(BuildingKind.Forum, Job.Escriba, Shift.Manana, Shift.Manana, Shift.Manana);
             Need(BuildingKind.Shop, Job.Tendero, Shift.Manana);
             foreach (var p in Layout.Places) if (p.Kind == PlaceKind.Market) jobs.Enqueue((Job.Mercader, p.Id, Shift.Manana));
+            // the town guard (16 men): the two gates round the clock, the plaza corners, the cross street and the forecourt
+            var guardJobs = new List<(Job job, string work, Shift shift)>();
             foreach (var g in new[] { "arena_gate", "ludus_gate" })
-                foreach (var s in new[] { Shift.Manana, Shift.Tarde, Shift.Noche }) jobs.Enqueue((Job.Guardia, g, s));
+                foreach (var sh in new[] { Shift.Manana, Shift.Tarde, Shift.Noche }) guardJobs.Add((Job.Guardia, g, sh));
+            foreach (var g in new[] { "guard_plaza0", "guard_plaza1", "guard_plaza2", "guard_plaza3" }) guardJobs.Add((Job.Guardia, g, Shift.Manana));
+            guardJobs.Add((Job.Guardia, "guard_plaza0", Shift.Tarde)); guardJobs.Add((Job.Guardia, "guard_plaza3", Shift.Tarde));
+            guardJobs.Add((Job.Guardia, "guard_east", Shift.Manana)); guardJobs.Add((Job.Guardia, "guard_west", Shift.Tarde));
+            guardJobs.Add((Job.Guardia, "guard_forum_l", Shift.Manana)); guardJobs.Add((Job.Guardia, "guard_forum_r", Shift.Tarde));
             foreach (var lot in Layout.Lots)
                 if (lot.Kind == BuildingKind.Garden) jobs.Enqueue((Job.Hortelano, "garden" + lot.Id, Shift.Manana));
             jobs.Enqueue((Job.Aguador, "fountain", Shift.Manana));
@@ -140,13 +175,14 @@ namespace Gladiator.Town
             {
                 if (Citizens.Count >= Population) break;
                 bool insula = Layout.Lots[home.LotId].Kind == BuildingKind.Insula;
-                int size = insula ? rng.Next(2, 5) : rng.Next(1, 4);
+                bool couple = rng.NextDouble() < 0.85;
+                int size = couple ? (insula ? rng.Next(2, 5) : rng.Next(2, 4)) : (insula ? rng.Next(1, 4) : rng.Next(1, 3));
                 string nomen = familyNames[fam++ % familyNames.Count];
                 for (int m = 0; m < size && Citizens.Count < Population; m++)
                 {
                     var c = new CitizenData { Id = Citizens.Count, HomeId = home.Id, Family = nomen, LookSeed = rng.Next() };
                     // first two are adults, then children or an elder
-                    if (m < 2) { c.Female = m == 1 ? rng.NextDouble() < 0.8 : rng.NextDouble() < 0.25; c.Age = rng.Next(19, 56); }
+                    if (m < 2) { c.Female = couple ? m == 1 : rng.NextDouble() < 0.5; c.Age = rng.Next(19, 56); }
                     else if (rng.NextDouble() < 0.7) { c.Female = rng.NextDouble() < 0.5; c.Age = rng.Next(6, 15); }
                     else { c.Female = rng.NextDouble() < 0.5; c.Age = rng.Next(61, 80); }
                     string first = c.Female ? FemaleNames[rng.Next(FemaleNames.Length)] : MaleNames[rng.Next(MaleNames.Length)];
@@ -155,7 +191,11 @@ namespace Gladiator.Town
 
                     if (c.Age < 16) { c.Job = Job.Nino; c.Shift = Shift.Ninguno; }
                     else if (c.Age > 60) { c.Job = Job.Anciano; c.Shift = Shift.Ninguno; }
-                    else if (jobs.Count > 0 && (m == 0 || rng.NextDouble() < 0.6)) { var j = jobs.Dequeue(); c.Job = j.job; c.WorkId = j.work; c.Shift = j.shift; }
+                    else if (!c.Female && guardJobs.Count > 0 && (m == 0 || rng.NextDouble() < 0.7))
+                    {   // the guard first: only men
+                        var j = guardJobs[0]; guardJobs.RemoveAt(0); c.Job = j.job; c.WorkId = j.work; c.Shift = j.shift;
+                    }
+                    else if (jobs.Count > 0 && (m == 0 || m == 1 || rng.NextDouble() < 0.6)) { var j = jobs.Dequeue(); c.Job = j.job; c.WorkId = j.work; c.Shift = j.shift; }
                     else { c.Job = Job.AmaDeCasa; c.Shift = Shift.Ninguno; }
 
                     float a = (float)rng.NextDouble() * Mathf.PI * 2f, r = 0.4f + (float)rng.NextDouble() * 0.6f;
@@ -320,6 +360,7 @@ namespace Gladiator.Town
                 case PlaceKind.Market: return p.Position + o * 1.2f;
                 case PlaceKind.ArenaGate:
                 case PlaceKind.LudusGate: return p.Position + o * 2.2f;
+                case PlaceKind.GuardPost: return p.Position + o * 0.8f;
                 default: return p.Position + o * (e.PlaceId.StartsWith("garden") ? 2f : 0.6f);
             }
         }

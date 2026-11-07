@@ -73,6 +73,7 @@ namespace Gladiator.Net
         public List<NetPlayer> Players = new List<NetPlayer>();
         public bool Teams, Upgrades;
         public int Seed;
+        public int TownSeed;
     }
 
     /// <summary>One TCP connection: length-prefixed UTF-8 messages, read on a background thread into a queue.</summary>
@@ -170,6 +171,8 @@ namespace Gladiator.Net
         public bool ArenaTeams { get; private set; }
         public bool ArenaUpgrades { get; private set; }
         public int ArenaSeed { get; private set; }
+        /// <summary>The host's town (everybody in the game walks the same streets with the same people).</summary>
+        public int TownSeed { get; private set; }
 
         public static NetSession Instance { get; private set; }
 
@@ -278,6 +281,7 @@ namespace Gladiator.Net
             Phase = PhaseLobby;
             Players.Clear();
             Players.Add(new NetPlayer { Id = 1, Host = true, Address = "", G = LocalGladiator(), Color = 0 });
+            TownSeed = Gladiator.Town.TownBootstrap.LocalSeed();
             var l = listener;
             new Thread(() =>
             {
@@ -455,7 +459,7 @@ namespace Gladiator.Net
 
         void BroadcastRoster()
         {
-            var r = new RosterMsg { Phase = Phase, Players = Players, Teams = ArenaTeams, Upgrades = ArenaUpgrades, Seed = ArenaSeed };
+            var r = new RosterMsg { Phase = Phase, Players = Players, Teams = ArenaTeams, Upgrades = ArenaUpgrades, Seed = ArenaSeed, TownSeed = TownSeed };
             Broadcast("ROSTER\n" + JsonUtility.ToJson(r));
             RosterChanged?.Invoke();
         }
@@ -546,7 +550,7 @@ namespace Gladiator.Net
                     Players.Clear();
                     if (r.Players != null) Players.AddRange(r.Players);
                     Phase = string.IsNullOrEmpty(r.Phase) ? PhaseLobby : r.Phase;
-                    ArenaTeams = r.Teams; ArenaUpgrades = r.Upgrades; ArenaSeed = r.Seed;
+                    ArenaTeams = r.Teams; ArenaUpgrades = r.Upgrades; ArenaSeed = r.Seed; TownSeed = r.TownSeed;
                     RosterChanged?.Invoke();
                     break;
                 case "START":
@@ -701,6 +705,7 @@ namespace Gladiator.Net
             }
             Role = NetRole.None;
             Connecting = false;
+            TownSeed = 0;
             LocalId = 0;
             Phase = PhaseLobby;
             Players.Clear();

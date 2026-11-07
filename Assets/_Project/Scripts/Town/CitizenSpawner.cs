@@ -44,11 +44,25 @@ namespace Gladiator.Town
         void OnDestroy()
         {
             Fighter.AnyHitResolved -= OnHit;
+            if (hooked != null) hooked.GameMessage -= OnNet;
             if (Instance == this) Instance = null;
+        }
+
+        Gladiator.Net.NetSession hooked;
+
+        void OnNet(int from, string type, string payload)
+        {
+            if (type != "CH") return;
+            var a = payload.Split('|');
+            if (a.Length < 3 || !int.TryParse(a[0], out int id)) return;
+            if (active.TryGetValue(id, out var npc))
+                npc.Flee(new Vector3(Gladiator.Net.NetSession.PF(a[1]), 0f, Gladiator.Net.NetSession.PF(a[2])), 7f);
         }
 
         void Update()
         {
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != hooked) { if (hooked != null) hooked.GameMessage -= OnNet; hooked = net; if (net != null) net.GameMessage += OnNet; }
             if (sim == null || player == null) return;
             if ((tick -= Time.deltaTime) > 0f) return;
             tick = 0.25f;
@@ -111,7 +125,8 @@ namespace Gladiator.Town
             }
             if (free != null) { Rebuild(free, c); return free; }
             if (pool.Count >= PoolSize) return null;
-            var f = CharacterFactory.Create(c.Name, Look(c), new Vector3(0, -50f, 0), Quaternion.identity, CitizenTeam);
+            var f = CharacterFactory.Create(c.Name, Look(c), new Vector3(0, -50f, 0), Quaternion.identity, CitizenTeam, ArmorFor(c));
+            Arm(f, c);
             f.Harmless = true;
             f.DisarmResistance = 1f;
             f.Health.SetMax(1000000f, true);
@@ -126,7 +141,8 @@ namespace Gladiator.Town
         void Rebuild(CitizenNPC n, CitizenData c)
         {
             n.gameObject.SetActive(true);
-            CharacterFactory.RebuildBody(n.Fighter, Look(c), ArmorSet.Empty);
+            CharacterFactory.RebuildBody(n.Fighter, Look(c), ArmorFor(c));
+            Arm(n.Fighter, c);
             n.Fighter.DisplayName = c.Name;
             n.LastCitizenId = c.Id;
             Rebuilds++;
@@ -140,6 +156,22 @@ namespace Gladiator.Town
             active.Remove(id);
             n.Clear();
             n.gameObject.SetActive(false);
+        }
+
+        public static readonly Color GuardRed = new Color(0.72f, 0.1f, 0.08f);
+
+        /// <summary>The town guard's kit: bronze galea, lorica, iron shoulders, greaves (a Roman legionary).</summary>
+        public static ArmorSet ArmorFor(CitizenData c) =>
+            c.Job == Job.Guardia ? ArmorSet.FromIds(new[] { "galea_bronce", "lorica", "hombreras_hierro", "grebas" }) : ArmorSet.Empty;
+
+        /// <summary>Guards carry a gladius and a big red scutum; everybody else goes empty-handed.</summary>
+        public static void Arm(Fighter f, CitizenData c)
+        {
+            f.UnequipAll();
+            if (c.Job != Job.Guardia) return;
+            f.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
+            var sc = ShieldLibrary.ById("scutum");
+            if (sc != null) Shield.Attach(f, sc, GuardRed);
         }
 
         /// <summary>A citizen's body from their data: deterministic (same person, same face), dressed as a townsperson.</summary>
@@ -157,6 +189,7 @@ namespace Gladiator.Town
             a.ClothColor = new[] { 0, 0, 1, 2, 3, 6, 7, 7 }[rng.Next(8)]; // mostly linen and ochre, a few colours
             if (c.Age > 60) { a.HairColor = 4; a.Fat = Mathf.Max(a.Fat, 0.3f); a.Muscle *= 0.6f; }
             if (c.Job == Job.Herrero || c.Job == Job.Guardia) a.Muscle = Mathf.Max(a.Muscle, 0.7f);
+            if (c.Job == Job.Guardia) { a.Outfit = 1; a.ClothColor = 1; a.ClothOverride = GuardRed; a.Shirt = 1; a.Pants = 0; a.HairStyle = Mathf.Min(a.HairStyle, 2); }
             if (c.Job == Job.Sacerdote) { a.Outfit = 2; a.ClothColor = 7; }
             return a;
         }
@@ -169,6 +202,9 @@ namespace Gladiator.Town
             if (npc == null || npc.Citizen == null) return;
             sim.ChangeRelation(npc.Citizen, -15);
             npc.Flee(player.transform.position, 7f);
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != null && net.InGame)
+                net.Send("CH", npc.Citizen.Id + "|" + Gladiator.Net.NetSession.F(player.transform.position.x) + "|" + Gladiator.Net.NetSession.F(player.transform.position.z));
             foreach (var other in active.Values)
                 if (other != npc && Flat(other.transform.position - npc.transform.position) < 9f)
                 {

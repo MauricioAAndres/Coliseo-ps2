@@ -106,6 +106,20 @@ namespace Gladiator.Town
                 if (c.Female) { women++; fMin = Mathf.Min(fMin, fe); fMax = Mathf.Max(fMax, fe); }
                 else { mMin = Mathf.Min(mMin, fe); mMax = Mathf.Max(mMax, fe); }
             }
+            // households: most homes a couple; the guard: 15+ men
+            int homesWithCouple = 0, homesUsed2 = 0;
+            var byHome = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<CitizenData>>();
+            foreach (var c in sim.Citizens) { if (!byHome.TryGetValue(c.HomeId, out var lst)) byHome[c.HomeId] = lst = new System.Collections.Generic.List<CitizenData>(); lst.Add(c); }
+            foreach (var kv in byHome)
+            {
+                homesUsed2++;
+                bool man = kv.Value.Exists(c => !c.Female && c.Age >= 18 && c.Age <= 60), woman = kv.Value.Exists(c => c.Female && c.Age >= 18 && c.Age <= 60);
+                if (man && woman) homesWithCouple++;
+            }
+            var guards = sim.Citizens.FindAll(c => c.Job == Job.Guardia);
+            int smithies = town.Layout.Lots.FindAll(l => l.Kind == BuildingKind.Smithy).Count;
+            Log($"POPULATION homes={homesUsed2} withCouple={homesWithCouple} ({100f * homesWithCouple / Mathf.Max(1, homesUsed2):0}%)  guards={guards.Count} (expected >=15) " +
+                $"guardsAllMen={guards.TrueForAll(c => !c.Female)} smithies={smithies} (expected 2) smiths={sim.Citizens.FindAll(c => c.Job == Job.Herrero).Count}");
             Log($"COMPLEXION women={women} [{fMin:0.00}..{fMax:0.00}] (expected >=0.50)  men={sim.Citizens.Count - women} [{mMin:0.00}..{mMax:0.00}] (expected <=0.50)");
 
             yield return Wait(1.5f);
@@ -235,6 +249,21 @@ namespace Gladiator.Town
                 Log($"LEAVE roofShown={hs.Upper.activeSelf} (expected True)");
             }
 
+            // ---- the smithy sells (the ludus no longer does)
+            {
+                var tmS = town.GetComponent<TownManager>();
+                var smithy = town.Layout.Lots.Find(l => l.Kind == BuildingKind.Smithy);
+                Teleport(town.Player, smithy.Door, -smithy.Front);
+                yield return Wait(0.5f);
+                bool nearSmithy = tmS.NearestSmithy(town.Player.transform.position, 2.6f) != null;
+                tmS.OpenShop();
+                yield return Wait(0.6f);
+                Log($"SMITHY near={nearSmithy} shopOpen={town.Hud.Shop.IsOpen} (expected True)");
+                yield return Shot("20_herreria_tienda");
+                town.Hud.Shop.Close();
+                yield return Wait(0.3f);
+            }
+
             // ---- phase 3: bodies near the player
             Log($"NAVMESH ready={TownNavMesh.Ready} tris={TownNavMesh.Triangles} built in {TownNavMesh.BuildSeconds:0.00}s");
             var sp = town.Spawner;
@@ -248,6 +277,39 @@ namespace Gladiator.Town
             var names = new System.Collections.Generic.List<string>();
             foreach (var n in sp.Active) if (names.Count < 6) names.Add(n.Citizen.Name + "(" + n.Citizen.JobName + (n.Walking ? ",camina" : "") + ")");
             Log("BODIES " + string.Join(", ", names));
+            // a guard at a plaza corner: red, armoured, gladius + scutum
+            {
+                CitizenNPC g = null;
+                foreach (var n in sp.Active) if (n.Citizen != null && n.Citizen.Job == Job.Guardia) { g = n; break; }
+                if (g != null)
+                {
+                    Log($"GUARD {g.Citizen.Name} weapon={(g.Fighter.CurrentWeapon != null ? g.Fighter.CurrentWeapon.Stats.Id : "-")} " +
+                        $"shield={(g.Fighter.EquippedShield != null ? g.Fighter.EquippedShield.Stats.Id : "-")} armorLoad={g.Fighter.ArmorLoad:0.00}");
+                    var camG = town.Cam;
+                    camG.FocusOverride = g.transform.position; camG.Distance = 4.5f; camG.Pitch = 12f;
+                    camG.Yaw = Quaternion.LookRotation(-g.transform.forward).eulerAngles.y;
+                    yield return Wait(1.5f);
+                    yield return Shot("21_guardia");
+                    camG.FocusOverride = null; camG.Distance = 11f; camG.Pitch = 40f;
+                    camG.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+                }
+                else Log("GUARD none near the plaza");
+            }
+            // skirts while walking: a woman in a long tunic, seen from the side mid-stride
+            {
+                var look = CitizenSpawner.Look(sim.Citizens.Find(c => c.Female && c.Age >= 18));
+                look.Outfit = 2; look.Shirt = 3; look.ClothesVersion = 1;
+                Vector3 at = town.Player.transform.position + Vector3.Cross(Vector3.up, town.Layout.ArenaFacing) * 4f;
+                var wlk = Gladiator.Arena.CharacterFactory.Create("Falda", look, at, Quaternion.LookRotation(-town.Layout.ArenaFacing), 9);
+                var camW = town.Cam;
+                for (float t = 0f; t < 1.3f; t += Time.deltaTime) { wlk.Move(-town.Layout.ArenaFacing * 0.9f); camW.FocusOverride = wlk.transform.position; camW.Distance = 4f; camW.Pitch = 8f; camW.Yaw = Quaternion.LookRotation(Vector3.Cross(Vector3.up, -town.Layout.ArenaFacing)).eulerAngles.y + 180f; yield return null; }
+                yield return Shot("22_falda_andando");
+                for (float t = 0f; t < 0.25f; t += Time.deltaTime) { wlk.Move(-town.Layout.ArenaFacing * 0.9f); yield return null; }
+                yield return Shot("23_falda_andando_b");
+                Destroy(wlk.gameObject);
+                camW.FocusOverride = null; camW.Distance = 11f; camW.Pitch = 40f;
+                camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+            }
             var travelled0 = new System.Collections.Generic.Dictionary<CitizenNPC, float>();
             foreach (var n in sp.Active) travelled0[n] = n.Travelled;
             yield return Shot("13_ciudadanos_plaza");
@@ -370,7 +432,9 @@ namespace Gladiator.Town
             if (tb != null)
             {
                 float d = Flat(tb.Player.transform.position - TrainingBootstrap.TownDoorPoint);
-                Log($"LUDUS arrived nearEastDoor={d < 2f} dist={d:0.0}");
+                bool merchant = false;
+                foreach (var f in Fighter.All) if (f.DisplayName == "Mercator") merchant = true;
+                Log($"LUDUS arrived nearEastDoor={d < 2f} dist={d:0.0} merchantStall={merchant} (expected False)");
                 yield return Shot("08_ludus_puerta_este");
                 tb.Player.GetComponent<PlayerController>().enabled = false;
                 tb.Manager.GoToTown();

@@ -41,6 +41,9 @@ namespace Gladiator.Net
         readonly List<(Weapon w, int owner, float until)> ghosts = new List<(Weapon, int, float)>();
         public RemoteFighter Remote(int id) => remotes.TryGetValue(id, out var r) ? r : null;
 
+        /// <summary>Where this game is: 0 ludus, 1 town, 2 arena. A copy shows only while its player is in the same place.</summary>
+        public int SceneCode;
+
         public int RemoteCount => remotes.Count;
         public IEnumerable<RemoteFighter> Remotes => remotes.Values;
         public Fighter Local => local;
@@ -168,6 +171,7 @@ namespace Gladiator.Net
             var r = f.gameObject.AddComponent<RemoteFighter>();
             r.Init(p.Id, f, cam, p.G.Name, p.G.Appearance().ShieldTint);
             r.LookSignature = p.G.LookSignature;
+            f.gameObject.SetActive(false); // shown when its first state from this same place arrives
             Debug.Log("[NET] avatar for player " + p.Id + " " + p.G.Name + " at " + pos + " team " + team);
             return r;
         }
@@ -191,7 +195,7 @@ namespace Gladiator.Net
             int flags = (local.State == FighterState.Blocking ? 1 : 0) | (local.Crouching ? 2 : 0) |
                         (local.MeleeCharging || local.Charging ? 4 : 0);
             s.Send("ST", NetSession.F(p.x) + "|" + NetSession.F(p.y) + "|" + NetSession.F(p.z) + "|" +
-                         NetSession.F(local.transform.eulerAngles.y) + "|" + NetSession.F(v.x) + "|" + NetSession.F(v.z) + "|" + flags);
+                         NetSession.F(local.transform.eulerAngles.y) + "|" + NetSession.F(v.x) + "|" + NetSession.F(v.z) + "|" + flags + "|" + SceneCode);
         }
 
         string PosYaw()
@@ -253,8 +257,9 @@ namespace Gladiator.Net
             {
                 case "ST":
                     if (a.Length < 7) return;
+                    int where = a.Length > 7 && int.TryParse(a[7], out int sc) ? sc : 0;
                     r.OnState(new Vector3(NetSession.PF(a[0]), NetSession.PF(a[1]), NetSession.PF(a[2])), NetSession.PF(a[3]),
-                              new Vector3(NetSession.PF(a[4]), 0f, NetSession.PF(a[5])), int.TryParse(a[6], out int fl) ? fl : 0);
+                              new Vector3(NetSession.PF(a[4]), 0f, NetSession.PF(a[5])), int.TryParse(a[6], out int fl) ? fl : 0, where == SceneCode);
                     break;
                 case "AT":
                     if (a.Length < 5) return;
@@ -346,11 +351,16 @@ namespace Gladiator.Net
             tagText = PS2UI.Text(tag, name.ToUpperInvariant(), 34, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(400, 50), PS2UI.Gold);
         }
 
-        public void OnState(Vector3 pos, float yaw, Vector3 vel, int fl)
+        /// <summary>Visible: its player is where we are (ludus, town, arena).</summary>
+        public bool Present => gameObject.activeSelf;
+
+        public void OnState(Vector3 pos, float yaw, Vector3 vel, int fl, bool here = true)
         {
+            if (!here) { if (gameObject.activeSelf) gameObject.SetActive(false); hasState = false; return; }
             netPos = pos; netYaw = yaw; netVel = vel; flags = fl;
             recvTime = Time.time;
             StatesReceived++;
+            if (!gameObject.activeSelf) gameObject.SetActive(true);
             if (!hasState) { hasState = true; Teleport(pos, yaw); }
         }
 

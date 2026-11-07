@@ -106,6 +106,21 @@ namespace Gladiator.Net
             Log($"SYNC partnerHitsSeen={complaints1 - complaints0} (expected >0) thrownCopiesSeen={maxGhosts} (expected >0)");
             yield return Shot("mp_host_lanzada");
 
+            // ---- the town online: both walk in through the ludus' east door
+            var tbH = Object.FindAnyObjectByType<Gladiator.Training.TrainingBootstrap>();
+            tbH.Manager.GoToTown();
+            yield return Until(() => Gladiator.Town.TownBootstrap.Instance != null && NetAvatars.Instance != null, 20f);
+            var townH = Gladiator.Town.TownBootstrap.Instance;
+            yield return Until(() => NetAvatars.Instance.Remotes.Any(x => x.Present), 30f);
+            var simH = Gladiator.Town.TownSimulation.Instance;
+            Log($"TOWN host seed={simH.Layout.Seed} netSeed={ns.TownSeed} hour={simH.Hour:0.00} seesClient={NetAvatars.Instance.Remotes.Any(x => x.Present)}");
+            yield return Wait(2f);
+            var doorH = townH.Houses[0].Door;
+            doorH.Toggle(); Gladiator.Town.TownManager.SendDoor(doorH);
+            Log($"TOWN host opened door of house {townH.Houses[0].Lot.Id}");
+            yield return Wait(4f);
+            yield return Shot("mp_host_pueblo");
+
             // ---- MP2: online arena, everyone for himself, no upgrades
             ns.StartArena(false, false);
             yield return Until(() => NetArena.Instance != null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 30f);
@@ -193,6 +208,19 @@ namespace Gladiator.Net
             bool threw = me.TryThrow();
             Log($"CLIENT threw={threw}");
             yield return Wait(2f);
+
+            // the town online: go in; the host is there too; same seed and clock; the host's door opens here too
+            yield return Wait(3f);
+            var tbC = Object.FindAnyObjectByType<Gladiator.Training.TrainingBootstrap>();
+            tbC.Manager.GoToTown();
+            yield return Until(() => Gladiator.Town.TownBootstrap.Instance != null && NetAvatars.Instance != null, 20f);
+            var townC = Gladiator.Town.TownBootstrap.Instance;
+            yield return Until(() => NetAvatars.Instance.Remotes.Any(x => x.Present), 30f);
+            var simC = Gladiator.Town.TownSimulation.Instance;
+            Log($"TOWN client seed={simC.Layout.Seed} netSeed={ns.TownSeed} hour={simC.Hour:0.00} seesHost={NetAvatars.Instance.Remotes.Any(x => x.Present)}");
+            yield return Until(() => townC.Houses[0].Door.IsOpen, 15f);
+            Log($"TOWN client sees door of house {townC.Houses[0].Lot.Id} open={townC.Houses[0].Door.IsOpen} (expected True) hour={simC.Hour:0.00}");
+            yield return Shot("mp_client_pueblo");
 
             // MP2: the host starts the online arena; fight the host until the match ends
             yield return Until(() => NetArena.Instance != null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 45f);

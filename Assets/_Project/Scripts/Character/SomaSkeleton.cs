@@ -60,6 +60,8 @@ namespace Gladiator.Character
     public class BodyMetrics
     {
         public float H, S, Fem;
+        /// <summary>0..1 from the creator's POSTURA: how much the poser straightens the back.</summary>
+        public float Posture;
         public float LegTopY, KneeY, AnkleY, HipsY, Neck1Y, ArmY;
         public float LegX, KneeX, ShoulderHalf, UpperArm, ForeArm, HandLen;
         public float HipHalf, WaistHalf, ChestHalf, ChestFront, BellyFront;
@@ -70,6 +72,7 @@ namespace Gladiator.Character
         public BodyMetrics(CharacterAppearance a)
         {
             float fem = Fem = Mathf.Clamp01(a.Femininity);
+            Posture = Mathf.Clamp01(a.Posture);
             float mus = a.Muscle, fat = a.Fat;
             H = a.HeightMeters;
             float s = S = H / 1.8f;

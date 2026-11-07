@@ -276,6 +276,7 @@ namespace Gladiator.Character
             if (UsingClips)
             {
                 PoseFromClips(dead ? Vector3.zero : local, dt, body);
+                if (!dead) StraightenBack(body);
                 PoseHead(body, dt, dead);
                 if (CombatDriven)
                 {
@@ -321,6 +322,22 @@ namespace Gladiator.Character
         }
 
         static bool IsUpper(int i) => i >= SK.Spine1 && i < SK.LeftLeg;
+
+        /// <summary>
+        /// The motion clips stoop forward; the creator's POSTURA straightens the back (up to 24 degrees spread over
+        /// the spine) and the neck gives most of it back so the gaze stays level.
+        /// </summary>
+        void StraightenBack(Transform body)
+        {
+            float a = Rig.Metrics.Posture * 24f;
+            if (a < 0.1f) return;
+            var b = Rig.Bones;
+            Vector3 axis = body.right;
+            b[SK.Spine1].rotation = Quaternion.AngleAxis(-a * 0.35f, axis) * b[SK.Spine1].rotation;
+            b[SK.Spine2].rotation = Quaternion.AngleAxis(-a * 0.35f, axis) * b[SK.Spine2].rotation;
+            b[SK.Chest].rotation = Quaternion.AngleAxis(-a * 0.3f, axis) * b[SK.Chest].rotation;
+            b[SK.Neck1].rotation = Quaternion.AngleAxis(a * 0.7f, axis) * b[SK.Neck1].rotation;
+        }
 
         bool CombatDriven => (Fighter != null && !Fighter.ExternalArmControl) || (Fighter == null && PreviewAction != null);
 

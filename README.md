@@ -368,6 +368,20 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   camara vea el interior. Los vecinos no entran en las casas por ahora (desaparecen en su puerta, como antes).
 - `Town/TownHouse.cs` (`HouseInterior`, `TownDoor`) y `TownBuilder.HomeHouse`.
 
+## El pueblo: guardias, parejas, herrerias y pueblo online
+- **Guardia del pueblo**: 16 hombres de guardia como legionarios romanos (tunica roja, galea de bronce, lorica,
+  hombreras, grebas, gladius y scutum rojo). Vigilan las puertas de la arena y del ludus las 24 h, las esquinas de la
+  plaza, los extremos de la calle transversal y la explanada de la arena.
+- **Parejas**: en la mayoria de las casas (~80%) vive una pareja (hombre + mujer), a veces con hijos o un anciano.
+- **Dos herrerias** por pueblo, en la plaza: delante de su puerta, **[E] HERRERIA** abre la tienda de armas, armaduras
+  y escudos. **El puesto del mercader del ludus ya no existe**: ahora se compra en el pueblo.
+- **Faldas y tunicas**: la parte de abajo sigue a cada pierna, asi las piernas ya no atraviesan la falda al andar.
+- **Espalda**: nueva barra **ESPALDA** en el creador (pestaña CUERPO): de ENCORVADA a MUY RECTA; por defecto recta.
+- **Pueblo online**: desde el ludus compartido cada uno puede salir al pueblo por la puerta este. Todos ven el pueblo del
+  anfitrion (misma semilla, mismos vecinos) y su reloj; los jugadores que estan en el pueblo se ven entre si (los que
+  siguen en el ludus no aparecen en el pueblo, y al reves); las puertas de las casas que abre uno se abren para todos;
+  si alguien le pega a un vecino, huye en todas las pantallas.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

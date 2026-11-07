@@ -171,6 +171,7 @@ namespace Gladiator.Town
                 case PlaceKind.Fountain: return sim.Layout.Fountain - target;
                 case PlaceKind.ArenaGate: return sim.Layout.ArenaFacing;
                 case PlaceKind.LudusGate: return sim.Layout.LudusFacing;
+                case PlaceKind.GuardPost: return p.Facing;
                 default: return transform.forward;
             }
         }

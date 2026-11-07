@@ -63,6 +63,9 @@ namespace Gladiator.Town
         public Vector3 Center => Hinge.position + Hinge.parent.rotation * new Vector3(Width * 0.5f, 0f, 0f);
         public float Angle => angle;
 
+        /// <summary>Online: another player opened or closed it.</summary>
+        public void SetOpen(bool open) { if (open != IsOpen) Toggle(); }
+
         public void Toggle()
         {
             IsOpen = !IsOpen;
