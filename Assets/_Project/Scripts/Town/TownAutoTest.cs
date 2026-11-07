@@ -256,6 +256,25 @@ namespace Gladiator.Town
                     if (leg.room == "HABITACION") yield return Shot("18_dentro_habitacion");
                 }
                 Log("ROOMS walked [" + string.Join(", ", seen) + "]");
+                {
+                    int furnished = 0, emptySale = 0, saleTotal = 0;
+                    foreach (var hh in houses)
+                    {
+                        int lightsHere = hh.Lights.Count;
+                        if (hh.Lot.ForSale && hh.Floor == 0) { saleTotal++; if (lightsHere == 0) emptySale++; }
+                        else if (lightsHere > 0) furnished++;
+                    }
+                    Log($"FURNITURE furnishedStoreys={furnished}/{houses.Count - saleTotal} saleHousesEmpty={emptySale}/{saleTotal} lightOnHere={(hs.Lights.Count > 0 && hs.Lights[0].enabled)}");
+                    var camF = town.Cam;
+                    float d0 = camF.Distance, p0 = camF.Pitch;
+                    foreach (var rn in new[] { "COCINA", "HABITACION", "BANO" })
+                    {
+                        camF.FocusOverride = hs.RoomCenter(rn); camF.Distance = 6.5f; camF.Pitch = 58f;
+                        yield return Wait(1.2f);
+                        yield return Shot("30_muebles_" + rn.ToLowerInvariant());
+                    }
+                    camF.FocusOverride = null; camF.Distance = d0; camF.Pitch = p0;
+                }
                 // the back wall holds
                 Vector3 before = town.Player.transform.position;
                 for (float t = 0f; t < 2f; t += Time.deltaTime) { town.Player.Move(-hs.transform.forward); yield return null; }

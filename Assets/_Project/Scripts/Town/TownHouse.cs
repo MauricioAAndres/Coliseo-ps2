@@ -22,6 +22,10 @@ namespace Gladiator.Town
         public int Floor;
         /// <summary>The "SE VENDE" board (houses for sale).</summary>
         public GameObject SaleSign;
+        /// <summary>The hearth's light: on only while the player is in this storey.</summary>
+        public readonly List<Light> Lights = new List<Light>();
+
+        public void SetLights(bool on) { foreach (var l in Lights) if (l != null) l.enabled = on; }
         /// <summary>First floor: foot and top of the outside stairs, and the way up (tests).</summary>
         public Vector3 StairBottom, StairTop, StairDir;
         public TownDoor Door;

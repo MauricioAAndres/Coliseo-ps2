@@ -392,6 +392,16 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   rellano con barandilla, y ahi esta la **puerta del primer piso** (E para abrirla). El primer piso es otra vivienda
   con su cocina, habitacion y baño. Estando abajo se oculta todo lo de arriba; estando arriba, solo el tejado.
 
+## El pueblo: muebles
+- Todas las viviendas habitadas (planta baja y primer piso) tienen muebles low-poly hechos por codigo, con el mismo
+  estilo PS2 y colision:
+  - **Cocina**: hogar de piedra con fuego (llama que parpadea y luz calida, encendida solo en la casa donde estas),
+    mesa con tantas sillas como habitantes (2-4), vela y vasija en la mesa, estanteria con vasijas y estante colgante.
+  - **Baño**: bañera grande de piedra con agua, letrina de piedra con canal de agua, vela.
+  - **Habitacion**: cama doble si vive una pareja y camas simples para hijos o ancianos, cofre a los pies de la cama,
+    comoda (o el cofre) con vela.
+- **Las 4 casas en venta estan vacias** y siguen vacias despues de comprarlas.
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

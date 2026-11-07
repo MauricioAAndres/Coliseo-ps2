@@ -34,6 +34,11 @@ namespace Gladiator.Town
 
         public int BuildingCount { get; private set; }
 
+        /// <summary>Who lives in a storey (lot id, floor): a couple?, other sleepers (children, elders), people at the table.</summary>
+        public System.Func<int, int, (bool couple, int singles, int people)> Household;
+        readonly Material waxMat = PS2Materials.Get("wax", PS2Textures.White, new Color(0.95f, 0.92f, 0.8f));
+        readonly Material flameMat = PS2Materials.Flat(new Color(1f, 0.62f, 0.15f), 0.3f);
+
         public TownBuilder(TownLayout layout, Transform parent)
         {
             L = layout;
@@ -423,6 +428,183 @@ namespace Gladiator.Town
             house.Rooms.Add(new HouseInterior.Room { Name = "COCINA", X0 = ix0, X1 = ix1, Z0 = zs, Z1 = iz1 });
             house.Rooms.Add(new HouseInterior.Room { Name = "HABITACION", X0 = bedX0, X1 = bedX1, Z0 = iz0, Z1 = zs });
             house.Rooms.Add(new HouseInterior.Room { Name = "BANO", X0 = bathX0, X1 = bathX1, Z0 = iz0, Z1 = zs });
+
+            // ---- furniture (empty houses for sale stay empty, also once bought)
+            if (!lot.ForSale)
+            {
+                var hh = Household != null ? Household(lot.Id, level) : (true, 1, 3);
+                float fy0 = y0 + (level == 0 ? 0.05f : 0.19f);
+                Vector3 P(float x, float y, float z) => LP(lot, x, fy0 + y, z);
+                void Solid(Material m, float x, float y, float z, Vector3 size, bool col = true, float yaw = 0f)
+                {
+                    Quaternion r = q * Quaternion.Euler(0f, yaw, 0f);
+                    Box(m, P(x, y, z), size, r);
+                    if (col) Collider(P(x, y, z), size, r);
+                }
+                void Candle(float x, float y, float z)
+                {
+                    Box(waxMat, P(x, y + 0.08f, z), new Vector3(0.07f, 0.16f, 0.07f), q, 0f);
+                    Box(ember, P(x, y + 0.2f, z), new Vector3(0.04f, 0.07f, 0.04f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                }
+
+                // which way is "away from the door" in the kitchen
+                float f = sideDoor ? -ss : (dx >= 0f ? -1f : 1f);
+                float xFar = f > 0 ? ix1 : ix0, xNear = f > 0 ? ix0 : ix1;
+                float kMid = (zs + iz1) * 0.5f;
+
+                // KITCHEN: hearth in the far front corner, table with chairs, a shelf, a hanging shelf, a candle
+                {
+                    float hx0 = xFar - f * 0.62f, hz0 = iz1 - 0.62f;
+                    for (int k = 0; k < 8; k++)
+                    {
+                        float a = k / 8f * Mathf.PI * 2f;
+                        Solid(stoneDark, hx0 + Mathf.Cos(a) * 0.42f, 0.12f, hz0 + Mathf.Sin(a) * 0.42f, new Vector3(0.24f, 0.24f, 0.24f), false, k * 45f);
+                    }
+                    Box(ember, P(hx0, 0.06f, hz0), new Vector3(0.5f, 0.06f, 0.5f), q, 0f);
+                    Box(darkWood, P(hx0 - 0.12f, 0.14f, hz0), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, 30f, 0), 0f);
+                    Box(darkWood, P(hx0 + 0.1f, 0.14f, hz0 + 0.05f), new Vector3(0.5f, 0.07f, 0.07f), q * Quaternion.Euler(0, -40f, 0), 0f);
+                    Collider(P(hx0, 0.3f, hz0), new Vector3(1.0f, 0.6f, 1.0f), q);
+                    // fire: its own little object (flickers) and the house's light, on only while you are inside
+                    var fire = new GameObject("Hearth").transform;
+                    fire.SetParent(house.transform, false);
+                    fire.position = P(hx0, 0.1f, hz0);
+                    var fl = new GameObject("Flame").transform;
+                    fl.SetParent(fire, false);
+                    PS2Spawn.Mesh(fl, "F", LowPolyMesh.Box(new Vector3(0.3f, 0.45f, 0.3f), new Vector3(0, 0.22f, 0)), Vector3.zero, flameMat, Quaternion.Euler(0, 45f, 0));
+                    PS2Spawn.Mesh(fl, "F2", LowPolyMesh.Box(new Vector3(0.16f, 0.32f, 0.16f), new Vector3(0, 0.16f, 0)), new Vector3(0.08f, 0, 0.05f), ember);
+                    var li = new GameObject("HearthLight").AddComponent<Light>();
+                    li.transform.SetParent(fire, false);
+                    li.transform.localPosition = new Vector3(0, 1.1f, 0);
+                    li.type = LightType.Point; li.range = 5.5f; li.intensity = 1.5f; li.color = new Color(1f, 0.58f, 0.25f);
+                    li.shadows = LightShadows.None;
+                    li.enabled = false;
+                    var tf = fire.gameObject.AddComponent<Gladiator.Arena.TorchFlicker>();
+                    tf.Light = li; tf.Flame = fl; tf.BaseIntensity = li.intensity;
+                    house.Lights.Add(li);
+
+                    // table + chairs (one per person, 2..4), candle on the table
+                    float tx = xFar - f * 1.75f, tz = kMid - 0.35f;
+                    Solid(wood, tx, 0.74f, tz, new Vector3(1.25f, 0.07f, 0.72f));
+                    foreach (float sx in new[] { -0.52f, 0.52f })
+                        foreach (float sz in new[] { -0.28f, 0.28f })
+                            Box(darkWood, P(tx + sx, 0.37f, tz + sz), new Vector3(0.07f, 0.74f, 0.07f), q, 0f);
+                    int chairs = Mathf.Clamp(hh.Item3, 2, 4);
+                    for (int c = 0; c < chairs; c++)
+                    {
+                        float cx = tx + (c % 2 == 0 ? -0.32f : 0.32f), side = c < 2 ? -1f : 1f;
+                        if (chairs == 2) { cx = tx; side = c == 0 ? -1f : 1f; }
+                        float cz = tz + side * 0.62f;
+                        Solid(darkWood, cx, 0.44f, cz, new Vector3(0.4f, 0.06f, 0.4f), false);
+                        foreach (float lx in new[] { -0.16f, 0.16f })
+                            foreach (float lz in new[] { -0.16f, 0.16f })
+                                Box(darkWood, P(cx + lx, 0.22f, cz + lz), new Vector3(0.05f, 0.44f, 0.05f), q, 0f);
+                        Box(darkWood, P(cx, 0.75f, cz + side * 0.18f), new Vector3(0.4f, 0.55f, 0.05f), q, 0f);
+                        Collider(P(cx, 0.4f, cz), new Vector3(0.4f, 0.8f, 0.4f), q);
+                    }
+                    Candle(tx + 0.25f, 0.78f, tz);
+                    Box(clay, P(tx - 0.25f, 0.84f, tz + 0.05f), new Vector3(0.16f, 0.16f, 0.16f), q * Quaternion.Euler(0, 45f, 0), 0f);
+
+                    // standing shelf against the near side wall, by the partition
+                    float sxw = xNear + f * 0.22f, sz0 = zs + 0.95f;
+                    Solid(wood, sxw, 0.95f, sz0, new Vector3(0.36f, 1.9f, 0.08f), false);           // back... (thin, along the wall)
+                    for (int k = 0; k < 4; k++)
+                        Box(wood, P(sxw, 0.15f + k * 0.55f, sz0), new Vector3(0.38f, 0.05f, 1.2f), q, 0f);
+                    foreach (float e in new[] { -0.58f, 0.58f })
+                        Box(darkWood, P(sxw, 0.95f, sz0 + e), new Vector3(0.38f, 1.9f, 0.05f), q, 0f);
+                    for (int k = 0; k < 3; k++)
+                        for (int j = 0; j < 3; j++)
+                            if ((k + j + lot.Id) % 3 != 0)
+                                Box(clay, P(sxw, 0.32f + k * 0.55f, sz0 - 0.35f + j * 0.35f), new Vector3(0.2f, 0.26f, 0.2f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                    Collider(P(sxw, 0.95f, sz0), new Vector3(0.4f, 1.9f, 1.25f), q);
+
+                    // hanging shelf on the front wall, beside the hearth
+                    float hsx = xFar - f * 2.1f, hsz = iz1 - 0.16f;
+                    Box(wood, P(hsx, 1.65f, hsz), new Vector3(1.2f, 0.05f, 0.28f), q, 0f);
+                    foreach (float e in new[] { -0.5f, 0.5f })
+                        Box(darkWood, P(hsx + e, 1.52f, hsz + 0.05f), new Vector3(0.05f, 0.25f, 0.18f), q, 0f);
+                    for (int k = 0; k < 3; k++)
+                        Box(k == 1 ? iron : clay, P(hsx - 0.35f + k * 0.35f, 1.77f, hsz), new Vector3(0.16f, 0.2f, 0.16f), q, 0f);
+                }
+
+                // BEDROOM: beds against the back wall (a double for a couple, singles for the rest), chest, chest of drawers, candle
+                {
+                    bool outerLeft = bedX0 <= ix0 + 0.01f;            // the bedroom's outer wall is on the left?
+                    float dir = outerLeft ? 1f : -1f;
+                    float cursor = outerLeft ? bedX0 + 0.12f : bedX1 - 0.12f;
+                    float limit = outerLeft ? bedX1 - 0.12f : bedX0 + 0.12f;
+                    Material blanket = PS2Materials.Get("blanket_" + (lot.Tint % 3), PS2Textures.Cloth,
+                        lot.Tint % 3 == 0 ? new Color(0.62f, 0.12f, 0.1f) : lot.Tint % 3 == 1 ? new Color(0.22f, 0.32f, 0.58f) : new Color(0.55f, 0.45f, 0.25f));
+                    float doubleX = float.NaN;
+                    void Bed(float width)
+                    {
+                        float cx = cursor + dir * width * 0.5f;
+                        float bz = iz0 + 1.05f;
+                        Solid(darkWood, cx, 0.2f, bz, new Vector3(width, 0.4f, 2.0f));
+                        Box(darkWood, P(cx, 0.55f, iz0 + 0.08f), new Vector3(width, 0.7f, 0.08f), q, 0f);       // headboard
+                        Box(awningA, P(cx, 0.46f, bz), new Vector3(width - 0.1f, 0.14f, 1.9f), q, 0f);         // mattress
+                        Box(blanket, P(cx, 0.55f, bz + 0.25f), new Vector3(width - 0.06f, 0.05f, 1.3f), q, 0f); // blanket
+                        int pillows = width > 1.2f ? 2 : 1;
+                        for (int k = 0; k < pillows; k++)
+                            Box(awningA, P(cx + (pillows == 2 ? (k == 0 ? -0.35f : 0.35f) : 0f), 0.58f, iz0 + 0.38f), new Vector3(0.5f, 0.1f, 0.32f), q, 0f);
+                        cursor += dir * (width + 0.15f);
+                    }
+                    if (hh.Item1) { doubleX = cursor + dir * 0.75f; Bed(1.5f); }
+                    for (int k = 0; k < hh.Item2; k++)
+                    {
+                        if (Mathf.Abs(limit - cursor) < 1.0f) break;
+                        Bed(0.9f);
+                    }
+                    if (float.IsNaN(doubleX) && hh.Item2 == 0) Bed(0.9f);          // somebody sleeps here
+                    // chest at the foot of the first bed
+                    float chestX = float.IsNaN(doubleX) ? (outerLeft ? bedX0 + 0.6f : bedX1 - 0.6f) : doubleX;
+                    float chestZ = iz0 + 2.4f;
+                    if (chestZ + 0.3f < zs - 0.1f)
+                    {
+                        Solid(darkWood, chestX, 0.25f, chestZ, new Vector3(0.85f, 0.5f, 0.5f));
+                        Box(wood, P(chestX, 0.52f, chestZ), new Vector3(0.88f, 0.08f, 0.53f), q, 0f);
+                        foreach (float e in new[] { -0.3f, 0.3f })
+                            Box(iron, P(chestX + e, 0.3f, chestZ), new Vector3(0.06f, 0.56f, 0.55f), q, 0f);
+                        Box(iron, P(chestX, 0.38f, chestZ + 0.26f), new Vector3(0.1f, 0.1f, 0.03f), q, 0f);
+                    }
+                    // chest of drawers in what is left of the back wall, else against the partition; candle on it
+                    float left = Mathf.Abs(limit - cursor);
+                    float dxD, dzD; bool along = left >= 1.2f;
+                    if (along) { dxD = cursor + dir * 0.6f; dzD = iz0 + 0.3f; }
+                    else { dxD = outerLeft ? bedX0 + 0.75f : bedX1 - 0.75f; dzD = zs - 0.35f; }
+                    if (along || Mathf.Abs(dxD - bedC) > 1.1f)
+                    {
+                        Solid(wood, dxD, 0.45f, dzD, new Vector3(1.1f, 0.9f, 0.48f));
+                        for (int k = 0; k < 3; k++)
+                            Box(darkWood, P(dxD, 0.18f + k * 0.27f, dzD + (along ? 0.25f : -0.25f)), new Vector3(1.0f, 0.03f, 0.02f), q, 0f);
+                        Candle(dxD + 0.35f, 0.9f, dzD);
+                    }
+                    else if (chestZ + 0.3f < zs - 0.1f) Candle(chestX + 0.25f, 0.56f, chestZ);
+                }
+
+                // BATHROOM: a big tub along the back wall, a stone latrine by the outer wall, a candle on the tub
+                {
+                    float bw = bathX1 - bathX0;
+                    float tubW = Mathf.Max(1.4f, bw - 0.3f), tubD = 1.35f, tcx = (bathX0 + bathX1) * 0.5f, tcz = iz0 + 0.1f + tubD * 0.5f;
+                    Material tubM = stone;
+                    Box(tubM, P(tcx, 0.3f, tcz - tubD * 0.5f + 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
+                    Box(tubM, P(tcx, 0.3f, tcz + tubD * 0.5f - 0.08f), new Vector3(tubW, 0.6f, 0.16f), q);
+                    Box(tubM, P(tcx - tubW * 0.5f + 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
+                    Box(tubM, P(tcx + tubW * 0.5f - 0.08f, 0.3f, tcz), new Vector3(0.16f, 0.6f, tubD), q);
+                    Box(tubM, P(tcx, 0.05f, tcz), new Vector3(tubW, 0.1f, tubD), q);
+                    Box(water, P(tcx, 0.42f, tcz), new Vector3(tubW - 0.3f, 0.03f, tubD - 0.3f), q, 0f);
+                    Collider(P(tcx, 0.3f, tcz), new Vector3(tubW, 0.6f, tubD), q);
+                    Candle(tcx + tubW * 0.5f - 0.1f, 0.6f, tcz + tubD * 0.5f - 0.1f);
+                    // latrine: a stone bench with a hole, against the outer wall, near the partition
+                    bool outerLeftB = bathX0 <= ix0 + 0.01f;
+                    float lx = outerLeftB ? bathX0 + 0.3f : bathX1 - 0.3f, lz = zs - 0.75f;
+                    if (lz - 0.45f > tcz + tubD * 0.5f + 0.1f)
+                    {
+                        Solid(stone, lx, 0.22f, lz, new Vector3(0.6f, 0.44f, 0.9f));
+                        Box(dark, P(lx, 0.445f, lz), new Vector3(0.24f, 0.01f, 0.3f), q, 0f);
+                        Box(water, P(lx + (outerLeftB ? 0.42f : -0.42f), 0.03f, lz), new Vector3(0.14f, 0.03f, 0.9f), q, 0f); // water channel
+                    }
+                }
+            }
 
             // front windows
             int nwin = level == 0 ? 2 : Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));

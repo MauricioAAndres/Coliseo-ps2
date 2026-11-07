@@ -104,6 +104,22 @@ namespace Gladiator.Town
             var env = new GameObject("Environment").transform;
             BuildLighting(env);
             var builder = new TownBuilder(Layout, env);
+            // the furniture follows who lives in each home (a double bed for a couple, singles for children and elders)
+            var homes = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<CitizenData>>();
+            foreach (var c in sim.Citizens)
+            {
+                if (!homes.TryGetValue(c.HomeId, out var lst)) homes[c.HomeId] = lst = new System.Collections.Generic.List<CitizenData>();
+                lst.Add(c);
+            }
+            builder.Household = (lotId, floor) =>
+            {
+                if (floor > 0) return (true, 1, 3);   // the flat upstairs: a couple and a child
+                if (!homes.TryGetValue("home" + lotId, out var people) || people.Count == 0) return (true, 0, 2);
+                bool man = people.Exists(c => !c.Female && c.Age >= 16), woman = people.Exists(c => c.Female && c.Age >= 16);
+                bool couple = man && woman;
+                int singles = Mathf.Clamp(people.Count - (couple ? 2 : 0), 0, 2);
+                return (couple, singles, people.Count);
+            };
             builder.Build();
             Buildings = builder.BuildingCount;
             Houses = builder.Houses;
@@ -327,9 +343,9 @@ namespace Gladiator.Town
             }
             if (inHouse != house)
             {
-                if (house != null) house.ShowUpper(true);
+                if (house != null) { house.ShowUpper(true); house.SetLights(false); }
                 house = inHouse;
-                if (house != null) house.ShowUpper(false);
+                if (house != null) { house.ShowUpper(false); house.SetLights(true); }
                 room = null;
             }
             if (house != null)
