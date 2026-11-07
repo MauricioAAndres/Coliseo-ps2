@@ -115,12 +115,44 @@ namespace Gladiator.Arena
             if (curDistance < 0f) { curDistance = Distance; curPitch = Pitch; }
             float k = 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime);
             curDistance = Mathf.Lerp(curDistance, Distance, k);
-            curPitch = Mathf.Lerp(curPitch, Pitch, k);
+            // Something tall between the player and the camera (a house, a wall): tilt the camera up until it sees.
+            float wantPitch = !FocusOverride.HasValue && Player != null ? ClearPitch(Yaw + turnCurrent) : Pitch;
+            curPitch = Mathf.Lerp(curPitch, wantPitch, wantPitch > curPitch ? 1f - Mathf.Exp(-8f * Time.unscaledDeltaTime) : k);
             // Minigames frame their own view: the hand-turned angle only applies when following the player.
             turnCurrent = Mathf.LerpAngle(turnCurrent, FocusOverride.HasValue ? 0f : turnTarget, 1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
             Quaternion rot = Quaternion.Euler(curPitch, Yaw + turnCurrent, 0f);
             Vector3 pos = focus + Vector3.up * 1.2f - rot * Vector3.forward * curDistance;
             transform.SetPositionAndRotation(ApplyShake(pos), rot);
+        }
+
+        static readonly RaycastHit[] occHits = new RaycastHit[16];
+
+        /// <summary>Lowest pitch (from Pitch up to 80) at which nothing but fighters stands between the player and the camera.</summary>
+        float ClearPitch(float yaw)
+        {
+            Vector3 eye = Player.transform.position + Vector3.up * 1.3f;
+            for (float p = Pitch; p < 80f; p += 7f)
+            {
+                Vector3 cam = focus + Vector3.up * 1.2f - Quaternion.Euler(p, yaw, 0f) * Vector3.forward * curDistance;
+                if (!Blocked(eye, cam)) return p;
+            }
+            return 80f;
+        }
+
+        static bool Blocked(Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from;
+            float len = d.magnitude;
+            if (len < 0.01f) return false;
+            int n = Physics.SphereCastNonAlloc(from, 0.25f, d / len, occHits, len, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var c = occHits[i].collider;
+                if (c == null || occHits[i].distance <= 0f) continue;
+                if (c.GetComponentInParent<Fighter>() != null || c.GetComponentInParent<Weapon>() != null) continue;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>Classic camera: wheel / R3 held + mouse or right stick turns it; a short tap resets it.</summary>

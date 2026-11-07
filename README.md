@@ -289,6 +289,19 @@ En la puerta norte del ludus, **E** abre el menu de combate:
   accion ya la usaba, se intercambian. **RESTAURAR POR DEFECTO** vuelve a las de siempre. Se guarda solo.
 - En el mando el movimiento es siempre el stick izquierdo. Por defecto la patada del mando es **LB** y fijar objetivo **R3**.
 
+## El pueblo (Fase 1: geometria)
+- Desde el ludus, **puerta este** (junto a las balas de paja): **[E] SALIR AL PUEBLO**. En el pueblo: la **puerta del ludus**
+  para volver y la **puerta de la arena** para elegir combate (el mismo menu que la puerta norte del ludus).
+- `Town/TownLayout.cs`: el plano como **datos puros** a partir de una semilla (plantilla plaza → calles → casas, rotada
+  0/90/180/270, quiza espejada; cada parcela con su tipo, tamaño, colores y puerta). Lista de **lugares** con nombre
+  (casas, talleres, plaza, fuente, puestos, puertas) para la simulacion de ciudadanos.
+- `Town/TownBuilder.cs`: la geometria low-poly con el mismo shader PS2_Lit, texturas y materiales del ludus, unida en una
+  malla por material. Templo, taberna, herreria, panaderia, termas, alfareria, basilica, tiendas, domus, insulae, huertos,
+  fuente, mercado, cipreses, antorchas, muralla, coliseo y ludus.
+- `Town/TownBootstrap.cs`: la escena `Town`. Semilla guardada por PC (`Gladiator.TownSeed`); `-townseed N` la fuerza.
+- Camara clasica: si una casa o muro tapa al jugador, se inclina hacia arriba hasta verlo.
+- Prueba: `ColiseoPS2.exe -towntest -townseed 1` (lineas `[TOWNTEST]`).
+
 ## El bucle de juego
 **Creador** → **Día N: Ludus** (entrenar, comprar) → **puerta norte** (E duelo / Q todos contra todos) → **Arena** → recompensa → **Día N+1**
 

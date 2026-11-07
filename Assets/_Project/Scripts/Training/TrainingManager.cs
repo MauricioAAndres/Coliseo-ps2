@@ -21,6 +21,8 @@ namespace Gladiator.Training
         public ArenaCamera Cam { get; private set; }
         public readonly List<TrainingMinigame> Stations = new List<TrainingMinigame>();
         public Vector3 GatePoint;
+        /// <summary>East door to the town (null = none).</summary>
+        public Vector3? TownDoor;
         public float GateRadius = 2.6f;
         public Vector3 ShopPoint;
         public float ShopRadius = 2f;
@@ -108,6 +110,15 @@ namespace Gladiator.Training
             {
                 Hud.SetPrompt(key + "TIENDA DEL MERCATOR   (" + gm.Profile.Denarii + " denarios)");
                 if (GameInput.InteractPressed) OpenShop();
+                return;
+            }
+
+            if (TownDoor.HasValue && Flat(TownDoor.Value - p).magnitude < 1.8f)
+            {
+                var net = Gladiator.Net.NetSession.Instance;
+                bool multi = net != null && net.InGame;
+                Hud.SetPrompt(multi ? "PUEBLO: AUN NO DISPONIBLE EN MULTIJUGADOR" : key + "SALIR AL PUEBLO");
+                if (!multi && GameInput.InteractPressed) GoToTown();
                 return;
             }
 
@@ -216,6 +227,14 @@ namespace Gladiator.Training
             Busy = true;
             Debug.Log($"[TRAINING] day={gm.DayCycle.Day} -> arena {encounter}  STR={gm.Profile.Strength} AGI={gm.Profile.Agility} RES={gm.Profile.Resistance} denarii={gm.Profile.Denarii}");
             gm.DayCycle.GoToArena(encounter);
+        }
+
+        /// <summary>Through the east door: the town (scene "Town").</summary>
+        public void GoToTown()
+        {
+            if (Busy) return;
+            Busy = true;
+            UnityEngine.SceneManagement.SceneManager.LoadScene(Gladiator.Town.TownBootstrap.SceneName);
         }
 
         public void OpenShop()

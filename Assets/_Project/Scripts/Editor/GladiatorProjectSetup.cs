@@ -3,6 +3,7 @@ using System.IO;
 using Gladiator.Arena;
 using Gladiator.Character;
 using Gladiator.Training;
+using Gladiator.Town;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
@@ -25,6 +26,7 @@ namespace Gladiator.EditorTools
         public const string ArenaScenePath = ScenesDir + "/Arena.unity";
         public const string TrainingScenePath = ScenesDir + "/Training.unity";
         public const string CreatorScenePath = ScenesDir + "/Creator.unity";
+        public const string TownScenePath = ScenesDir + "/Town.unity";
         const string LitShaderPath = Root + "/Shaders/PS2_Lit.shader";
         const string PostShaderPath = Root + "/Shaders/PS2_Post.shader";
 
@@ -116,6 +118,22 @@ namespace Gladiator.EditorTools
             Debug.Log("[Gladiator] Scene created: " + TrainingScenePath);
         }
 
+        [MenuItem("Gladiator/5. Generar escena Pueblo")]
+        public static void CreateTownScene()
+        {
+            EnsureFolder(ScenesDir);
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var go = new GameObject("TownBootstrap");
+            var boot = go.AddComponent<TownBootstrap>();
+            boot.PS2LitShader = AssetDatabase.LoadAssetAtPath<Shader>(LitShaderPath);
+            boot.PS2PostShader = AssetDatabase.LoadAssetAtPath<Shader>(PostShaderPath);
+            if (boot.PS2LitShader == null || boot.PS2PostShader == null)
+                Debug.LogError("[Gladiator] PS2 shaders not found under " + Root + "/Shaders");
+            EditorSceneManager.SaveScene(scene, TownScenePath);
+            UpdateBuildScenes();
+            Debug.Log("[Gladiator] Scene created: " + TownScenePath);
+        }
+
         [MenuItem("Gladiator/4. Generar escena Creador de personaje")]
         public static void CreateCreatorScene()
         {
@@ -139,6 +157,7 @@ namespace Gladiator.EditorTools
             if (File.Exists(CreatorScenePath)) list.Add(new EditorBuildSettingsScene(CreatorScenePath, true));
             if (File.Exists(TrainingScenePath)) list.Add(new EditorBuildSettingsScene(TrainingScenePath, true));
             if (File.Exists(ArenaScenePath)) list.Add(new EditorBuildSettingsScene(ArenaScenePath, true));
+            if (File.Exists(TownScenePath)) list.Add(new EditorBuildSettingsScene(TownScenePath, true));
             EditorBuildSettings.scenes = list.ToArray();
         }
 
@@ -193,10 +212,11 @@ namespace Gladiator.EditorTools
         {
             string projectRoot = Path.GetDirectoryName(Application.dataPath);
             if (!File.Exists(CreatorScenePath)) CreateCreatorScene();
+            if (!File.Exists(TownScenePath)) CreateTownScene();
             EnsurePs3Support();
             var opts = new BuildPlayerOptions
             {
-                scenes = new[] { CreatorScenePath, TrainingScenePath, ArenaScenePath },
+                scenes = new[] { CreatorScenePath, TrainingScenePath, ArenaScenePath, TownScenePath },
                 locationPathName = Path.Combine(projectRoot, "Builds", "Win64", "ColiseoPS2.exe"),
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None

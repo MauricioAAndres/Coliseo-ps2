@@ -30,6 +30,12 @@ namespace Gladiator.Training
         public Fighter Player { get; private set; }
         public TrainingManager Manager { get; private set; }
 
+        /// <summary>Set by the town before loading the ludus: the player comes in through the east door.</summary>
+        public static bool ArriveFromTown;
+        /// <summary>The east door to the town (inside the yard, where you stand to use it).</summary>
+        public static readonly Vector3 TownDoorPoint = new Vector3(HalfX - 1.1f, 0f, TownDoorZ);
+        const float TownDoorZ = 4.5f;
+
         void Awake()
         {
             Time.timeScale = 1f;
@@ -47,8 +53,11 @@ namespace Gladiator.Training
 
             var net = Gladiator.Net.NetSession.Instance;
             bool multi = net != null && net.InGame;
+            bool fromTown = ArriveFromTown && !multi;
+            ArriveFromTown = false;
             Player = CharacterFactory.Create(gm.Profile.Name, gm.Profile.Appearance,
-                multi ? SlotSpawn(net.SlotOf(net.LocalId)) : new Vector3(0, 0.05f, -7.5f), Quaternion.identity, 0, gm.Profile.ArmorSet);
+                multi ? SlotSpawn(net.SlotOf(net.LocalId)) : fromTown ? TownDoorPoint + new Vector3(-0.8f, 0.05f, 0f) : new Vector3(0, 0.05f, -7.5f),
+                fromTown ? Quaternion.LookRotation(Vector3.left) : Quaternion.identity, 0, gm.Profile.ArmorSet);
             // Clothes / armour changed at the mercator: dress the gladiator at once.
             var profileRef = gm.Profile;
             var playerRef = Player;
@@ -91,6 +100,7 @@ namespace Gladiator.Training
 
             Manager = new GameObject("TrainingManager").AddComponent<TrainingManager>();
             Manager.Init(Player, pc, hud, camCtl, stations, new Vector3(0, 0, HalfZ - 1.6f), shopPoint);
+            Manager.TownDoor = TownDoorPoint;
             BuildPartners(env, cam, hud);
             // Multiplayer: the other players' gladiators share the yard.
             if (multi) gameObject.AddComponent<Gladiator.Net.NetAvatars>().Init(Player, cam, SlotSpawn, msg => hud.ShowMessage(msg, 3f));
@@ -358,6 +368,17 @@ namespace Gladiator.Training
                 PS2Spawn.Box(gate, "Band", new Vector3(GateHalf * 2f, 0.12f, 0.3f), new Vector3(0, 1.8f + i * 1.1f, 0.0f),
                     PS2Materials.Get("iron", PS2Textures.Metal, new Color(0.45f, 0.42f, 0.4f)));
             PS2Spawn.BoxCollider(gate, new Vector3(0, WallH * 0.5f, 0), new Vector3(GateHalf * 2f + 1.2f, WallH, 1.4f));
+
+            // East door to the town: stone frame, wooden door and a small sign.
+            var townDoor = new GameObject("TownDoor").transform;
+            townDoor.SetParent(yard, false);
+            townDoor.localPosition = new Vector3(HalfX, 0, TownDoorZ);
+            townDoor.localRotation = Quaternion.Euler(0, -90f, 0); // faces into the yard (-x)
+            PS2Spawn.Box(townDoor, "JambL", new Vector3(0.35f, 3.1f, 0.5f), new Vector3(-1.05f, 1.55f, 0.1f), stone);
+            PS2Spawn.Box(townDoor, "JambR", new Vector3(0.35f, 3.1f, 0.5f), new Vector3(1.05f, 1.55f, 0.1f), stone);
+            PS2Spawn.Box(townDoor, "Lintel", new Vector3(2.5f, 0.4f, 0.5f), new Vector3(0, 3.2f, 0.1f), stone);
+            PS2Spawn.Box(townDoor, "Door", new Vector3(1.75f, 2.95f, 0.12f), new Vector3(0, 1.48f, 0.05f), darkWood, null, 0.8f);
+            PS2Spawn.Box(townDoor, "Sign", new Vector3(1.3f, 0.32f, 0.06f), new Vector3(0, 3.65f, 0.2f), PS2Materials.Get("sign_town", PS2Textures.Cloth, new Color(0.85f, 0.65f, 0.15f)));
 
             // Portico along the west wall: columns + tiled roof, barracks doors behind.
             var portico = new GameObject("Portico").transform;

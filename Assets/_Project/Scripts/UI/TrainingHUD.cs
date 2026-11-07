@@ -25,7 +25,7 @@ namespace Gladiator.UI
 
             promptText = PS2UI.Text(root, "", 14, TextAnchor.MiddleCenter, new Vector2(0.5f, 0), new Vector2(0, 70), new Vector2(500, 20), new Color(1f, 0.92f, 0.5f));
             msgText = PS2UI.Text(root, "", 18, TextAnchor.MiddleCenter, new Vector2(0.5f, 1), new Vector2(0, -112), new Vector2(620, 26), PS2UI.Gold);
-            PS2UI.Text(root, "WASD mover   E interactuar   puerta norte: E elegir combate   tienda: puesto del mercader   F1 post   F2 snap   ESC salir",
+            hintText = PS2UI.Text(root, "WASD mover   E interactuar   puerta norte: E elegir combate   puerta este: pueblo   tienda: puesto del mercader   F1 post   F2 snap   ESC menu",
                 10, TextAnchor.LowerCenter, new Vector2(0.5f, 0), new Vector2(0, 6), new Vector2(900, 14), PS2UI.Parchment);
 
             // ---- minigame panel (bottom centre)
@@ -61,6 +61,10 @@ namespace Gladiator.UI
 
         // ------------------------------------------------------------------ API
         public void SetPrompt(string s) { promptText.text = s ?? ""; }
+
+        Text hintText;
+        /// <summary>The help line at the bottom (the town shows its own).</summary>
+        public void SetHint(string s) { if (hintText != null) hintText.text = s ?? ""; }
 
         public void ShowMessage(string s, float duration = 2f) { msgText.text = s; msgTimer = duration; }
 
