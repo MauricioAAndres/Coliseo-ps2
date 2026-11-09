@@ -512,12 +512,12 @@ namespace Gladiator.Character
                 for (int r = 0; r < rings.Count; r++)
                 {
                     var rr = rings[r];
-                    if (r == 0) { rr.RU = Mathf.Max(rr.RU * 1.06f, legX + thigh + 0.03f * S); rr.RVPos = Mathf.Max(rr.RVPos * 1.3f, thigh * 1.45f); rr.RVNeg *= 1.04f; }   // waist: a little room in front of the belly/crotch
+                    if (r == 0) { rr.RU = Mathf.Max(rr.RU * 1.06f, legX + thigh + 0.03f * S); rr.RVPos = Mathf.Max(rr.RVPos * 1.1f, thigh * 1.35f); rr.RVNeg *= 1.04f; }   // waist: a little room in front of the belly/crotch
                     else
                     {
                         float k = r / Mathf.Max(1f, rows);
                         rr.RU = Mathf.Max(rr.RU, legX + thigh + 0.03f * S);
-                        rr.RVPos = Mathf.Max(rr.RVPos, thigh) * (1.25f + 0.3f * k);
+                        rr.RVPos = Mathf.Max(rr.RVPos * 0.85f, thigh * (1.3f + 0.1f * k));   // room for the thighs, not a prow
                         rr.RVNeg = Mathf.Max(rr.RVNeg, thigh * 1.08f);
                     }
                     rs.Add(rr);

@@ -512,6 +512,10 @@ namespace Gladiator.Town
                     camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
                     yield return Wait(1.2f);
                     yield return Shot("23f_tunica_quieto");
+                    camW.Yaw = Quaternion.LookRotation(Vector3.Cross(Vector3.up, town.Layout.ArenaFacing)).eulerAngles.y;
+                    yield return Wait(0.5f);
+                    yield return Shot("23h_tunica_lado");
+                    camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
                     for (float t = 0f; t < 0.7f; t += Time.deltaTime)
                     {
                         tun.Move(town.Layout.ArenaFacing * 0.5f);
