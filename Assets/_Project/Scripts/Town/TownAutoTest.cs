@@ -501,6 +501,26 @@ namespace Gladiator.Town
                     yield return null;
                 }
                 yield return Shot("23c_falda_frente");
+                {
+                    var lk = Gladiator.Character.CharacterAppearance.Random(new System.Random(5), false);
+                    lk.Femininity = 0f; lk.Armor = 0; lk.Helmet = false; lk.ClothesVersion = 1;
+                    lk.Outfit = 1; lk.Shirt = 1; lk.Pants = 1; lk.ClothColor = 1; lk.PantsColor = 4;
+                    Vector3 atT = wlk.transform.position + Vector3.Cross(Vector3.up, town.Layout.ArenaFacing) * 3f;
+                    var tun = Gladiator.Arena.CharacterFactory.Create("Tunica", lk, atT, Quaternion.LookRotation(town.Layout.ArenaFacing), 9);
+                    wlk.gameObject.SetActive(false);
+                    camW.FocusOverride = atT + Vector3.down * 0.45f; camW.Distance = 3.6f; camW.Pitch = 2f;
+                    camW.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+                    yield return Wait(1.2f);
+                    yield return Shot("23f_tunica_quieto");
+                    for (float t = 0f; t < 0.7f; t += Time.deltaTime)
+                    {
+                        tun.Move(town.Layout.ArenaFacing * 0.5f);
+                        camW.FocusOverride = tun.transform.position + Vector3.down * 0.45f;
+                        yield return null;
+                    }
+                    yield return Shot("23g_tunica_andando");
+                    Destroy(tun.gameObject);
+                }
                 Destroy(wlk.gameObject);
                 // guards: a gladius alone, gladius + scutum blocking, and the scutum carried
                 var poses = new System.Collections.Generic.List<Fighter>();

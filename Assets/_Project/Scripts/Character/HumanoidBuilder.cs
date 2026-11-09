@@ -504,19 +504,42 @@ namespace Gladiator.Character
             void SkirtLoft(List<Ring> rings, int mat)
             {
                 int cols = TorsoSeg, rows = rings.Count - 1;
-                float leftX = M.Joints[SK.LeftLeg].x;
-                Vector3 inside = (rings[0].C + rings[rings.Count - 1].C) * 0.5f;
-                Vector3 P(int c, int r) => rings[r].Point(c / (float)cols * Mathf.PI * 2f);
+                float leftSign = Mathf.Sign(M.Joints[SK.LeftLeg].x);
+                // Below the waist every ring must clear the thighs (and shorts over them) with room to spare, more in
+                // front and lower down: the thighs lean forward in every pose and would poke through a tight skirt.
+                float thigh = M.ThighR * 1.15f + 0.03f * S, legX = Mathf.Abs(M.Joints[SK.LeftLeg].x);
+                var rs = new List<Ring>();
+                for (int r = 0; r < rings.Count; r++)
+                {
+                    var rr = rings[r];
+                    if (r == 0) { rr.RU = Mathf.Max(rr.RU * 1.06f, legX + thigh + 0.03f * S); rr.RVPos = Mathf.Max(rr.RVPos * 1.3f, thigh * 1.45f); rr.RVNeg *= 1.04f; }   // waist: a little room in front of the belly/crotch
+                    else
+                    {
+                        float k = r / Mathf.Max(1f, rows);
+                        rr.RU = Mathf.Max(rr.RU, legX + thigh + 0.03f * S);
+                        rr.RVPos = Mathf.Max(rr.RVPos, thigh) * (1.25f + 0.3f * k);
+                        rr.RVNeg = Mathf.Max(rr.RVNeg, thigh * 1.08f);
+                    }
+                    rs.Add(rr);
+                }
+                // tuck: one more ring above the waist, tight and under the belt, so the top edge closes against the
+                // tunic/body and there is no open ledge to see the skin through
+                {
+                    var t = rings[0]; t.C.y += 0.07f * S; t.RVPos *= 1.08f;
+                    rs.Insert(0, t); rows++;
+                }
+                Vector3 inside = (rs[0].C + rs[rs.Count - 1].C) * 0.5f;
+                Vector3 P(int c, int r) => rs[r].Point(c / (float)cols * Mathf.PI * 2f);
                 B.Grid(cols, rows, P, (c, r) =>
                 {
+                    // waist ring: on the hips. Below it the cloth hangs from BOTH thighs: each side on its own leg and
+                    // the front and back middle half on each, so it stays between the legs like real cloth instead of
+                    // being dragged by one thigh while the other pokes through.
+                    if (r <= 1) return new BW(SK.Hips);
                     Vector3 v = P(c, r);
-                    // waist: hips only; lower down more and more on the thigh, the hem entirely, so the cloth goes
-                    // where the knee goes (front and back too: the middle follows the nearer leg)
-                    float rowK = r == 0 ? 0f : Mathf.Lerp(0.4f, 1f, (r - 1) / Mathf.Max(1f, rows - 1f));
-                    float side = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.0f, 0.5f, Mathf.Abs(v.x - rings[r].C.x) / Mathf.Max(0.001f, rings[r].RU)));
-                    float w = rowK * Mathf.Lerp(0.85f, 1f, side);
-                    int leg = Mathf.Sign(v.x - rings[r].C.x) == Mathf.Sign(leftX) ? SK.LeftLeg : SK.RightLeg;
-                    return w <= 0.01f ? new BW(SK.Hips) : new BW(SK.Hips, leg, w);
+                    float u = (v.x - rs[r].C.x) / Mathf.Max(0.001f, rs[r].RU) * leftSign;   // +1 left side .. -1 right side
+                    float wLeft = Mathf.Clamp01(0.5f + u * 0.75f);
+                    return new BW(SK.RightLeg, SK.LeftLeg, wLeft);
                 }, inside, mat);
             }
 
@@ -536,12 +559,16 @@ namespace Gladiator.Character
                     case 1:
                     case 2:
                     {
-                        // Bracae: shorts to above the knee, or trousers to the ankle.
-                        B.Loft(TorsoBand(crotch, M.LegTopY + 0.06f * S, 2, 1.05f, add), TorsoSeg, Cloth2, true, false);
+                        // Bracae: shorts to above the knee, or trousers to the ankle. Under a tunic's skirt only the legs
+                        // are drawn, from the upper thigh down, so no band of them shows through the cloth at the hips.
+                        bool underSkirt = A.Shirt == 1 || A.Shirt == 2 || A.Shirt == 3;
+                        if (!underSkirt) B.Loft(TorsoBand(crotch, M.LegTopY + 0.06f * S, 2, 1.05f, add), TorsoSeg, Cloth2, true, false);
                         for (int side = -1; side <= 1; side += 2)
                         {
                             var lg = legs[side];
-                            var rings = new List<Ring> { lg[0].Inflated(1.06f, add), lg[1].Inflated(1.08f, add), lg[2].Inflated(1.1f, add) };
+                            var rings = underSkirt
+                                ? new List<Ring> { lg[1].Inflated(1.02f, 0f), lg[2].Inflated(1.1f, add) }
+                                : new List<Ring> { lg[0].Inflated(1.06f, add), lg[1].Inflated(1.08f, add), lg[2].Inflated(1.1f, add) };
                             if (A.Pants == 1)
                             {
                                 Ring knee = lg[3].Inflated(1.1f, add);
