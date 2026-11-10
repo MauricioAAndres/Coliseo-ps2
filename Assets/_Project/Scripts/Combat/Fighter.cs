@@ -281,14 +281,18 @@ namespace Gladiator.Combat
 
         bool FreeToMove => state == FighterState.Idle || state == FighterState.Blocking || state == FighterState.Recovery;
 
-        /// <summary>Taunt or celebrate (kind 0-2). Vulnerable meanwhile; any hit interrupts it.</summary>
+        /// <summary>Taunt kinds: 0 beat the chest, 1 beckon, 2 raise the arms (cheer), 3 wave, 4 bow, 5 "no".</summary>
+        public const int TauntKinds = 6;
+        static readonly float[] TauntTimes = { 2.2f, 2.2f, 2.2f, 3.0f, 3.0f, 2.6f };
+
+        /// <summary>Taunt, celebrate or gesture (see <see cref="TauntKinds"/>). Vulnerable meanwhile; any hit interrupts it.</summary>
         public bool TryTaunt(int kind)
         {
             if (!IsAlive || state != FighterState.Idle || !IsGrounded) return false;
-            TauntKind = Mathf.Clamp(kind, 0, 2);
+            TauntKind = Mathf.Clamp(kind, 0, TauntKinds - 1);
             bufferedAttack = null;
-            SetState(FighterState.Taunt, 2.2f);
-            AnyMove?.Invoke(this, TauntKind == 2 ? "cheer" : "taunt");
+            SetState(FighterState.Taunt, TauntTimes[TauntKind]);
+            AnyMove?.Invoke(this, TauntKind == 2 ? "cheer" : TauntKind >= 3 ? "gesture" : "taunt");
             return true;
         }
 

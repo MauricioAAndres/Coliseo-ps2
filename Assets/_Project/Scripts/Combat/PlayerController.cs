@@ -21,14 +21,71 @@ namespace Gladiator.Combat
         float dropHeldTime;
         bool dropHandled;
 
+        // T tapped: a quick provocation. T held: the taunt wheel (Gladiator.UI.TauntWheel).
+        const float WheelDelay = 0.25f;
+        float tauntHeldTime;
+        Vector2 wheelMouse;
+        Gladiator.UI.TauntWheel wheel;
+        /// <summary>True while the taunt wheel is open (movement and attacks are paused).</summary>
+        public bool TauntWheelOpen => wheel != null && wheel.IsOpen;
+
         void Awake() { fighter = GetComponent<Fighter>(); }
-        void OnDisable() { NearbyWeapon = null; }
+        void OnDisable() { NearbyWeapon = null; if (wheel != null) wheel.Close(); GameInput.WheelOpen = false; tauntHeldTime = 0f; }
+        void OnDestroy() { if (wheel != null) Destroy(wheel.gameObject); GameInput.WheelOpen = false; }
+
+        /// <summary>Returns true while the wheel takes the input this frame.</summary>
+        bool UpdateTauntWheel()
+        {
+            bool held = GameInput.TauntHeld;
+            if (held)
+            {
+                tauntHeldTime += Time.unscaledDeltaTime;
+                if (tauntHeldTime >= WheelDelay && !TauntWheelOpen)
+                {
+                    if (wheel == null) wheel = Gladiator.UI.TauntWheel.Create();
+                    wheelMouse = Vector2.zero;
+                    wheel.Open();
+                    GameInput.WheelOpen = true;
+                }
+            }
+            if (TauntWheelOpen)
+            {
+                int sel = wheel.Selected;
+                int bySticks = Gladiator.UI.TauntWheel.SlotFor(GameInput.Move, 0.5f);
+                wheelMouse = Vector2.ClampMagnitude(wheelMouse + GameInput.WheelMouseDelta, 120f);
+                int byMouse = Gladiator.UI.TauntWheel.SlotFor(wheelMouse, 40f);
+                if (bySticks >= 0) sel = bySticks;
+                else if (byMouse >= 0) sel = byMouse;
+                for (int d = 1; d <= 4; d++) if (GameInput.DigitPressed(d)) sel = d - 1;
+                if (sel != wheel.Selected) wheel.SetSelected(sel);
+            }
+            if (!held && tauntHeldTime > 0f)
+            {
+                if (TauntWheelOpen)
+                {
+                    int sel = wheel.Selected;
+                    wheel.Close();
+                    GameInput.WheelOpen = false;
+                    if (sel >= 0) fighter.TryTaunt(Gladiator.UI.TauntWheel.Kinds[sel]);
+                }
+                else fighter.TryTaunt(Random.Range(0, 2)); // tap: beat the chest or beckon
+                tauntHeldTime = 0f;
+                return true;
+            }
+            return TauntWheelOpen;
+        }
 
         void Update()
         {
             GameInput.UpdateDeviceMode();
             NearbyWeapon = null;
-            if (!fighter.IsAlive || AimCamera == null) return;
+            if (!fighter.IsAlive || AimCamera == null)
+            {
+                if (TauntWheelOpen) { wheel.Close(); GameInput.WheelOpen = false; }
+                tauntHeldTime = 0f;
+                return;
+            }
+            if (UpdateTauntWheel()) { fighter.Move(Vector3.zero); return; }
 
             Vector3 fwd = AimCamera.transform.forward; fwd.y = 0f; fwd.Normalize();
             Vector3 right = AimCamera.transform.right; right.y = 0f; right.Normalize();
@@ -78,7 +135,6 @@ namespace Gladiator.Combat
             if (GameInput.LightAttackPressed) fighter.TryAttack(AttackType.Light);
             if (GameInput.HeavyAttackPressed) fighter.TryAttack(AttackType.Heavy);
             if (GameInput.KickPressed) fighter.TryAttack(AttackType.Kick);
-            if (GameInput.TauntPressed) fighter.TryTaunt(Random.Range(0, 3));
 
             // G: a tap drops the weapon at your feet; held for 0.35 s it throws it.
             bool g = GameInput.DropHeld;

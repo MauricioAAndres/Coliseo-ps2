@@ -215,7 +215,7 @@ namespace Gladiator.Net
             if (f != local || NetSession.Instance == null || !NetSession.Instance.InGame) return;
             switch (kind)
             {
-                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer":
+                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
             }
@@ -384,7 +384,7 @@ namespace Gladiator.Net
                 case "vault": case "climb": Fighter.TryJump(fwd); break;
                 case "dodge": Fighter.TryDodge(fwd); break;
                 case "dodge_back": Fighter.TryDodge(Vector3.zero); break;
-                case "taunt": case "cheer": Fighter.TryTaunt(tauntKind); break;
+                case "taunt": case "cheer": case "gesture": Fighter.TryTaunt(tauntKind); break;
             }
         }
 

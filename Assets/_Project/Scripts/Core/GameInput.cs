@@ -79,6 +79,16 @@ namespace Gladiator.Core
 
         /// <summary>Taunt: T / gamepad D-pad up.</summary>
         public static bool TauntPressed => Bound(GameAction.Taunt);
+        /// <summary>Taunt button held: after a moment it opens the taunt wheel.</summary>
+        public static bool TauntHeld => BoundHeld(GameAction.Taunt);
+
+        /// <summary>Number row key 1-9 pressed this frame (taunt wheel shortcuts).</summary>
+        public static bool DigitPressed(int d)
+        {
+            var k = K;
+            if (k == null || d < 1 || d > 9) return false;
+            return k[(Key)((int)Key.Digit1 + d - 1)].wasPressedThisFrame;
+        }
 
         /// <summary>Kick: F / gamepad LB by default.</summary>
         public static bool KickPressed => Bound(GameAction.Kick);
@@ -89,7 +99,11 @@ namespace Gladiator.Core
         public static bool LockOnHeld => BoundHeld(GameAction.LockOn);
 
         /// <summary>Mouse movement this frame (pixels).</summary>
-        public static Vector2 LookDelta => M != null ? M.delta.ReadValue() : Vector2.zero;
+        public static Vector2 LookDelta => M != null && !WheelOpen ? M.delta.ReadValue() : Vector2.zero;
+
+        /// <summary>Set while the taunt wheel is open: the camera ignores the mouse, the wheel reads <see cref="WheelMouseDelta"/>.</summary>
+        public static bool WheelOpen;
+        public static Vector2 WheelMouseDelta => M != null ? M.delta.ReadValue() : Vector2.zero;
 
         /// <summary>Jump / vault / climb: Space / gamepad A.</summary>
         public static bool JumpPressed => Bound(GameAction.Jump);

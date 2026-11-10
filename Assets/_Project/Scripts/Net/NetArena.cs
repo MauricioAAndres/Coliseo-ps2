@@ -198,7 +198,7 @@ namespace Gladiator.Net
             if (!coop || session == null || !session.IsHost || !botIds.TryGetValue(f, out int id)) return;
             switch (kind)
             {
-                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer":
+                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture":
                     session.Send("BMV", id + "|" + kind + "|" + f.TauntKind + "|" + PosYaw(f));
                     break;
             }

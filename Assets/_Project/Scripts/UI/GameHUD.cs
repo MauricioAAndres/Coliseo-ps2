@@ -58,7 +58,7 @@ namespace Gladiator.UI
             msgText = MakeText(root, "", 18, TextAnchor.MiddleCenter, new Vector2(0.5f, 1), new Vector2(0, -170), new Vector2(600, 26), new Color(1f, 0.85f, 0.3f));
 
             hintText = MakeText(root,
-                "WASD mover  RATON apuntar  CLIC IZQ ligero  CLIC DER fuerte  F patada  SHIFT bloquear  ESPACIO saltar/escalar  CTRL esquivar  C agacharse  T burla  G soltar/lanzar  E recoger",
+                "WASD mover  RATON apuntar  CLIC IZQ ligero  CLIC DER fuerte  F patada  SHIFT bloquear  ESPACIO saltar/escalar  CTRL esquivar  C agacharse  T burla (mantener: elegir)  G soltar/lanzar  E recoger",
                 10, TextAnchor.LowerCenter, new Vector2(0.5f, 0), new Vector2(0, 6), new Vector2(1000, 14), new Color(0.85f, 0.8f, 0.7f));
 
             banner = new GameObject("Banner", typeof(RectTransform));
@@ -194,7 +194,7 @@ namespace Gladiator.UI
                 hintText.text = move + " mover  " + (hintShoulder ? "RATON camara  " + K(GameAction.LockOn) + " fijar" : "RATON apuntar  " + K(GameAction.LockOn) + "+RATON girar camara") +
                     "  " + K(GameAction.Light) + " ligero  " + K(GameAction.Heavy) + " fuerte  " + K(GameAction.Kick) + " patada  " +
                     K(GameAction.Block) + " bloquear  " + K(GameAction.Jump) + " saltar  " + K(GameAction.Dodge) + " esquivar  " +
-                    K(GameAction.Crouch) + " agacharse  " + K(GameAction.Taunt) + " burla  " + K(GameAction.Drop) + " soltar/lanzar  " +
+                    K(GameAction.Crouch) + " agacharse  " + K(GameAction.Taunt) + " burla (mantener: elegir)  " + K(GameAction.Drop) + " soltar/lanzar  " +
                     K(GameAction.Interact) + " recoger";
             }
             float dt = Time.unscaledDeltaTime;

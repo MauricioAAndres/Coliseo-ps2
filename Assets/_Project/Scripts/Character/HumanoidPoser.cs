@@ -43,7 +43,7 @@ namespace Gladiator.Character
                    dualLeft, dualHeavy, bowGuard, bowShoot;
         MotionClip guardCurrent;
         GameObject nockedArrow;
-        MotionClip kickClip, stunnedClip, tauntChest, tauntBeckon, cheerClip;
+        MotionClip kickClip, stunnedClip, tauntChest, tauntBeckon, cheerClip, waveClip, bowGestureClip, noClip;
         MotionClip dodgeClip, dodgeBackClip, jumpClip, fallClip, landClip, crouchClip, crouchWalkClip, vaultClip, climbClip;
         float crouchWeight, crouchTime, crouchWalkTime, rollAngle;
         bool profilesSet;
@@ -123,6 +123,7 @@ namespace Gladiator.Character
             bowGuard = MotionLibrary.Get("bow_guard"); bowShoot = MotionLibrary.Get("bow_shoot");
             kickClip = MotionLibrary.Get("kick"); stunnedClip = MotionLibrary.Get("stunned");
             tauntChest = MotionLibrary.Get("taunt_chest"); tauntBeckon = MotionLibrary.Get("taunt_beckon"); cheerClip = MotionLibrary.Get("cheer");
+            waveClip = MotionLibrary.Get("gesture_wave"); bowGestureClip = MotionLibrary.Get("gesture_bow"); noClip = MotionLibrary.Get("gesture_no");
             dodgeClip = MotionLibrary.Get("dodge"); dodgeBackClip = MotionLibrary.Get("dodge_back");
             jumpClip = MotionLibrary.Get("jump"); fallClip = MotionLibrary.Get("fall"); landClip = MotionLibrary.Get("land");
             crouchClip = MotionLibrary.Get("crouch"); crouchWalkClip = MotionLibrary.Get("crouch_walk");
@@ -430,7 +431,15 @@ namespace Gladiator.Character
                         t = Fighter.StatePhase;
                         break;
                     case FighterState.Taunt:
-                        clip = Fighter.TauntKind == 0 ? tauntChest : Fighter.TauntKind == 1 ? tauntBeckon : cheerClip;
+                        switch (Fighter.TauntKind)
+                        {
+                            case 0: clip = tauntChest; break;
+                            case 1: clip = tauntBeckon; break;
+                            case 3: clip = waveClip; break;
+                            case 4: clip = bowGestureClip; break;
+                            case 5: clip = noClip; break;
+                            default: clip = cheerClip; break;
+                        }
                         t = Fighter.StatePhase;
                         fullBody = true;
                         break;

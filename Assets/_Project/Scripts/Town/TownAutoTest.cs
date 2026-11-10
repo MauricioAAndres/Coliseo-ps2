@@ -29,6 +29,17 @@ namespace Gladiator.Town
 
         static IEnumerator Wait(float s) { for (float t = 0f; t < s; t += Time.unscaledDeltaTime) yield return null; }
 
+        /// <summary>Keeps the camera in front of a fighter, a little to the side, for s seconds.</summary>
+        static IEnumerator HoldCam(Gladiator.Arena.ArenaCamera cam, Fighter f, float s)
+        {
+            for (float t = 0f; t < s; t += Time.unscaledDeltaTime)
+            {
+                cam.FocusOverride = f.transform.position + Vector3.up * 0.9f; cam.Distance = 4f; cam.Pitch = 8f;
+                cam.Yaw = Quaternion.LookRotation(-f.transform.forward).eulerAngles.y + 25f;
+                yield return null;
+            }
+        }
+
         IEnumerator Shot(string name)
         {
             yield return new WaitForEndOfFrame();
@@ -128,6 +139,32 @@ namespace Gladiator.Town
 
             yield return Wait(1.5f);
             yield return Shot("01_llegada");
+
+            // ---- taunt wheel (T held) and the four selectable gestures, seen from the front
+            {
+                var pl = town.Player;
+                var gcam = town.Cam;
+                Vector3 face = pl.transform.forward;
+                gcam.FocusOverride = pl.transform.position + Vector3.up * 0.9f; gcam.Distance = 4.2f; gcam.Pitch = 8f;
+                gcam.Yaw = Quaternion.LookRotation(-face).eulerAngles.y;
+                var wheel = Gladiator.UI.TauntWheel.Create();
+                wheel.Open(); wheel.SetSelected(1);
+                yield return HoldCam(gcam, pl, 0.6f);
+                yield return Shot("01b_menu_burlas");
+                wheel.Close(); Destroy(wheel.gameObject);
+                string[] gnames = { "brazos", "saludo", "reverencia", "negar" };
+                for (int g = 0; g < 4; g++)
+                {
+                    yield return HoldCam(gcam, pl, 0.4f);
+                    bool ok = pl.TryTaunt(Gladiator.UI.TauntWheel.Kinds[g]);
+                    float tShot = g == 2 ? 1.3f : 0.9f;
+                    yield return HoldCam(gcam, pl, tShot);
+                    Log($"GESTURE {gnames[g]} ok={ok} state={pl.State} kind={pl.TauntKind}");
+                    yield return Shot("01c_gesto_" + gnames[g]);
+                    while (pl.State == FighterState.Taunt) yield return null;
+                }
+                gcam.FocusOverride = null;
+            }
 
             // ---- the complexion slider: bust grows from masculine to feminine (same body otherwise), bare and in a tunic
             {
