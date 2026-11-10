@@ -6,7 +6,7 @@ using UnityEngine.InputSystem.Controls;
 namespace Gladiator.Core
 {
     /// <summary>Game actions the player can rebind (ESC > CONTROLES).</summary>
-    public enum GameAction { MoveUp, MoveDown, MoveLeft, MoveRight, Light, Heavy, Kick, Block, Jump, Dodge, Crouch, Taunt, Drop, Interact, LockOn }
+    public enum GameAction { MoveUp, MoveDown, MoveLeft, MoveRight, Light, Heavy, Kick, Block, Jump, Dodge, Crouch, Taunt, Drop, Interact, LockOn, Activity, Walk }
 
     /// <summary>
     /// Key / button assignments, two columns per action: keyboard + mouse, and gamepad. Saved in PlayerPrefs.
@@ -41,6 +41,8 @@ namespace Gladiator.Core
             new Def("SOLTAR / LANZAR ARMA", new[] { "kb:g" }, new[] { "pad:dpad/down" }),
             new Def("RECOGER / USAR", new[] { "kb:e" }, new[] { "pad:buttonSouth" }),
             new Def("FIJAR / GIRAR CAMARA", new[] { "mouse:middleButton", "kb:tab" }, new[] { "pad:rightStickPress" }),
+            new Def("ACCIONES (mantener)", new[] { "kb:x" }, new[] { "pad:dpad/left" }),
+            new Def("CAMINAR / CORRER", new[] { "kb:capsLock" }, new[] { "pad:leftStickPress" }),
         };
 
         public static int Count => Defs.Length;

@@ -164,7 +164,7 @@ namespace Gladiator.Town
 
             Hud = new GameObject("TownHUD", typeof(RectTransform)).AddComponent<TrainingHUD>();
             Hud.Init(cam);
-            Hud.SetHint("WASD mover   E interactuar   puerta del ludus: volver   puerta de la arena: elegir combate   F3 el pueblo   F4 donde esta cada uno   ESC menu");
+            Hud.SetHint("WASD mover  BLOQ MAYUS caminar/correr  T burlas  X acciones  E interactuar  puerta del ludus: volver  puerta de la arena: combate  F3 el pueblo  F4 donde esta cada uno  ESC menu");
             Spawner = new GameObject("Citizens").AddComponent<CitizenSpawner>();
             Spawner.Init(Player);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();

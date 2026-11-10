@@ -44,6 +44,7 @@ namespace Gladiator.Character
         MotionClip guardCurrent;
         GameObject nockedArrow;
         MotionClip kickClip, stunnedClip, tauntChest, tauntBeckon, cheerClip, waveClip, bowGestureClip, noClip;
+        MotionClip[] actIn, actLoop;
         MotionClip dodgeClip, dodgeBackClip, jumpClip, fallClip, landClip, crouchClip, crouchWalkClip, vaultClip, climbClip;
         float crouchWeight, crouchTime, crouchWalkTime, rollAngle;
         bool profilesSet;
@@ -124,6 +125,8 @@ namespace Gladiator.Character
             kickClip = MotionLibrary.Get("kick"); stunnedClip = MotionLibrary.Get("stunned");
             tauntChest = MotionLibrary.Get("taunt_chest"); tauntBeckon = MotionLibrary.Get("taunt_beckon"); cheerClip = MotionLibrary.Get("cheer");
             waveClip = MotionLibrary.Get("gesture_wave"); bowGestureClip = MotionLibrary.Get("gesture_bow"); noClip = MotionLibrary.Get("gesture_no");
+            actIn = new[] { MotionLibrary.Get("act_lie_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_cook_in") };
+            actLoop = new[] { MotionLibrary.Get("act_lie"), MotionLibrary.Get("act_sit"), MotionLibrary.Get("act_eat"), MotionLibrary.Get("act_cook") };
             dodgeClip = MotionLibrary.Get("dodge"); dodgeBackClip = MotionLibrary.Get("dodge_back");
             jumpClip = MotionLibrary.Get("jump"); fallClip = MotionLibrary.Get("fall"); landClip = MotionLibrary.Get("land");
             crouchClip = MotionLibrary.Get("crouch"); crouchWalkClip = MotionLibrary.Get("crouch_walk");
@@ -443,6 +446,18 @@ namespace Gladiator.Character
                         t = Fighter.StatePhase;
                         fullBody = true;
                         break;
+                    case FighterState.Activity:
+                    {
+                        // Sit down / lie down... ("in" clip), hold the loop, get up = the "in" clip backwards.
+                        fullBody = true;
+                        int k = Fighter.ActivityKind;
+                        if (actIn == null || actIn[k] == null) break;
+                        float inT = Fighter.ActivityInTime;
+                        if (Fighter.ActivityLeaving) { clip = actIn[k]; t = 1f - Fighter.StatePhase; }
+                        else if (stateTime < inT || actLoop[k] == null) { clip = actIn[k]; t = Mathf.Min(1f, stateTime / inT); }
+                        else { clip = actLoop[k]; t = Mathf.Repeat((stateTime - inT) / actLoop[k].Duration, 1f); }
+                        break;
+                    }
                     case FighterState.Stunned:
                         // Knocked back first (stagger), then the dazed sway.
                         fullBody = true;

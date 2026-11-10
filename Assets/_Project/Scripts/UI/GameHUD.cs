@@ -194,7 +194,7 @@ namespace Gladiator.UI
                 hintText.text = move + " mover  " + (hintShoulder ? "RATON camara  " + K(GameAction.LockOn) + " fijar" : "RATON apuntar  " + K(GameAction.LockOn) + "+RATON girar camara") +
                     "  " + K(GameAction.Light) + " ligero  " + K(GameAction.Heavy) + " fuerte  " + K(GameAction.Kick) + " patada  " +
                     K(GameAction.Block) + " bloquear  " + K(GameAction.Jump) + " saltar  " + K(GameAction.Dodge) + " esquivar  " +
-                    K(GameAction.Crouch) + " agacharse  " + K(GameAction.Taunt) + " burla (mantener: elegir)  " + K(GameAction.Drop) + " soltar/lanzar  " +
+                    K(GameAction.Crouch) + " agacharse  " + K(GameAction.Taunt) + " burla (mantener: elegir)  " + K(GameAction.Activity) + " acciones  " + K(GameAction.Walk) + " caminar/correr  " + K(GameAction.Drop) + " soltar/lanzar  " +
                     K(GameAction.Interact) + " recoger";
             }
             float dt = Time.unscaledDeltaTime;

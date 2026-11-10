@@ -30,12 +30,12 @@ namespace Gladiator.Town
         static IEnumerator Wait(float s) { for (float t = 0f; t < s; t += Time.unscaledDeltaTime) yield return null; }
 
         /// <summary>Keeps the camera in front of a fighter, a little to the side, for s seconds.</summary>
-        static IEnumerator HoldCam(Gladiator.Arena.ArenaCamera cam, Fighter f, float s)
+        static IEnumerator HoldCam(Gladiator.Arena.ArenaCamera cam, Fighter f, float s, float h = 0.9f, float dist = 4f, float pitch = 8f, float side = 25f)
         {
             for (float t = 0f; t < s; t += Time.unscaledDeltaTime)
             {
-                cam.FocusOverride = f.transform.position + Vector3.up * 0.9f; cam.Distance = 4f; cam.Pitch = 8f;
-                cam.Yaw = Quaternion.LookRotation(-f.transform.forward).eulerAngles.y + 25f;
+                cam.FocusOverride = f.transform.position + Vector3.up * h; cam.Distance = dist; cam.Pitch = pitch;
+                cam.Yaw = Quaternion.LookRotation(-f.transform.forward).eulerAngles.y + side;
                 yield return null;
             }
         }
@@ -164,6 +164,55 @@ namespace Gladiator.Town
                     while (pl.State == FighterState.Taunt) yield return null;
                 }
                 gcam.FocusOverride = null;
+            }
+
+            // ---- activities (hold X): lie down, sit, eat, cook; then walk vs run
+            {
+                var pl = town.Player;
+                var gcam = town.Cam;
+                {
+                    // an open spot next to the fountain
+                    var cc = pl.GetComponent<CharacterController>();
+                    if (cc != null) cc.enabled = false;
+                    pl.transform.position = town.Layout.Fountain + new Vector3(4.5f, 0.05f, 0f);
+                    if (cc != null) cc.enabled = true;
+                    yield return HoldCam(gcam, pl, 0.6f);
+                }
+                var aw = Gladiator.UI.TauntWheel.Create("ACCION", Gladiator.UI.TauntWheel.ActivityLabels);
+                aw.Open(); aw.SetSelected(0);
+                yield return HoldCam(gcam, pl, 0.5f);
+                yield return Shot("01d_menu_acciones");
+                aw.Close(); Destroy(aw.gameObject);
+                string[] an = { "acostarse", "sentarse", "comer", "cocinar" };
+                for (int k = 0; k < 4; k++)
+                {
+                    bool ok = pl.TryActivity(k);
+                    yield return HoldCam(gcam, pl, pl.ActivityInTime + 1.0f, 0.3f, 3.6f, 18f, k == 0 ? 80f : 35f);
+                    Log($"ACTIVITY {an[k]} ok={ok} state={pl.State} kind={pl.ActivityKind} props={(pl.GetComponent<ActivityProps>() != null)}");
+                    yield return Shot("01e_accion_" + an[k]);
+                    Vector3 before = pl.transform.position;
+                    pl.Move(pl.transform.forward);
+                    yield return HoldCam(gcam, pl, 0.3f);
+                    Log($"ACTIVITY {an[k]} moved while busy={(pl.transform.position - before).magnitude:0.00}m");
+                    pl.StopActivity();
+                    float t0a = Time.time;
+                    while (pl.State == FighterState.Activity && Time.time - t0a < 5f) { pl.Move(Vector3.zero); yield return null; }
+                    Log($"ACTIVITY {an[k]} got up in {Time.time - t0a:0.00}s state={pl.State}");
+                }
+                var pcw = pl.GetComponent<PlayerController>();
+                if (pcw != null) pcw.enabled = false;
+                foreach (bool walk in new[] { false, true })
+                {
+                    pl.WalkMode = walk;
+                    Vector3 p0 = pl.transform.position;
+                    for (float t = 0f; t < 1f; t += Time.deltaTime) { pl.Move(pl.transform.forward); yield return null; }
+                    Log($"WALKMODE {walk} speed={(pl.transform.position - p0).magnitude:0.00} m/s");
+                    if (walk) yield return Shot("01f_caminando");
+                }
+                pl.WalkMode = false;
+                if (pcw != null) pcw.enabled = true;
+                gcam.FocusOverride = null;
+                if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0) { Quit(); yield break; }
             }
 
             // ---- the complexion slider: bust grows from masculine to feminine (same body otherwise), bare and in a tunic

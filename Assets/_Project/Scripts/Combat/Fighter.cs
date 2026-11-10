@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Gladiator.Combat
 {
     public enum AttackType { Light, Heavy, Kick }
-    public enum FighterState { Idle, Windup, Active, Recovery, Blocking, Stagger, Dead, Dodge, Airborne, Landing, Traverse, Stunned, Taunt }
+    public enum FighterState { Idle, Windup, Active, Recovery, Blocking, Stagger, Dead, Dodge, Airborne, Landing, Traverse, Stunned, Taunt, Activity }
     public enum TraverseKind { Vault, Climb }
     /// <summary>Attacks started in the air: light = slash in the air, kick = diving kick, heavy = slam to the ground.</summary>
     public enum AirAttackKind { None, Slash, DiveKick, Slam }
@@ -280,6 +280,43 @@ namespace Gladiator.Combat
         public void SetCharge(bool held) { chargeHeld = held; }
 
         bool FreeToMove => state == FighterState.Idle || state == FighterState.Blocking || state == FighterState.Recovery;
+
+        /// <summary>Activities (held until the fighter gets up): 0 lie down, 1 sit, 2 eat, 3 cook.</summary>
+        public const int ActivityKinds = 4;
+        public static readonly string[] ActivityNames = { "ACOSTARSE", "SENTARSE", "COMER", "COCINAR" };
+        /// <summary>Length of each activity's "in" clip (sitting down...); getting up plays it backwards, a bit faster.</summary>
+        static readonly float[] ActivityInTimes = { 2.63f, 1.67f, 1.67f, 0.97f };
+        public int ActivityKind { get; private set; }
+        /// <summary>Getting up: the "in" clip plays backwards (StatePhase 0..1).</summary>
+        public bool ActivityLeaving { get; private set; }
+        public float ActivityInTime => ActivityInTimes[ActivityKind];
+        public bool InActivity => state == FighterState.Activity;
+
+        /// <summary>Walk instead of run (toggle).</summary>
+        [System.NonSerialized] public bool WalkMode;
+        public const float WalkMul = 0.36f;
+
+        /// <summary>Lie down, sit, eat or cook. Stays until <see cref="StopActivity"/> (or a hit).</summary>
+        public bool TryActivity(int kind)
+        {
+            if (!IsAlive || state != FighterState.Idle || !IsGrounded) return false;
+            ActivityKind = Mathf.Clamp(kind, 0, ActivityKinds - 1);
+            ActivityLeaving = false;
+            bufferedAttack = null;
+            SetState(FighterState.Activity, 1e6f);
+            ActivityProps.For(this);
+            AnyMove?.Invoke(this, "activity");
+            return true;
+        }
+
+        /// <summary>Get up from the current activity (plays the "in" clip backwards).</summary>
+        public void StopActivity()
+        {
+            if (state != FighterState.Activity || ActivityLeaving) return;
+            ActivityLeaving = true;
+            SetState(FighterState.Activity, ActivityInTime * 0.7f);
+            AnyMove?.Invoke(this, "activity_end");
+        }
 
         /// <summary>Taunt kinds: 0 beat the chest, 1 beckon, 2 raise the arms (cheer), 3 wave, 4 bow, 5 "no".</summary>
         public const int TauntKinds = 6;
@@ -638,6 +675,9 @@ namespace Gladiator.Combat
                 case FighterState.Taunt:
                     if (stateTimer <= 0f) SetState(FighterState.Idle, 0f);
                     break;
+                case FighterState.Activity:
+                    if (ActivityLeaving && stateTimer <= 0f) { ActivityLeaving = false; SetState(FighterState.Idle, 0f); }
+                    break;
                 case FighterState.Traverse:
                     UpdateTraverse();
                     UpdateFlash(dt);
@@ -921,11 +961,13 @@ namespace Gladiator.Combat
                 case FighterState.Stagger: mul = 0.1f; break;
                 case FighterState.Stunned: mul = 0f; break;
                 case FighterState.Taunt: mul = 0f; break;
+                case FighterState.Activity: mul = 0f; break;
                 case FighterState.Airborne: mul = 0.85f; break;
                 case FighterState.Landing: mul = LastFallHeight > 1.3f ? 0.1f : 0.6f; break;
                 case FighterState.Dodge: mul = 0f; break;
                 default: mul = 1f; break;
             }
+            if (WalkMode && IsGrounded) mul *= WalkMul;
             if (AirAttack == AirAttackKind.Slash && !IsGrounded) mul = 0.8f;
             else if (AirAttack == AirAttackKind.DiveKick || AirAttack == AirAttackKind.Slam) mul = state == FighterState.Recovery ? 0.3f : 0.1f;
             if (Crouching) mul *= 0.45f;

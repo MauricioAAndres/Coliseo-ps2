@@ -218,6 +218,9 @@ namespace Gladiator.Net
                 case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
+                case "activity": case "activity_end":
+                    NetSession.Instance.Send("MV", kind + "|" + local.ActivityKind + "|" + PosYaw());
+                    break;
             }
         }
 
@@ -385,6 +388,8 @@ namespace Gladiator.Net
                 case "dodge": Fighter.TryDodge(fwd); break;
                 case "dodge_back": Fighter.TryDodge(Vector3.zero); break;
                 case "taunt": case "cheer": case "gesture": Fighter.TryTaunt(tauntKind); break;
+                case "activity": Fighter.TryActivity(tauntKind); break;
+                case "activity_end": Fighter.StopActivity(); break;
             }
         }
 

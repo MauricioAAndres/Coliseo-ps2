@@ -24,10 +24,21 @@ namespace Gladiator.UI
         readonly Image[] boxes = new Image[4];
         Font font;
 
-        public static TauntWheel Create()
+        /// <summary>Activity wheel (hold X): fighter activity kind for each slot (up, right, down, left).</summary>
+        public static readonly int[] ActivityKinds = { 0, 1, 3, 2 };
+        public static readonly string[] ActivityLabels = { "ACOSTARSE", "SENTARSE", "COCINAR", "COMER" };
+
+        string title = "BURLA";
+        string[] labels = Labels;
+
+        public static TauntWheel Create() => Create("BURLA", Labels);
+
+        public static TauntWheel Create(string title, string[] labels)
         {
-            var go = new GameObject("TauntWheel");
+            var go = new GameObject("Wheel_" + title);
             var w = go.AddComponent<TauntWheel>();
+            w.title = title;
+            w.labels = labels;
             w.Build();
             return w;
         }
@@ -50,11 +61,11 @@ namespace Gladiator.UI
             rrt.sizeDelta = new Vector2(10, 10);
 
             var center = Box(rrt, Vector2.zero, new Vector2(150, 44), new Color(0f, 0f, 0f, 0.6f));
-            Label(center.rectTransform, "BURLA\n<size=10>elige y suelta</size>", 14);
+            Label(center.rectTransform, title + "\n<size=10>elige y suelta</size>", 14);
             for (int i = 0; i < 4; i++)
             {
                 boxes[i] = Box(rrt, Offsets[i], new Vector2(200, 46), Normal);
-                Label(boxes[i].rectTransform, Labels[i] + "\n<size=10>" + (i + 1) + "</size>", 15);
+                Label(boxes[i].rectTransform, labels[i] + "\n<size=10>" + (i + 1) + "</size>", 15);
             }
             root.SetActive(false);
         }
