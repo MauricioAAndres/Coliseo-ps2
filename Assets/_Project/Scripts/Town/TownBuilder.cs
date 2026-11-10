@@ -417,7 +417,6 @@ namespace Gladiator.Town
                 // where a patient lies: hips about 0.78 m from the head end, looking to the foot of the bed
                 Vector3 at = LP(lot, x, 0.52f, zHead - headSide * 0.78f);
                 house.BedSpots.Add(new Pose(at, q * Quaternion.LookRotation(new Vector3(0, 0, -headSide))));
-                house.Beds.Add("ENFERMERIA");
             }
             for (int i = 0; i < 6; i++) Bed(-hx + 1.2f + i * (w - 2.4f) / 5f, -1);
             foreach (float x in new[] { -hx + 1.2f, -hx + 2.6f, hx - 2.6f, hx - 1.2f }) Bed(x, 1);

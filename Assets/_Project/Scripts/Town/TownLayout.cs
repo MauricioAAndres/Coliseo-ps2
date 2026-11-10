@@ -28,6 +28,8 @@ namespace Gladiator.Town
         /// <summary>Large home: kitchen, hallway, 2 bedrooms, 2 bathrooms and a 2 x 2 m storeroom.</summary>
         public bool Large;
         public int Price;
+        /// <summary>Gets a paved path from its door to the street.</summary>
+        public bool StreetPath;
         /// <summary>World point just outside the front door (where people go in and out).</summary>
         public Vector3 Door => Center + Front * (Depth * 0.5f + 0.9f) + Right * (DoorOffset * Width);
         public Vector3 Right => Vector3.Cross(Vector3.up, Front).normalized;
@@ -92,7 +94,11 @@ namespace Gladiator.Town
         public const float ArenaZ = 92f, ArenaRadius = 20f;
         public const float LudusZ = -60f, LudusHalfX = 14f, LudusHalfZ = 12f;
         public const float WallX = 66f, WallZMin = -78f, WallZMax = 118f;
-        public const float InfirmaryX = 33f, InfirmaryZ = 72f;
+        // the street grid (template space)
+        public const float SideX = 30f, SideHalfW = 2.5f, RingX = 63f, RingHalfW = 2f, GridZMin = -46f;
+        public static readonly float[] StreetsZ = { -42f, 34f, 66f };
+        public const float LotWidth = 9.6f, LotDepth = 10f, LotPitch = 11f, Setback = 1.2f;
+        public const float InfirmaryX = SideX + SideHalfW + 1.2f + 5.5f, InfirmaryZ = 78f;
         /// <summary>The infirmary's lot (beds inside: TownBuilder.Infirmary).</summary>
         public TownLot InfirmaryLot { get; private set; }
 
@@ -123,12 +129,18 @@ namespace Gladiator.Town
             Mirrored = rng.Next(2) == 1;
             rot = Quaternion.Euler(0f, RotationDeg, 0f);
 
-            // ---- paving
+            // ---- paving: the plaza, then a regular grid of streets (seen from above the town is a chequerboard of blocks)
             AddPaving(Vector3.zero, new Vector2(PlazaHalf * 2f, PlazaHalf * 2f), 0f, true);
-            AddPaving(new Vector3(0, 0, (PlazaHalf + MainEnd + 2f) * 0.5f), new Vector2(MainHalfW * 2f, MainEnd + 2f - PlazaHalf), 0f, false);
-            AddPaving(new Vector3(0, 0, (-PlazaHalf + SouthEnd) * 0.5f), new Vector2(SouthHalfW * 2f, PlazaHalf - SouthEnd), 0f, false);
-            AddPaving(new Vector3((PlazaHalf + CrossEnd) * 0.5f, 0, 0), new Vector2(CrossEnd - PlazaHalf, CrossHalfW * 2f), 0f, false);
-            AddPaving(new Vector3(-(PlazaHalf + CrossEnd) * 0.5f, 0, 0), new Vector2(CrossEnd - PlazaHalf, CrossHalfW * 2f), 0f, false);
+            // north-south: the main street (ludus gate -> arena), two side streets, and one along each wall
+            AddPaving(new Vector3(0, 0, (GridZMin + MainEnd) * 0.5f), new Vector2(MainHalfW * 2f, MainEnd - GridZMin), 0f, false);
+            foreach (float x in new[] { -SideX, SideX })
+                AddPaving(new Vector3(x, 0, (WallZMin + 2f + WallZMax - 2f) * 0.5f), new Vector2(SideHalfW * 2f, WallZMax - WallZMin - 4f), 0f, false);
+            foreach (float x in new[] { -RingX, RingX })
+                AddPaving(new Vector3(x, 0, (WallZMin + 2f + WallZMax - 2f) * 0.5f), new Vector2(RingHalfW * 2f, WallZMax - WallZMin - 4f), 0f, false);
+            // east-west: the cross street through the plaza and three more
+            AddPaving(new Vector3(0, 0, 0), new Vector2(RingX * 2f + RingHalfW * 2f, CrossHalfW * 2f), 0f, false);
+            foreach (float z in StreetsZ)
+                AddPaving(new Vector3(0, 0, z), new Vector2(RingX * 2f + RingHalfW * 2f, SideHalfW * 2f), 0f, false);
             // forecourt in front of the arena
             AddPaving(new Vector3(0, 0, MainEnd + 1.5f), new Vector2(18f, 5f), 0f, true);
 
@@ -140,6 +152,7 @@ namespace Gladiator.Town
             // Temple always on the north side (looking down the plaza from the arena road), as in a forum.
             specials.Remove(BuildingKind.Temple);
             specials.Insert(rng.Next(2), BuildingKind.Temple);
+            var taken = new List<Rect> { new Rect(-PlazaHalf - 1f, -PlazaHalf - 1f, PlazaHalf * 2f + 2f, PlazaHalf * 2f + 2f) }; // template space
             var plazaSlots = new List<(Vector3 c, Vector3 f)>
             {
                 (new Vector3(-8f, 0, PlazaHalf + 5.5f), Vector3.back), (new Vector3(8f, 0, PlazaHalf + 5.5f), Vector3.back),
@@ -153,75 +166,86 @@ namespace Gladiator.Town
                 float w = kind == BuildingKind.Temple ? 8f : 7.4f + (float)rng.NextDouble() * 0.6f;
                 float d = kind == BuildingKind.Temple ? 9.5f : 8f + (float)rng.NextDouble() * 1.5f;
                 AddLot(rng, kind, plazaSlots[i].c, plazaSlots[i].f, w, d);
+                bool alongZ = Mathf.Abs(plazaSlots[i].f.z) > 0.5f;
+                taken.Add(new Rect(plazaSlots[i].c.x - (alongZ ? w : d) * 0.5f, plazaSlots[i].c.z - (alongZ ? d : w) * 0.5f, alongZ ? w : d, alongZ ? d : w));
             }
 
-            // ---- street lots (houses, shops, gardens)
-            void Street(Vector3 from, Vector3 along, float length, float halfW, float spacing)
-            {
-                Vector3 side = Vector3.Cross(Vector3.up, along);
-                for (float s = spacing * 0.5f; s < length - spacing * 0.4f; s += spacing)
-                    foreach (int sign in new[] { -1, 1 })
-                    {
-                        float depth = 7.5f + (float)rng.NextDouble() * 3f;
-                        float width = spacing - 0.8f - (float)rng.NextDouble() * 1.2f;
-                        Vector3 c = from + along * s + side * sign * (halfW + 0.8f + depth * 0.5f);
-                        double r = rng.NextDouble();
-                        var kind = r < 0.42 ? BuildingKind.Domus : r < 0.74 ? BuildingKind.Insula : r < 0.9 ? BuildingKind.Shop : BuildingKind.Garden;
-                        AddLot(rng, kind, c, -side * sign, width, depth);
-                    }
-            }
-            Street(new Vector3(0, 0, PlazaHalf + 11f), Vector3.forward, MainEnd - PlazaHalf - 13f, MainHalfW, 9f);
-            Street(new Vector3(PlazaHalf + 11f, 0, 0), Vector3.right, CrossEnd - PlazaHalf - 11f, CrossHalfW, 9f);
-            Street(new Vector3(-PlazaHalf - 11f, 0, 0), Vector3.left, CrossEnd - PlazaHalf - 11f, CrossHalfW, 9f);
-            int southFirst = Lots.Count;
-            Street(new Vector3(0, 0, -PlazaHalf - 11f), Vector3.back, -SouthEnd - PlazaHalf - 11f, SouthHalfW, 9f);
-            // the second smithy: the last lot of the street to the ludus, by its gate (the first thing you see coming out)
-            {
-                int best = -1; float far = -1f;
-                for (int i = southFirst; i < Lots.Count; i++)
-                {
-                    float d = (Lots[i].Center - W(Vector3.zero)).sqrMagnitude;
-                    if (d > far) { far = d; best = i; }
-                }
-                if (best >= 0) { Lots[best].Kind = BuildingKind.Smithy; Lots[best].Floors = 1; }
-            }
-
-            // ---- back rows: the four quarters behind the streets fill up with houses (more homes for the townsfolk)
-            void Fill(float x0, float x1, float z0, float z1)
-            {
-                for (float x = x0; x <= x1 + 0.01f; x += 11f)
-                    for (float z = z0; z <= z1 + 0.01f; z += 11f)
-                    {
-                        if (rng.NextDouble() < 0.22) continue; // an empty plot here and there
-                        bool big = rng.NextDouble() < 0.4;    // a large family home (about 10 x 10 m)
-                        float jit = big ? 0f : 2f;
-                        Vector3 c = new Vector3(x + ((float)rng.NextDouble() - 0.5f) * jit, 0, z + ((float)rng.NextDouble() - 0.5f) * jit);
-                        // face the nearer of the two big streets
-                        Vector3 front = Mathf.Abs(c.x) < Mathf.Abs(c.z) ? (c.x > 0 ? Vector3.left : Vector3.right)
-                                                                         : (c.z > 0 ? Vector3.back : Vector3.forward);
-                        double r = rng.NextDouble();
-                        var kind = r < 0.55 ? BuildingKind.Domus : r < 0.9 ? BuildingKind.Insula : BuildingKind.Garden;
-                        if (big)
-                        {
-                            AddLot(rng, BuildingKind.Domus, c, front, 9.6f + (float)rng.NextDouble() * 0.5f, 9.8f + (float)rng.NextDouble() * 0.4f);
-                            Lots[Lots.Count - 1].Large = true;
-                            Lots[Lots.Count - 1].Floors = 1;
-                        }
-                        else AddLot(rng, kind, c, front, 6.5f + (float)rng.NextDouble() * 2.5f, 6.5f + (float)rng.NextDouble() * 2.5f);
-                    }
-            }
-            Fill(26f, 59f, 27f, 60f);
-            Fill(-59f, -26f, 27f, 60f);
-            Fill(26f, 59f, -66f, -29f);
-            Fill(-59f, -26f, -66f, -29f);
-
-            // ---- the infirmary (valetudinarium): a long hall of beds by the arena forecourt, a path to the main street.
+            // ---- the infirmary (valetudinarium): a long hall of beds in the block by the arena, facing a side street.
             // Where a beaten gladiator wakes up.
             AddLot(rng, BuildingKind.Infirmary, new Vector3(InfirmaryX, 0, InfirmaryZ), Vector3.left, 13f, 11f);
             Lots[Lots.Count - 1].Floors = 1;
             Lots[Lots.Count - 1].DoorOffset = 0f;
+            Lots[Lots.Count - 1].StreetPath = true;
             InfirmaryLot = Lots[Lots.Count - 1];
-            AddPaving(new Vector3((9f + InfirmaryX - 5.5f) * 0.5f, 0, InfirmaryZ), new Vector2(InfirmaryX - 5.5f - 9f, 3f), 0f, false); // from the arena forecourt
+
+            // ---- the blocks: between the north-south streets, two rows of equal plots back to back, each row facing
+            // its own street; along every street the doors of both sides face each other. Plots are skipped where the
+            // plaza (and its special buildings), the arena, the ludus or the infirmary stand.
+            bool Blocked(float cx, float cz, float hx, float hz)
+            {
+                var me = new Rect(cx - hx - 0.6f, cz - hz - 0.6f, hx * 2f + 1.2f, hz * 2f + 1.2f);
+                foreach (var t in taken) if (me.Overlaps(t)) return true;                                       // plaza and its buildings
+                float nx = Mathf.Clamp(0f, cx - hx, cx + hx), nz = Mathf.Clamp(ArenaZ, cz - hz, cz + hz);
+                if (new Vector2(nx, nz - ArenaZ).magnitude < ArenaRadius + 4f) return true;                    // arena
+                if (cx + hx > -LudusHalfX - 3f && cx - hx < LudusHalfX + 3f && cz - hz < LudusZ + LudusHalfZ + 3f) return true; // ludus
+                if (cx + hx > InfirmaryX - 6.5f && cx - hx < InfirmaryX + 6.5f && cz + hz > InfirmaryZ - 7.5f && cz - hz < InfirmaryZ + 7.5f) return true;
+                return false;
+            }
+            var gridLots = new List<TownLot>();
+            var columns = new[] { (MainHalfW, SideX - SideHalfW), (SideX + SideHalfW, RingX - RingHalfW) };
+            var rows = new List<(float, float)>();
+            {
+                var zs = new List<float> { WallZMin + 2f };
+                var lines = new List<(float z, float half)> { (0f, CrossHalfW) };
+                foreach (float z in StreetsZ) lines.Add((z, SideHalfW));
+                lines.Sort((u, v) => u.z.CompareTo(v.z));
+                float start = WallZMin + 2f;
+                foreach (var l in lines) { rows.Add((start, l.z - l.half)); start = l.z + l.half; }
+                rows.Add((start, WallZMax - 2f));
+            }
+            foreach (int sign in new[] { 1, -1 })
+                foreach (var (c0, c1) in columns)
+                    foreach (var (z0, z1) in rows)
+                    {
+                        int n = Mathf.FloorToInt((z1 - z0 - 1f) / LotPitch);
+                        if (n <= 0) continue;
+                        float first = z0 + (z1 - z0 - n * LotPitch) * 0.5f + LotPitch * 0.5f;
+                        // the two rows of this block: one facing the inner street, one facing the outer street
+                        foreach (int side in new[] { -1, 1 })
+                        {
+                            float cxAbs = side < 0 ? c0 + Setback + LotDepth * 0.5f : c1 - Setback - LotDepth * 0.5f;
+                            float cx = cxAbs * sign;
+                            Vector3 front = side < 0 ? (sign > 0 ? Vector3.left : Vector3.right) : (sign > 0 ? Vector3.right : Vector3.left);
+                            bool onMain = side < 0 && Mathf.Approximately(c0, MainHalfW);
+                            for (int i = 0; i < n; i++)
+                            {
+                                float cz = first + i * LotPitch;
+                                if (Blocked(cx, cz, LotDepth * 0.5f, LotWidth * 0.5f)) continue;
+                                double r = rng.NextDouble();
+                                BuildingKind kind = onMain
+                                    ? (r < 0.3 ? BuildingKind.Domus : r < 0.58 ? BuildingKind.Insula : r < 0.92 ? BuildingKind.Shop : BuildingKind.Garden)
+                                    : (r < 0.6 ? BuildingKind.Domus : r < 0.92 ? BuildingKind.Insula : BuildingKind.Garden);
+                                AddLot(rng, kind, new Vector3(cx, 0, cz), front, LotWidth, LotDepth);
+                                var lot = Lots[Lots.Count - 1];
+                                lot.DoorOffset = 0f;
+                                lot.StreetPath = kind != BuildingKind.Garden;
+                                if (kind == BuildingKind.Domus && rng.NextDouble() < 0.35) { lot.Large = true; lot.Floors = 1; }
+                                gridLots.Add(lot);
+                            }
+                        }
+                    }
+            // the second smithy: the plot nearest the ludus gate (the first thing you see coming out)
+            {
+                TownLot best = null; float bd = float.MaxValue;
+                Vector3 gate = W(new Vector3(0, 0, LudusZ + LudusHalfZ + 2.2f));
+                foreach (var lot in gridLots)
+                {
+                    if (lot.Kind == BuildingKind.Garden) continue;
+                    float d = (lot.Door - gate).sqrMagnitude;
+                    if (d < bd) { bd = d; best = lot; }
+                }
+                if (best != null) { best.Kind = BuildingKind.Smithy; best.Floors = 1; best.Large = false; }
+            }
 
             // ---- landmarks
             Fountain = W(Vector3.zero);
@@ -250,6 +274,12 @@ namespace Gladiator.Town
                 Trees.Add(W(new Vector3(c.x * (PlazaHalf + 5f), 0, c.z * (PlazaHalf + 5f))));
                 Trees.Add(W(new Vector3(c.x * (PlazaHalf + 7.5f), 0, c.z * (PlazaHalf + 3.5f))));
             }
+            // no cypress inside a building
+            Trees.RemoveAll(t => Lots.Exists(l =>
+            {
+                Vector3 d = t - l.Center;
+                return Mathf.Abs(Vector3.Dot(d, l.Right)) < l.Width * 0.5f + 0.8f && Mathf.Abs(Vector3.Dot(d, l.Front)) < l.Depth * 0.5f + 0.8f;
+            }));
             // torches: plaza corners + the two gates
             foreach (var c in new[] { new Vector3(-1, 0, -1), new Vector3(1, 0, 1) })
                 Torches.Add(W(new Vector3(c.x * (PlazaHalf - 3f), 0, c.z * (PlazaHalf - 3f))));
@@ -283,6 +313,15 @@ namespace Gladiator.Town
                 lot.StairSide = rng.Next(2) == 0 ? -1 : 1;
                 lot.Width -= 1.3f;
                 lot.Center -= lot.Right * (lot.StairSide * 0.65f);
+            }
+
+            // ---- a paved path from every door across the strip of sand to the street
+            foreach (var lot in Lots)
+            {
+                if (!lot.StreetPath) continue;
+                Vector3 face = lot.Center + lot.Front * (lot.Depth * 0.5f) + lot.Right * (lot.DoorOffset * lot.Width);
+                float len = Setback + 0.4f;
+                Paving.Add(new TownPaving { Center = face + lot.Front * (len * 0.5f), Size = new Vector2(1.8f, len), Yaw = Quaternion.LookRotation(lot.Front).eulerAngles.y, Plaza = true });
             }
 
             // ---- four empty houses for sale, one in each quarter of the town, away from the plaza

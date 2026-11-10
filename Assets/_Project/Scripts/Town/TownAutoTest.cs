@@ -237,6 +237,21 @@ namespace Gladiator.Town
 
             yield return Wait(1.5f);
             yield return Shot("01_llegada");
+            if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-aerial") >= 0)
+            {
+                // straight down over the whole town, then a closer look at a quarter
+                var pcA = town.Player.GetComponent<PlayerController>();
+                if (pcA != null) pcA.enabled = false;
+                var camA = town.Cam;
+                Vector3 mid = (town.Layout.ArenaCenter + town.Layout.LudusCenter) * 0.5f;
+                for (float t = 0f; t < 2.5f; t += Time.unscaledDeltaTime) { camA.FocusOverride = mid; camA.Distance = 150f; camA.Pitch = 89f; yield return null; }
+                yield return Shot("00_aerea_cenital");
+                for (float t = 0f; t < 2f; t += Time.unscaledDeltaTime) { camA.FocusOverride = town.Layout.ToWorld(new Vector3(40f, 0, 40f)); camA.Distance = 60f; camA.Pitch = 70f; yield return null; }
+                yield return Shot("00b_barrio");
+                for (float t = 0f; t < 2f; t += Time.unscaledDeltaTime) { camA.FocusOverride = town.Layout.ToWorld(new Vector3(0f, 0, 30f)); camA.Distance = 45f; camA.Pitch = 55f; yield return null; }
+                yield return Shot("00c_calle");
+                Quit(); yield break;
+            }
 
             // ---- taunt wheel (T held) and the four selectable gestures, seen from the front
             {
@@ -312,6 +327,7 @@ namespace Gladiator.Town
                 gcam.FocusOverride = null;
                 yield return GuardsTest(town);
                 yield return InfirmaryTest(town);
+                town.Guards.Suspended = true; // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

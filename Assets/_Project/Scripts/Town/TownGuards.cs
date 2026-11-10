@@ -68,8 +68,12 @@ namespace Gladiator.Town
         }
 
         /// <summary>Something the watch does not like happened (public for tests).</summary>
+        /// <summary>Tests: the watch looks the other way.</summary>
+        [System.NonSerialized] public bool Suspended;
+
         public void Offence(string why)
         {
+            if (Suspended) return;
             if (Hostile != null || Time.time < offenceCooldown) return; // a flurry of blows is one offence
             var g = NearestGuard(player.transform.position, SightRange);
             if (g == null) { Debug.Log("[GUARDS] nobody saw: " + why); return; }
@@ -164,7 +168,7 @@ namespace Gladiator.Town
             if (h != lastHouse)
             {
                 lastHouse = h;
-                if (h != null && !h.Public && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) Offence("¡ESA CASA NO ES TUYA, FUERA!");
+                if (h != null && !h.Public && !h.Lot.ForSale && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) Offence("¡ESA CASA NO ES TUYA, FUERA!");
             }
 
             if (Warner != null) UpdateWarner();
