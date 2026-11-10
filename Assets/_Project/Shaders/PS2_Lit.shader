@@ -39,6 +39,9 @@ Shader "Gladiator/PS2_Lit"
         float4 _PS2_SnapRes;
         // Global: 0 = PS2 (per-vertex light), 1 = PS3 (per-pixel light, shadows, highlight)
         float _PS2_Quality;
+        // Global, set by DayNightCycle: how much of the baked ambient the time of day takes away (rgb, 0 = full day).
+        // Unlit things (_LightingAmount 0: flames, the sky) are not touched.
+        float4 _PS2_AmbientDim;
 
         float4 PS2Snap(float4 positionCS)
         {
@@ -112,10 +115,11 @@ Shader "Gladiator/PS2_Lit"
                 o.normalWS = normalWS;
 
                 // Ambient: baked into vertex colors.
-                half3 ambient = input.color.rgb;
+                half3 dimmed = input.color.rgb * (1.0 - _PS2_AmbientDim.rgb * _LightingAmount);
+                half3 ambient = dimmed;
                 if (_PS2_Quality > 0.5)
                 {
-                    o.light = input.color; // PS3: direct light is done per pixel
+                    o.light = half4(dimmed, input.color.a); // PS3: direct light is done per pixel
                     return o;
                 }
 

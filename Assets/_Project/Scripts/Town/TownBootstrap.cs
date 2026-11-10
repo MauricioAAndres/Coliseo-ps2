@@ -189,6 +189,7 @@ namespace Gladiator.Town
             float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
             TownNavMesh.Build(mid, new Vector3(span, 40f, span), Houses);
             BuildSky(env);
+            Gladiator.PS2Style.DayNightCycle.Attach(env); // dawn / day / dusk / night from the town clock, clouds
             Camera cam = BuildCamera();
 
             Vector3 spawn = Layout.LudusGate + Layout.LudusFacing * 3.5f + Vector3.up * 0.05f; // clear of the ludus wall (camera)

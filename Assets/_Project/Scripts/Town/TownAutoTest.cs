@@ -250,6 +250,31 @@ namespace Gladiator.Town
                 yield return Shot("00b_barrio");
                 for (float t = 0f; t < 2f; t += Time.unscaledDeltaTime) { camA.FocusOverride = town.Layout.ToWorld(new Vector3(0f, 0, 30f)); camA.Distance = 45f; camA.Pitch = 55f; yield return null; }
                 yield return Shot("00c_calle");
+                // the time of day: dawn, day, dusk, night (same street view)
+                var simA = TownSimulation.Instance;
+                foreach (var (h, nm) in new[] { (6.5f, "amanecer"), (12f, "dia"), (18.5f, "atardecer"), (23f, "noche") })
+                {
+                    simA.Hour = h;
+                    for (float t = 0f; t < 1.2f; t += Time.unscaledDeltaTime)
+                    {
+                        camA.FocusOverride = town.Layout.ToWorld(new Vector3(0f, 0, 24f)) + Vector3.up * 6f; camA.Distance = 30f; camA.Pitch = 12f;
+                        camA.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y;
+                        yield return null;
+                    }
+                    var dn = Gladiator.PS2Style.DayNightCycle.Instance;
+                    Log($"DAYNIGHT {h:0.0}h phase={(dn != null ? dn.Current.ToString() : "none")} clouds={(dn != null ? dn.CloudCount : 0)} sun={RenderSettings.sun.intensity:0.00} fog={RenderSettings.fogColor}");
+                    yield return Shot("00d_hora_" + nm);
+                    if (h == 12f)
+                    {
+                        // from the street, looking up at the clouds
+                        for (float t = 0f; t < 1f; t += Time.unscaledDeltaTime)
+                        {
+                            camA.FocusOverride = town.Layout.ToWorld(new Vector3(0f, 0, 24f)) + Vector3.up * 40f; camA.Distance = 12f; camA.Pitch = -25f;
+                            yield return null;
+                        }
+                        yield return Shot("00e_nubes");
+                    }
+                }
                 Quit(); yield break;
             }
 

@@ -87,6 +87,7 @@ namespace Gladiator.Arena
             BuildArena(env.transform);
             BuildObstacles(env.transform);
             BuildSky(env.transform);
+            Gladiator.PS2Style.DayNightCycle.Attach(env.transform); // dawn / day / dusk / night from the town clock, clouds
             Camera cam = BuildCamera();
 
             // ----- fighters

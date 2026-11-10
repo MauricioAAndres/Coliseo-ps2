@@ -49,6 +49,7 @@ namespace Gladiator.Training
             BuildYard(env);
             BuildSurroundings(env);
             BuildSky(env);
+            Gladiator.PS2Style.DayNightCycle.Attach(env); // dawn / day / dusk / night from the town clock, clouds
             Camera cam = BuildCamera();
 
             var net = Gladiator.Net.NetSession.Instance;
