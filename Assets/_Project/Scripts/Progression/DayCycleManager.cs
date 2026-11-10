@@ -88,6 +88,10 @@ namespace Gladiator.Progression
         }
 
         /// <summary>The day's fight has been resolved: next day, back to the ludus.</summary>
+        /// <summary>Lost in the arena: the next scene (the town) starts with the gladiator in an infirmary bed.</summary>
+        public static bool WakeInInfirmary;
+        public const string TownScene = "Town";
+
         public void CompleteArena(bool won)
         {
             LastFightWon = won;
@@ -95,6 +99,7 @@ namespace Gladiator.Progression
             Phase = DayPhase.Training;
             stationsUsedToday.Clear();
             Changed?.Invoke();
+            if (!won) { WakeInInfirmary = true; Load(TownScene); return; }
             Load(TrainingScene);
         }
 

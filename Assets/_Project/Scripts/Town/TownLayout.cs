@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Gladiator.Town
 {
     /// <summary>What stands on a lot.</summary>
-    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum }
+    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum, Infirmary }
 
     /// <summary>A named spot the simulation can send citizens to (a home, a workplace, the plaza...).</summary>
     public enum PlaceKind { Home, Work, Plaza, Fountain, Market, ArenaGate, LudusGate, GuardPost }
@@ -92,6 +92,9 @@ namespace Gladiator.Town
         public const float ArenaZ = 92f, ArenaRadius = 20f;
         public const float LudusZ = -60f, LudusHalfX = 14f, LudusHalfZ = 12f;
         public const float WallX = 66f, WallZMin = -78f, WallZMax = 118f;
+        public const float InfirmaryX = 33f, InfirmaryZ = 72f;
+        /// <summary>The infirmary's lot (beds inside: TownBuilder.Infirmary).</summary>
+        public TownLot InfirmaryLot { get; private set; }
 
         Quaternion rot;
 
@@ -212,6 +215,14 @@ namespace Gladiator.Town
             Fill(26f, 59f, -66f, -29f);
             Fill(-59f, -26f, -66f, -29f);
 
+            // ---- the infirmary (valetudinarium): a long hall of beds by the arena forecourt, a path to the main street.
+            // Where a beaten gladiator wakes up.
+            AddLot(rng, BuildingKind.Infirmary, new Vector3(InfirmaryX, 0, InfirmaryZ), Vector3.left, 13f, 11f);
+            Lots[Lots.Count - 1].Floors = 1;
+            Lots[Lots.Count - 1].DoorOffset = 0f;
+            InfirmaryLot = Lots[Lots.Count - 1];
+            AddPaving(new Vector3((9f + InfirmaryX - 5.5f) * 0.5f, 0, InfirmaryZ), new Vector2(InfirmaryX - 5.5f - 9f, 3f), 0f, false); // from the arena forecourt
+
             // ---- landmarks
             Fountain = W(Vector3.zero);
             ArenaCenter = W(new Vector3(0, 0, ArenaZ));
@@ -318,6 +329,7 @@ namespace Gladiator.Town
                 case BuildingKind.Shop: return "Tienda";
                 case BuildingKind.Insula: return "Insula";
                 case BuildingKind.Garden: return "Huerto";
+                case BuildingKind.Infirmary: return "Enfermeria";
                 default: return "Casa";
             }
         }

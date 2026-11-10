@@ -27,6 +27,11 @@ namespace Gladiator.Town
         /// <summary>One entry per bed placed (tests: never two in one bedroom).</summary>
         public readonly List<string> Beds = new List<string>();
 
+        /// <summary>A public building (the infirmary): walking in is not trespassing.</summary>
+        public bool Public;
+        /// <summary>Infirmary beds: where a patient lies (root position on the mattress, facing the foot of the bed).</summary>
+        public readonly List<Pose> BedSpots = new List<Pose>();
+
         public void SetLights(bool on) { foreach (var l in Lights) if (l != null) l.enabled = on; }
         /// <summary>First floor: foot and top of the outside stairs, and the way up (tests).</summary>
         public Vector3 StairBottom, StairTop, StairDir;

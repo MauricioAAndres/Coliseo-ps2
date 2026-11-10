@@ -48,6 +48,29 @@ namespace Gladiator.Town
             if (cc != null) cc.enabled = true;
         }
 
+        /// <summary>The infirmary: ten beds, public (no trespassing), you wake up lying in a bed and get up by moving.</summary>
+        IEnumerator InfirmaryTest(TownBootstrap town)
+        {
+            var inf = town.Infirmary;
+            if (inf == null) { Log("INFIRMARY none"); yield break; }
+            var g0 = town.Guards.Warnings;
+            bool put = town.PutInInfirmaryBed(out Vector3 at);
+            yield return HoldCam(town.Cam, town.Player, 2.0f, 0.6f, 5f, 35f, 70f);
+            var tm = town.GetComponent<TownManager>();
+            Log($"INFIRMARY beds={inf.BedSpots.Count} put={put} bed={town.LastBed} state={town.Player.State} lying={town.Player.InActivity && town.Player.ActivityKind == 0} " +
+                $"skipIn={town.Player.ActivitySkipIn} inside={inf.Contains(town.Player.transform.position)} room={tm.CurrentRoom} roofHidden={!inf.Upper.activeSelf} " +
+                $"y={town.Player.transform.position.y - at.y:0.00} warnings {g0}->{town.Guards.Warnings} doorToStreet={(inf.Lot.Door - town.Layout.ArenaGate).magnitude:0}m");
+            yield return Shot("03a_enfermeria");
+            // a wide look at the hall
+            yield return HoldCam(town.Cam, town.Player, 0.6f, 0.5f, 10f, 55f, 70f);
+            yield return Shot("03c_enfermeria_sala");
+            town.Player.StopActivity();
+            float t0 = Time.time;
+            while (town.Player.State == FighterState.Activity && Time.time - t0 < 5f) yield return null;
+            Log($"INFIRMARY got up in {Time.time - t0:0.00}s state={town.Player.State}");
+            town.Cam.FocusOverride = null;
+        }
+
         /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
         IEnumerator GuardsTest(TownBootstrap town)
         {
@@ -83,7 +106,7 @@ namespace Gladiator.Town
             yield return Wait(3.2f);
             // 2) walk into a house that is not ours
             HouseInterior house = null;
-            foreach (var h in town.Houses) if (h.Floor == 0 && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) { house = h; break; }
+            foreach (var h in town.Houses) if (h.Floor == 0 && !h.Public && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) { house = h; break; }
             if (house != null)
             {
                 Teleport(pl, house.RoomCenter("COCINA") + Vector3.up * 0.05f);
@@ -109,7 +132,7 @@ namespace Gladiator.Town
                 yield return Wait(0.5f);
             }
             Log($"GUARDS end: outcome={guards.LastOutcome} warnings={guards.Warnings} hp={pl.Health.Current:0}/{pl.Health.Max:0} alive={pl.IsAlive} " +
-                $"atLudus={((pl.transform.position - town.Layout.LudusGate).magnitude < 6f)}");
+                $"inInfirmary={(town.Infirmary != null && town.Infirmary.Contains(pl.transform.position))}");
             yield return HoldCam(gcam, pl, 1f, 1.2f, 7f, 30f);
             yield return Shot("02c_despiertas");
             gcam.FocusOverride = null;
@@ -288,7 +311,30 @@ namespace Gladiator.Town
                 if (pcw != null) pcw.enabled = true;
                 gcam.FocusOverride = null;
                 yield return GuardsTest(town);
-                if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0) { Quit(); yield break; }
+                yield return InfirmaryTest(town);
+                if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
+                {
+                    // the real path: losing in the arena -> next day, the town, in an infirmary bed
+                    var gm = GameManager.Instance;
+                    int day0 = gm.DayCycle.Day;
+                    gm.DayCycle.CompleteArena(false);
+                    float tl = Time.realtimeSinceStartup;
+                    yield return null;
+                    while ((TownBootstrap.Instance == null || TownBootstrap.Instance == town) && Time.realtimeSinceStartup - tl < 30f) yield return null;
+                    var t2 = TownBootstrap.Instance;
+                    yield return Wait(2.5f);
+                    if (t2 != null)
+                    {
+                        var inf2 = t2.Infirmary;
+                        Log($"LOST FIGHT day {day0}->{gm.DayCycle.Day} scene={SceneManager.GetActiveScene().name} woke={t2.WokeInInfirmary} bed={t2.LastBed} " +
+                            $"state={t2.Player.State} lying={t2.Player.InActivity && t2.Player.ActivityKind == 0} inInfirmary={(inf2 != null && inf2.Contains(t2.Player.transform.position))} hp={t2.Player.Health.Current:0}/{t2.Player.Health.Max:0}");
+                        t2.Cam.FocusOverride = null; // what the player sees: the normal town camera
+                        yield return Wait(0.5f);
+                        yield return Shot("03b_derrota_enfermeria");
+                    }
+                    else Log("LOST FIGHT town not reloaded");
+                    Quit(); yield break;
+                }
             }
 
             // ---- the complexion slider: bust grows from masculine to feminine (same body otherwise), bare and in a tunic

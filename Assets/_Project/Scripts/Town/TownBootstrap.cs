@@ -40,18 +40,63 @@ namespace Gladiator.Town
         public CitizenSpawner Spawner { get; private set; }
         public TownGuards Guards { get; private set; }
 
-        /// <summary>After the guards beat the player: wake up somewhere safe with half the health. Returns where (for the message).</summary>
+        /// <summary>After the guards beat the player: wake up in the infirmary with half the health. Returns where (for the message).</summary>
         public string WakeUpAfterBeating(out Vector3 at)
         {
-            at = Layout.LudusGate + Layout.LudusFacing * 3.5f + Vector3.up * 0.05f;
-            var cc = Player.GetComponent<CharacterController>();
-            if (cc != null) cc.enabled = false;
-            Player.transform.position = at;
-            if (cc != null) cc.enabled = true;
             if (Player.InActivity) Player.StopActivity();
             Player.Health.Heal(Player.Health.Max * 0.5f - Player.Health.Current);
-            if (Cam != null) Cam.SnapToTarget();
+            if (PutInInfirmaryBed(out at)) return "en la enfermeria";
+            at = Layout.LudusGate + Layout.LudusFacing * 3.5f + Vector3.up * 0.05f;
+            Teleport(at, Player.transform.rotation);
             return "junto a la puerta del ludus";
+        }
+
+        /// <summary>The infirmary (null if this town has none).</summary>
+        public HouseInterior Infirmary => Houses != null ? Houses.Find(h => h.Public && h.BedSpots.Count > 0) : null;
+        /// <summary>The bed the player last woke up in (tests).</summary>
+        public int LastBed { get; private set; } = -1;
+        /// <summary>This visit started in an infirmary bed (after a lost fight).</summary>
+        public bool WokeInInfirmary { get; private set; }
+
+        void Teleport(Vector3 at, Quaternion rot)
+        {
+            var cc = Player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            Player.transform.SetPositionAndRotation(at, rot);
+            if (cc != null) cc.enabled = true;
+            if (Cam != null) Cam.SnapToTarget();
+        }
+
+        /// <summary>Lays the player in a free infirmary bed (lying, already asleep). False if there is no infirmary.</summary>
+        public bool PutInInfirmaryBed(out Vector3 at)
+        {
+            at = Vector3.zero;
+            var inf = Infirmary;
+            if (inf == null) return false;
+            int bed = Random.Range(0, inf.BedSpots.Count);
+            var spot = inf.BedSpots[bed];
+            LastBed = bed;
+            at = spot.position;
+            Teleport(spot.position + Vector3.up * 0.05f, spot.rotation);
+            Player.SetFacing(spot.rotation * Vector3.forward);
+            StartCoroutine(LieDownNextFrame());
+            return true;
+        }
+
+        System.Collections.IEnumerator Later(float seconds, System.Action a)
+        {
+            yield return new WaitForSeconds(seconds);
+            a();
+        }
+
+        System.Collections.IEnumerator LieDownNextFrame()
+        {
+            // land on the mattress, then asleep in the bed (a fresh scene may need a few frames)
+            for (float t = 0f; t < 3f; t += Time.deltaTime)
+            {
+                yield return null;
+                if (Player.InActivity || Player.TryActivity(0, true)) yield break;
+            }
         }
         /// <summary>The homes you can walk into.</summary>
         public System.Collections.Generic.List<HouseInterior> Houses { get; private set; }
@@ -196,6 +241,17 @@ namespace Gladiator.Town
             }
             gameObject.AddComponent<TownManager>().Init(this, pc);
             Hud.ShowMessage("EL PUEBLO", 2.5f);
+            if (Gladiator.Progression.DayCycleManager.WakeInInfirmary)
+            {
+                // lost in the arena: wake up in an infirmary bed (move to get up)
+                Gladiator.Progression.DayCycleManager.WakeInInfirmary = false;
+                if (PutInInfirmaryBed(out _))
+                {
+                    Player.Health.Heal(Player.Health.Max);
+                    StartCoroutine(Later(1.2f, () => Hud.ShowMessage("PERDISTE EN LA ARENA: DESPIERTAS EN LA ENFERMERIA", 6f)));
+                    WokeInInfirmary = true;
+                }
+            }
             Debug.Log($"[TOWN] seed={Layout.Seed} rot={Layout.RotationDeg} mirrored={Layout.Mirrored} lots={Layout.Lots.Count} places={Layout.Places.Count} buildings={Buildings}");
         }
 

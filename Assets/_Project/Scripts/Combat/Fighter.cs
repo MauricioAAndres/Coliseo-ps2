@@ -299,10 +299,14 @@ namespace Gladiator.Combat
         public const float WalkMul = 0.36f;
 
         /// <summary>Lie down, sit, eat or cook. Stays until <see cref="StopActivity"/> (or a hit).</summary>
-        public bool TryActivity(int kind)
+        /// <summary>The activity started already in its loop (woke up lying in a bed): no "in" clip, no props.</summary>
+        public bool ActivitySkipIn { get; private set; }
+
+        public bool TryActivity(int kind, bool skipIn = false)
         {
             if (!IsAlive || state != FighterState.Idle || !IsGrounded) return false;
             ActivityKind = Mathf.Clamp(kind, 0, ActivityKinds - 1);
+            ActivitySkipIn = skipIn;
             ActivityLeaving = false;
             bufferedAttack = null;
             SetState(FighterState.Activity, 1e6f);

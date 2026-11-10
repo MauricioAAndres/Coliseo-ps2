@@ -454,8 +454,8 @@ namespace Gladiator.Character
                         if (actIn == null || actIn[k] == null) break;
                         float inT = Fighter.ActivityInTime;
                         if (Fighter.ActivityLeaving) { clip = actIn[k]; t = 1f - Fighter.StatePhase; }
-                        else if (stateTime < inT || actLoop[k] == null) { clip = actIn[k]; t = Mathf.Min(1f, stateTime / inT); }
-                        else { clip = actLoop[k]; t = Mathf.Repeat((stateTime - inT) / actLoop[k].Duration, 1f); }
+                        else if ((stateTime < inT && !Fighter.ActivitySkipIn) || actLoop[k] == null) { clip = actIn[k]; t = Mathf.Min(1f, stateTime / inT); }
+                        else { clip = actLoop[k]; t = Mathf.Repeat(Mathf.Max(0f, stateTime - (Fighter.ActivitySkipIn ? 0f : inT)) / actLoop[k].Duration, 1f); }
                         break;
                     }
                     case FighterState.Stunned:

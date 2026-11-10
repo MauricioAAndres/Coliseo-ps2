@@ -164,7 +164,7 @@ namespace Gladiator.Town
             if (h != lastHouse)
             {
                 lastHouse = h;
-                if (h != null && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) Offence("¡ESA CASA NO ES TUYA, FUERA!");
+                if (h != null && !h.Public && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) Offence("¡ESA CASA NO ES TUYA, FUERA!");
             }
 
             if (Warner != null) UpdateWarner();

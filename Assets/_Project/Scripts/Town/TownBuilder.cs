@@ -186,6 +186,7 @@ namespace Gladiator.Town
                 case BuildingKind.Temple: Temple(lot); return;
                 case BuildingKind.Baths: Baths(lot); return;
                 case BuildingKind.Forum: Basilica(lot); return;
+                case BuildingKind.Infirmary: Infirmary(lot); return;
             }
             if (lot.IsHome) { HomeHouse(lot); return; }
             House(lot);
@@ -350,6 +351,114 @@ namespace Gladiator.Town
                 LowPolyMesh.BakeAmbient(sign.gameObject, AmbientSky, AmbientGround);
                 ground.SaleSign = sign.gameObject;
             }
+        }
+
+        /// <summary>
+        /// The infirmary (valetudinarium): one long hall you can walk into, ten beds in two rows (straw mattress,
+        /// pillow, blanket), a table with the medicus' bowls and jars, two lamps. Its roof hides while you are inside.
+        /// Beaten gladiators wake up in one of its beds.
+        /// </summary>
+        void Infirmary(TownLot lot)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, d = lot.Depth, H = 3.6f, t = 0.25f;
+            float hx = w * 0.5f, hz = d * 0.5f;
+            Material wall = plaster[0];
+            var go = new GameObject("Infirmary_" + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(lot.Center, q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz; house.Floor = 0; house.Public = true;
+            house.Rooms.Add(new HouseInterior.Room { Name = "ENFERMERIA", X0 = -hx, X1 = hx, Z0 = -hz, Z1 = hz });
+
+            void Seg(float x0, float x1, float z0, float z1, float ya, float yb)
+            {
+                if (x1 - x0 < 0.05f || z1 - z0 < 0.02f || yb - ya < 0.02f) return;
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, (z0 + z1) * 0.5f);
+                Box(wall, c, size, q);
+                Collider(c, size, q);
+                if (ya <= 0.01f) Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.35f, (z0 + z1) * 0.5f), new Vector3(size.x + 0.1f, 0.7f, size.z + 0.1f), q);
+            }
+            float dw = 0.9f;
+            Seg(-hx, hx, -hz, -hz + t, 0, H);                  // back
+            Seg(-hx, -hx + t, -hz, hz, 0, H);                  // sides
+            Seg(hx - t, hx, -hz, hz, 0, H);
+            Seg(-hx, -dw, hz - t, hz, 0, H);                   // front with a wide doorway in the middle
+            Seg(dw, hx, hz - t, hz, 0, H);
+            Seg(-dw, dw, hz - t, hz, 2.6f, H);
+            Box(darkWood, LP(lot, 0, 2.66f, hz + 0.05f), new Vector3(dw * 2f + 0.3f, 0.18f, 0.14f), q);
+            // a green cloth sign over the door
+            Box(darkWood, LP(lot, 0, 3.25f, hz + 0.45f), new Vector3(0.08f, 0.08f, 0.9f), q);
+            Box(PS2Materials.Get("sign_infirmary", PS2Textures.Cloth, new Color(0.2f, 0.5f, 0.3f)), LP(lot, 0, 2.95f, hz + 0.75f), new Vector3(1.4f, 0.5f, 0.06f), q);
+            // windows high on the back wall
+            for (int i = 0; i < 4; i++)
+            {
+                float x = -hx + w * (i + 0.5f) / 4f;
+                Box(dark, LP(lot, x, 2.6f, -hz - 0.02f), new Vector3(0.8f, 0.6f, 0.06f), q);
+            }
+            // floor: light stone tiles
+            var tiles = PS2Materials.Get("infirmary_floor", PS2Textures.Stone, new Color(0.85f, 0.82f, 0.74f));
+            Box(tiles, LP(lot, 0, 0.03f, 0), new Vector3(w - 2f * t, 0.06f, d - 2f * t), q, 0.5f);
+
+            // beds: six along the back wall, four by the front (either side of the door), heads to the wall
+            var mattress = PS2Materials.Get("mattress", PS2Textures.Cloth, new Color(0.88f, 0.82f, 0.62f));
+            var pillowM = PS2Materials.Get("pillow", PS2Textures.Cloth, new Color(0.95f, 0.93f, 0.88f));
+            var blanketM = PS2Materials.Get("blanket_inf", PS2Textures.Cloth, new Color(0.62f, 0.12f, 0.1f));
+            void Bed(float x, int headSide) // headSide -1 = head at the back wall, +1 = head at the front wall
+            {
+                float zHead = headSide < 0 ? -hz + t + 0.05f : hz - t - 0.05f;
+                float zc = zHead - headSide * 1.0f;
+                Box(darkWood, LP(lot, x, 0.22f, zc), new Vector3(0.95f, 0.36f, 2.0f), q);
+                Collider(LP(lot, x, 0.25f, zc), new Vector3(0.95f, 0.5f, 2.0f), q);
+                Box(mattress, LP(lot, x, 0.45f, zc), new Vector3(0.85f, 0.12f, 1.9f), q);
+                Box(pillowM, LP(lot, x, 0.55f, zHead - headSide * 0.25f), new Vector3(0.6f, 0.1f, 0.32f), q);
+                Box(blanketM, LP(lot, x, 0.53f, zc - headSide * 0.42f), new Vector3(0.88f, 0.05f, 1.05f), q);
+                // where a patient lies: hips about 0.78 m from the head end, looking to the foot of the bed
+                Vector3 at = LP(lot, x, 0.52f, zHead - headSide * 0.78f);
+                house.BedSpots.Add(new Pose(at, q * Quaternion.LookRotation(new Vector3(0, 0, -headSide))));
+                house.Beds.Add("ENFERMERIA");
+            }
+            for (int i = 0; i < 6; i++) Bed(-hx + 1.2f + i * (w - 2.4f) / 5f, -1);
+            foreach (float x in new[] { -hx + 1.2f, -hx + 2.6f, hx - 2.6f, hx - 1.2f }) Bed(x, 1);
+            // the medicus' table in the middle: jars and rolled bandages
+            Box(wood, LP(lot, 0, 0.78f, 0.3f), new Vector3(2.2f, 0.08f, 0.9f), q);
+            foreach (var lx in new[] { -1f, 1f }) foreach (var lz in new[] { -0.35f, 0.35f })
+                Box(darkWood, LP(lot, lx * 1.0f, 0.38f, 0.3f + lz), new Vector3(0.08f, 0.76f, 0.08f), q);
+            Collider(LP(lot, 0, 0.4f, 0.3f), new Vector3(2.2f, 0.8f, 0.9f), q);
+            for (int k = 0; k < 4; k++)
+            {
+                Box(clay, LP(lot, -0.8f + k * 0.5f, 0.92f, 0.2f + (k % 2) * 0.25f), new Vector3(0.18f, 0.22f, 0.18f), q);
+                Box(pillowM, LP(lot, -0.6f + k * 0.4f, 0.86f, 0.55f), new Vector3(0.22f, 0.08f, 0.08f), q);
+            }
+            // two lamps (on while the player is inside)
+            foreach (float lx in new[] { -hx * 0.5f, hx * 0.5f })
+            {
+                var lamp = new GameObject("InfirmaryLamp").AddComponent<Light>();
+                lamp.transform.SetParent(go.transform, false);
+                lamp.transform.position = LP(lot, lx, 2.6f, 0f);
+                lamp.type = LightType.Point; lamp.range = 7f; lamp.intensity = 1.2f; lamp.color = new Color(1f, 0.75f, 0.45f);
+                lamp.shadows = LightShadows.None;
+                lamp.enabled = false;
+                house.Lights.Add(lamp);
+                Box(ember, LP(lot, lx, 2.9f, 0f), new Vector3(0.12f, 0.12f, 0.12f), q);
+            }
+
+            // ceiling + roof: their own object, hidden while you are inside
+            var mine = new Dictionary<Material, MeshBuilder>();
+            current = mine;
+            Box(wall, LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+            float rise = 1.6f;
+            Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, H, 0), q, w + 0.6f, d + 0.6f, rise);
+            current = null;
+            var upper = new GameObject("Upper_" + lot.Id);
+            upper.transform.SetParent(root, false);
+            foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("InfirmaryTop"), Vector3.zero, kv.Key);
+            LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, H + 0.2f + rise * 0.5f, 0), new Vector3(w + 0.6f, rise, d + 0.6f), q);
+            house.Upper = upper;
+            house.Hide.Add(upper);
+            Houses.Add(house);
         }
 
         // Where Collider() puts its boxes (null = the town's static colliders).
