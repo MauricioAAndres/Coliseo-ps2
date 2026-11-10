@@ -189,18 +189,21 @@ namespace Gladiator.UI
                 {
                     var ns = NetSession.Instance;
                     title.text = "ARENA ONLINE";
-                    AddValue("MODO", () => arenaTeams ? "POR EQUIPOS (COLORES)" : "TODOS CONTRA TODOS", d => arenaTeams = !arenaTeams);
+                    // 0 todos contra todos, 1 por equipos, 2..5 co-op contra los bots del anfitrion (NetSession.ModeDuel..)
+                    AddValue("MODO", () => ArenaModeLabel(arenaKind), d => arenaKind = (arenaKind + (d < 0 ? -1 : 1) + 6) % 6);
                     AddValue("MEJORAS", () => arenaUpgrades ? "SI (CADA UNO LAS SUYAS)" : "NO (TODOS IGUALES)", d => arenaUpgrades = !arenaUpgrades);
                     Add("¡A LA ARENA!", () =>
                     {
                         if (ns == null || !ns.IsHost) { Show(Page.Main); return; }
-                        if (ns.Players.Count < 2) { note.text = "Hace falta al menos otro jugador en la sala."; return; }
+                        bool coop = arenaKind >= 2;
+                        arenaTeams = arenaKind == 1;
+                        if (!coop && ns.Players.Count < 2) { note.text = "Hace falta al menos otro jugador en la sala\n(contra bots se puede jugar desde uno)."; return; }
                         if (arenaTeams && ns.ColorsInUse < 2) { note.text = "Por equipos hacen falta al menos dos colores distintos\n(cada uno elige TU COLOR en la sala)."; return; }
                         Close();
-                        ns.StartArena(arenaTeams, arenaUpgrades);
+                        ns.StartArena(arenaTeams, arenaUpgrades, coop ? arenaKind - 1 : NetSession.ModePvP);
                     });
                     Add("VOLVER", () => Show(Page.Main));
-                    note.text = "Todos contra todos: gana el ultimo en pie. Por equipos: gana el ultimo color en pie.\nCon mejoras: fuerza, armas y armadura de cada uno. Sin mejoras: gladius y nada mas.";
+                    note.text = "Jugadores: gana el ultimo (o el ultimo color) en pie.  BOTS: todos juntos contra los rivales:\nduelo uno por jugador, oleadas, el campeon o doble (dos por jugador).  Mejoras: las de cada uno o todos iguales.";
                     break;
                 }
                 case Page.ConfirmNew:
@@ -375,6 +378,20 @@ namespace Gladiator.UI
         }
 
         bool arenaTeams, arenaUpgrades = true;
+        int arenaKind;
+
+        static string ArenaModeLabel(int k)
+        {
+            switch (k)
+            {
+                case 0: return "TODOS CONTRA TODOS";
+                case 1: return "POR EQUIPOS (COLORES)";
+                case 2: return "BOTS: DUELO (1 POR JUGADOR)";
+                case 3: return "BOTS: OLEADAS";
+                case 4: return "BOTS: EL CAMPEON";
+                default: return "BOTS: DOBLE (2 POR JUGADOR)";
+            }
+        }
         GameAction? capturing;
         float captureDelay;
 

@@ -337,6 +337,9 @@ namespace Gladiator.Net
 
         public void SetName(string n) { if (tagText != null) tagText.text = n.ToUpperInvariant(); }
 
+        /// <summary>No floating name (AI rivals: their names are on the health bars).</summary>
+        public void HideTag() { if (tag != null) tag.gameObject.SetActive(false); }
+
         void BuildTag(string name)
         {
             var go = new GameObject("NameTag", typeof(RectTransform));

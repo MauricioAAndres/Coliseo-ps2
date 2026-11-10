@@ -72,6 +72,7 @@ namespace Gladiator.Net
         public string Phase;
         public List<NetPlayer> Players = new List<NetPlayer>();
         public bool Teams, Upgrades;
+        public int Mode;
         public int Seed;
         public int TownSeed;
     }
@@ -159,7 +160,7 @@ namespace Gladiator.Net
     public class NetSession : MonoBehaviour
     {
         public const int DefaultPort = 7777, DiscoveryPort = 7778, MaxPlayers = 4;
-        public const string Version = "COLISEO-MP2";
+        public const string Version = "COLISEO-MP3";
         public const string PhaseLobby = "lobby", PhaseLudus = "ludus", PhaseArena = "arena";
         public static readonly string[] ColorNames = { "ROJO", "VERDE", "AZUL", "GRIS" };
         public static readonly Color[] TeamColors =
@@ -170,6 +171,14 @@ namespace Gladiator.Net
         /// <summary>Online arena settings (MP2): by teams of colour or everyone for himself; own upgrades or all equal.</summary>
         public bool ArenaTeams { get; private set; }
         public bool ArenaUpgrades { get; private set; }
+        /// <summary>
+        /// Online arena kind: 0 players against each other; co-op against the host's AI rivals: 1 duel (one rival per
+        /// player), 2 waves, 3 the champion, 4 double (two rivals per player).
+        /// </summary>
+        public int ArenaMode { get; private set; }
+        public const int ModePvP = 0, ModeDuel = 1, ModeWaves = 2, ModeChampion = 3, ModeDouble = 4;
+        public static readonly string[] ModeNames = { "JUGADORES", "DUELO CONTRA BOTS", "OLEADAS", "CONTRA EL CAMPEON", "DOBLE DE RIVALES" };
+        public bool ArenaCoop => ArenaMode != ModePvP;
         public int ArenaSeed { get; private set; }
         /// <summary>The host's town (everybody in the game walks the same streets with the same people).</summary>
         public int TownSeed { get; private set; }
@@ -308,16 +317,17 @@ namespace Gladiator.Net
         }
 
         /// <summary>Host: everybody to the arena (MP2). Teams = by colour; upgrades = each with their own stats and gear.</summary>
-        public void StartArena(bool teams, bool upgrades)
+        public void StartArena(bool teams, bool upgrades, int mode = ModePvP)
         {
             if (!IsHost) return;
-            ArenaTeams = teams;
+            ArenaMode = Mathf.Clamp(mode, 0, ModeNames.Length - 1);
+            ArenaTeams = teams && ArenaMode == ModePvP;
             ArenaUpgrades = upgrades;
             ArenaSeed = UnityEngine.Random.Range(1, 1000000);
             Phase = PhaseArena;
             BroadcastRoster();
             Broadcast("START\n" + Phase);
-            Debug.Log($"[NET] start arena teams={teams} upgrades={upgrades} players={Players.Count}");
+            Debug.Log($"[NET] start arena mode={ArenaMode} teams={ArenaTeams} upgrades={upgrades} players={Players.Count}");
             LoadPhase();
         }
 
@@ -459,7 +469,7 @@ namespace Gladiator.Net
 
         void BroadcastRoster()
         {
-            var r = new RosterMsg { Phase = Phase, Players = Players, Teams = ArenaTeams, Upgrades = ArenaUpgrades, Seed = ArenaSeed, TownSeed = TownSeed };
+            var r = new RosterMsg { Phase = Phase, Players = Players, Teams = ArenaTeams, Upgrades = ArenaUpgrades, Mode = ArenaMode, Seed = ArenaSeed, TownSeed = TownSeed };
             Broadcast("ROSTER\n" + JsonUtility.ToJson(r));
             RosterChanged?.Invoke();
         }
@@ -550,7 +560,7 @@ namespace Gladiator.Net
                     Players.Clear();
                     if (r.Players != null) Players.AddRange(r.Players);
                     Phase = string.IsNullOrEmpty(r.Phase) ? PhaseLobby : r.Phase;
-                    ArenaTeams = r.Teams; ArenaUpgrades = r.Upgrades; ArenaSeed = r.Seed; TownSeed = r.TownSeed;
+                    ArenaTeams = r.Teams; ArenaUpgrades = r.Upgrades; ArenaMode = r.Mode; ArenaSeed = r.Seed; TownSeed = r.TownSeed;
                     RosterChanged?.Invoke();
                     break;
                 case "START":

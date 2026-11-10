@@ -141,6 +141,35 @@ namespace Gladiator.Net
             yield return Shot("mp_host_final");
             yield return Until(() => NetArena.Instance == null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1 && ns.Phase == NetSession.PhaseLudus, 20f);
             Log($"BACK phase={ns.Phase} scene={UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}");
+            yield return Wait(2f);
+
+            // ---- MP3: co-op against the host's bots, "double" (two rivals per player)
+            ns.StartArena(false, false, NetSession.ModeWaves);
+            yield return Until(() => NetArena.Instance != null && NetArena.Instance.Coop && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 30f);
+            var nc = NetArena.Instance;
+            if (nc == null) { Log("COOP NOT LOADED"); yield break; }
+            var meC = NetAvatars.Instance.Local;
+            var pcC = meC.GetComponent<PlayerController>(); if (pcC != null) pcC.enabled = false;
+            var partnerC = NetAvatars.Instance.Remotes.First();
+            Log($"COOP host bots={nc.Rivals.Count} (expected 2, wave 1 x1.5) myTeam={meC.TeamId} partnerTeam={partnerC.Fighter.TeamId}");
+            yield return Wait(5f);
+            yield return Shot("mp_host_coop");
+            yield return Until(() => nc.Ended, 10f);
+            int botsDown = nc.Rivals.Count(b => !b.IsAlive);
+            Log($"COOP host after fight: ended={nc.Ended} botHitsFromClient={nc.BotHitsApplied} botsDown={botsDown} hostHp={meC.Health.Current:0} " +
+                $"rivalsHp=[{string.Join(",", nc.Rivals.Select(b => b.Health.Current.ToString("0")))}]");
+            // bring every wave down until the last one (the client must see each new wave)
+            for (float t = 0f; t < 60f && !nc.Ended; t += 4f)
+            {
+                nc.DebugKillAllBots();
+                yield return Wait(4f);
+                Log($"COOP host wave={nc.Wave} rivals={nc.Rivals.Count}");
+            }
+            Log($"COOP END winner='{nc.Winner}' waves={nc.Wave} rivalsTotal={nc.Rivals.Count}");
+            yield return Wait(1f);
+            yield return Shot("mp_host_coop_final");
+            yield return Until(() => NetArena.Instance == null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1 && ns.Phase == NetSession.PhaseLudus, 20f);
+            Log($"BACK2 phase={ns.Phase}");
             nav = NetAvatars.Instance;
             r = nav.Remotes.First();
             yield return Wait(2f);
@@ -251,6 +280,33 @@ namespace Gladiator.Net
             yield return Shot("mp_client_final");
             yield return Until(() => NetArena.Instance == null && ns.Phase == NetSession.PhaseLudus && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 20f);
             Log($"BACK phase={ns.Phase} scene={UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}");
+
+            // MP3: co-op against the host's bots: hit the nearest rival copy until the match ends
+            yield return Until(() => NetArena.Instance != null && NetArena.Instance.Coop && NetAvatars.Instance != null, 45f);
+            var nc = NetArena.Instance;
+            if (nc == null) { Log("COOP NOT LOADED"); yield break; }
+            var meC = NetAvatars.Instance.Local;
+            var pcC = meC.GetComponent<PlayerController>(); if (pcC != null) pcC.enabled = false;
+            yield return Until(() => nc.Rivals.Count >= 2, 10f);
+            Log($"COOP client copies={nc.Rivals.Count} (expected 2) myTeam={meC.TeamId}");
+            float swingC = 0f;
+            for (float t = 0f; t < 90f && !nc.Ended; t += Time.deltaTime)
+            {
+                Fighter tgt = null; float best = 1e9f;
+                foreach (var b in nc.Rivals) { if (!b.IsAlive) continue; float d = (b.transform.position - meC.transform.position).sqrMagnitude; if (d < best) { best = d; tgt = b; } }
+                if (tgt == null || !meC.IsAlive) { meC.Move(Vector3.zero); yield return null; continue; }
+                Vector3 to = tgt.transform.position - meC.transform.position; to.y = 0f;
+                if (to.magnitude > 1.4f) meC.Move(to.normalized);
+                else { meC.Move(Vector3.zero); meC.SetFacing(to); if ((swingC -= Time.deltaTime) <= 0f) { meC.TryAttack(AttackType.Light); swingC = 0.75f; } }
+                if (t > 6f && t < 6.05f) yield return Shot("mp_client_coop");
+                yield return null;
+            }
+            meC.Move(Vector3.zero);
+            Log($"COOP client END winner='{nc.Winner}' wave={nc.Wave} copies={nc.Rivals.Count} statesReceived={nc.BotStatesReceived} botHitsSent={nc.BotHitsSent} hitsTakenFromBots={nc.HitsTaken} " +
+                $"myHp={meC.Health.Current:0} copiesHp=[{string.Join(",", nc.Rivals.Select(b => b.Health.Current.ToString("0")))}] copiesMoved={nc.Rivals.Count(b => b.GetComponent<RemoteFighter>().Travelled > 0.5f)}");
+            yield return Shot("mp_client_coop_final");
+            yield return Until(() => NetArena.Instance == null && ns.Phase == NetSession.PhaseLudus && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 25f);
+            Log($"BACK2 phase={ns.Phase}");
             nav = NetAvatars.Instance;
             yield return Until(() => !ns.Active, 30f);
             yield return Wait(0.5f);

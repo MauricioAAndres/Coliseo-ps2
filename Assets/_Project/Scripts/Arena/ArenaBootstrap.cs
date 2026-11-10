@@ -47,6 +47,12 @@ namespace Gladiator.Arena
 
         /// <summary>Online arena (MP2): the players fight each other, no AI rivals, no rewards.</summary>
         public bool Online { get; private set; }
+        /// <summary>Online co-op (MP3): the players together against AI rivals, which only the host's game runs.</summary>
+        public bool OnlineCoop { get; private set; }
+        /// <summary>The body each AI rival was built with (the host sends it to the others).</summary>
+        public readonly Dictionary<Fighter, Gladiator.Character.CharacterAppearance> BotLooks = new Dictionary<Fighter, Gladiator.Character.CharacterAppearance>();
+        /// <summary>Wave sizes are multiplied by this (online co-op: more players, more rivals).</summary>
+        public float WaveScale = 1f;
 
         /// <summary>
         /// The body a player fights with online: their gladiator in a tunic of their colour; with upgrades their own
@@ -70,6 +76,7 @@ namespace Gladiator.Arena
             var gm = GameManager.Ensure();
             var net = Gladiator.Net.NetSession.Instance;
             Online = net != null && net.InGame && net.Phase == Gladiator.Net.NetSession.PhaseArena;
+            OnlineCoop = Online && net.ArenaCoop;
             if (!Online) gm.DayCycle.NotifySceneStarted(DayPhase.Arena);
             if (Seed != 0) Random.InitState(Seed);
             PS2Materials.Init(PS2LitShader);
@@ -94,7 +101,7 @@ namespace Gladiator.Arena
                 var me = net.Local;
                 int slot = net.SlotOf(net.LocalId);
                 var lk = OnlineLook(profile.Appearance, profile.ArmorSet, me != null ? me.Color : 0, net.ArenaUpgrades);
-                Vector3 at = Gladiator.Net.NetArena.SpawnFor(slot, net.Players.Count);
+                Vector3 at = Gladiator.Net.NetArena.SpawnFor(slot, net.Players.Count, OnlineCoop);
                 Player = CharacterFactory.Create(profile.Name, lk.look, at, Quaternion.LookRotation(-new Vector3(at.x, 0f, at.z)), 0, lk.armor);
                 Player.TeamId = me != null ? Gladiator.Net.NetArena.TeamOf(net, me) : 100;
             }
@@ -137,7 +144,8 @@ namespace Gladiator.Arena
                     SpawnWave(1);
                     break;
                 case (EncounterType)(-1):
-                    break; // online: the rivals are the other players
+                    if (OnlineCoop && net.IsHost) SpawnCoop(net); // online co-op: only the host runs the rivals
+                    break; // online PvP: the rivals are the other players
                 default:
                     SpawnEnemy(new Vector3(0, 0, 5f), 1, false);
                     break;
@@ -177,8 +185,8 @@ namespace Gladiator.Arena
                 nav.SceneCode = 2;
                 nav.TeamFor = pl => Gladiator.Net.NetArena.TeamOf(net, pl);
                 nav.LookFor = pl => OnlineLook(pl.G.Appearance(), pl.G.ArmorSet, pl.Color, net.ArenaUpgrades);
-                nav.Init(Player, cam, slotIdx => Gladiator.Net.NetArena.SpawnFor(slotIdx, net.Players.Count), msg => hud.ShowMessage(msg, 2.5f));
-                gameObject.AddComponent<Gladiator.Net.NetArena>().Init(Player, nav, hud);
+                nav.Init(Player, cam, slotIdx => Gladiator.Net.NetArena.SpawnFor(slotIdx, net.Players.Count, OnlineCoop), msg => hud.ShowMessage(msg, 2.5f));
+                gameObject.AddComponent<Gladiator.Net.NetArena>().Init(Player, nav, hud, this);
             }
             else
                 new GameObject("TownCrowd").AddComponent<Gladiator.Town.ArenaCrowdManager>().Init(Manager, hud);
@@ -436,7 +444,9 @@ namespace Gladiator.Arena
             var enemyArmor = fodder ? Gladiator.Character.ArmorSet.Empty
                                     : Gladiator.Character.ArmorSet.RandomForDay(day, new System.Random(Random.Range(0, int.MaxValue)));
             Vector3 face = -pos; face.y = 0f;
-            var enemy = CharacterFactory.Create(name, look, pos, Quaternion.LookRotation(face.sqrMagnitude > 0.01f ? face : Vector3.back), team, enemyArmor);
+            var app = CharacterFactory.FromLook(look, name);
+            var enemy = CharacterFactory.Create(name, app, pos, Quaternion.LookRotation(face.sqrMagnitude > 0.01f ? face : Vector3.back), team, enemyArmor);
+            BotLooks[enemy] = app;
             var pool = WeaponLibrary.PoolForDay(day);
             var ws = pool[Random.Range(0, pool.Length)];
             enemy.Equip(WeaponFactory.Create(ws));
@@ -476,6 +486,7 @@ namespace Gladiator.Arena
             look.Shirt = 1; look.Pants = 3; look.Shoes = 1;
             var armor = Gladiator.Character.ArmorSet.Champion();
             var champ = CharacterFactory.Create("Carpophorus el Campeon", look, pos, Quaternion.LookRotation(-new Vector3(pos.x, 0, pos.z)), 1, armor);
+            BotLooks[champ] = look;
             champ.Equip(WeaponFactory.Create(WeaponLibrary.Trident));
             StatEffects.ApplyToChampion(champ, day0);
             var ai = champ.gameObject.AddComponent<EnemyAI>();
@@ -490,6 +501,41 @@ namespace Gladiator.Arena
             return champ;
         }
 
+        /// <summary>
+        /// Online co-op, on the host: the rivals for the chosen mode on the north half of the sand (the players start on
+        /// the south one). Duel: one per player; double: two per player; the champion, tougher the more players; waves:
+        /// the first wave, bigger the more players.
+        /// </summary>
+        void SpawnCoop(Gladiator.Net.NetSession net)
+        {
+            int players = Mathf.Max(1, net.Players.Count);
+            switch (net.ArenaMode)
+            {
+                case Gladiator.Net.NetSession.ModeChampion:
+                {
+                    var c = SpawnChampion(new Vector3(0, 0, 6f));
+                    float hp = c.Health.Max * (1f + 0.75f * (players - 1));
+                    c.Health.SetMax(hp, true);
+                    break;
+                }
+                case Gladiator.Net.NetSession.ModeWaves:
+                    WaveScale = 1f + 0.5f * (players - 1);
+                    SpawnWave(1);
+                    break;
+                default:
+                {
+                    int n = players * (net.ArenaMode == Gladiator.Net.NetSession.ModeDouble ? 2 : 1);
+                    for (int k = 0; k < n; k++)
+                    {
+                        float x = (k - (n - 1) * 0.5f) * 2.2f;
+                        SpawnEnemy(new Vector3(x, 0, 5.5f + (k % 2) * 1.2f), 1, n > 1);
+                    }
+                    break;
+                }
+            }
+            Debug.Log($"[NETARENA] host spawned {Enemies.Count} rivals for mode {net.ArenaMode} ({players} players)");
+        }
+
         /// <summary>Wave mode: 1, 2, 4, 6, 8 and 10 opponents.</summary>
         public static readonly int[] WaveSizes = { 1, 2, 4, 6, 8, 10 };
 
@@ -497,7 +543,7 @@ namespace Gladiator.Arena
         public List<Fighter> SpawnWave(int n)
         {
             var list = new List<Fighter>();
-            int count = WaveSizes[Mathf.Clamp(n - 1, 0, WaveSizes.Length - 1)];
+            int count = Mathf.Min(14, Mathf.CeilToInt(WaveSizes[Mathf.Clamp(n - 1, 0, WaveSizes.Length - 1)] * WaveScale));
             Vector3 p = Player != null ? Player.transform.position : Vector3.zero;
             float baseAng = Mathf.Atan2(-p.z, -p.x); // opposite side of the arena from the player
             for (int k = 0; k < count; k++)
