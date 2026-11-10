@@ -185,6 +185,8 @@ namespace Gladiator.Combat
         public int TauntKind { get; private set; }
         /// <summary>Training partners in the ludus: hits only make them flinch (no damage, no disarm) and theirs never land.</summary>
         [System.NonSerialized] public bool Harmless;
+        /// <summary>Hits never take the health below this (0 = off). The town: guards knock you out, they do not kill.</summary>
+        [System.NonSerialized] public float MinHealth;
         StunStars stunStars;
         /// <summary>Dodge i-frames: the first 70% of the roll / back-step.</summary>
         public bool Invulnerable => state == FighterState.Dodge && Phase < 0.7f;
@@ -1136,6 +1138,8 @@ namespace Gladiator.Combat
             }
 
             if (Harmless) { damage = 0f; r.Disarmed = false; }
+            // Non-lethal places (the town): never below MinHealth.
+            if (MinHealth > 0f) damage = Mathf.Min(damage, Mathf.Max(0f, Health.Current - MinHealth));
             if (attacker != null) LastAttacker = attacker;
             Health.TakeDamage(damage);
             r.Killed = Health.IsDead;

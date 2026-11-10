@@ -40,6 +40,81 @@ namespace Gladiator.Town
             }
         }
 
+        static void Teleport(Fighter f, Vector3 at)
+        {
+            var cc = f.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            f.transform.position = at;
+            if (cc != null) cc.enabled = true;
+        }
+
+        /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
+        IEnumerator GuardsTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var guards = town.Guards;
+            var gcam = town.Cam;
+            // stand near a guard with a body
+            CitizenNPC guard = null;
+            for (int tries = 0; tries < 30 && guard == null; tries++)
+            {
+                foreach (var n in town.Spawner.Active)
+                    if (n.Citizen != null && n.Citizen.Job == Job.Guardia && !n.GoingIn) { guard = n; break; }
+                if (guard == null) yield return Wait(0.5f);
+            }
+            if (guard == null) { Log("GUARDS no guard with a body near"); yield break; }
+            Vector3 gp = guard.transform.position;
+            TownNavMesh.Snap(gp + (gp - town.Layout.Fountain).normalized * -8f, out Vector3 near, 6f);
+            Teleport(pl, near + Vector3.up * 0.05f);
+            yield return HoldCam(gcam, pl, 1.5f, 1.2f, 7f, 30f);
+            // 1) hit a townsperson
+            CitizenNPC victim = null;
+            foreach (var n in town.Spawner.Active) if (n.Citizen != null && n.Citizen.Job != Job.Guardia) { victim = n; break; }
+            if (victim != null) victim.Fighter.ReceiveHit(pl, 5f, AttackType.Light, (victim.transform.position - pl.transform.position).normalized);
+            else guards.Offence("test");
+            Log($"GUARDS after hit: warnings={guards.Warnings} warner={(guards.Warner != null ? guards.Warner.Citizen.Name : "none")} victimFled={(victim != null && victim.Fleeing)}");
+            float t0 = Time.time;
+            float startD = guards.Warner != null ? (guards.Warner.transform.position - pl.transform.position).magnitude : -1f;
+            while (guards.Warner != null && Time.time - t0 < 10f && (guards.Warner.transform.position - pl.transform.position).magnitude > 2.6f) yield return HoldCam(gcam, pl, 0.1f, 1.2f, 7f, 30f);
+            float endD = guards.Warner != null ? (guards.Warner.transform.position - pl.transform.position).magnitude : -1f;
+            yield return HoldCam(gcam, pl, 1.0f, 1.2f, 6f, 25f);
+            Log($"GUARDS warner came {startD:0.0}m -> {endD:0.0}m in {Time.time - t0:0.0}s state={(guards.Warner != null ? guards.Warner.Fighter.State.ToString() : "-")}");
+            yield return Shot("02a_guardia_advierte");
+            yield return Wait(3.2f);
+            // 2) walk into a house that is not ours
+            HouseInterior house = null;
+            foreach (var h in town.Houses) if (h.Floor == 0 && !HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) { house = h; break; }
+            if (house != null)
+            {
+                Teleport(pl, house.RoomCenter("COCINA") + Vector3.up * 0.05f);
+                yield return Wait(0.5f);
+                Log($"GUARDS in a house: warnings={guards.Warnings} inHouse={(town.HouseAt(pl.transform.position) != null)}");
+                yield return Wait(3.5f);
+                Teleport(pl, near + Vector3.up * 0.05f);
+                yield return Wait(1f);
+            }
+            // 3) third offence: the fight
+            if (guards.Warner != null) yield return Wait(3f);
+            yield return Wait(3.2f);
+            guards.Offence("test 3");
+            Log($"GUARDS third: warnings={guards.Warnings} hostile={(guards.Hostile != null ? guards.Hostile.Citizen.Name : "none")}");
+            float hp0 = pl.Health.Current;
+            for (float t = 0f; t < 8f && guards.Hostile != null; t += 0.1f) yield return HoldCam(gcam, pl, 0.1f, 1.1f, 6f, 25f);
+            Log($"GUARDS fight 8s: playerHP {hp0:0}->{pl.Health.Current:0} hostile={(guards.Hostile != null)} guardHarmless={(guards.Hostile != null && guards.Hostile.Fighter.Harmless)}");
+            yield return Shot("02b_guardia_pelea");
+            // 4) knockout (take the player down to the threshold)
+            if (guards.Hostile != null)
+            {
+                pl.Health.TakeDamage(pl.Health.Current - pl.Health.Max * 0.2f);
+                yield return Wait(0.5f);
+            }
+            Log($"GUARDS end: outcome={guards.LastOutcome} warnings={guards.Warnings} hp={pl.Health.Current:0}/{pl.Health.Max:0} alive={pl.IsAlive} " +
+                $"atLudus={((pl.transform.position - town.Layout.LudusGate).magnitude < 6f)}");
+            yield return HoldCam(gcam, pl, 1f, 1.2f, 7f, 30f);
+            yield return Shot("02c_despiertas");
+            gcam.FocusOverride = null;
+        }
+
         IEnumerator Shot(string name)
         {
             yield return new WaitForEndOfFrame();
@@ -212,6 +287,7 @@ namespace Gladiator.Town
                 pl.WalkMode = false;
                 if (pcw != null) pcw.enabled = true;
                 gcam.FocusOverride = null;
+                yield return GuardsTest(town);
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0) { Quit(); yield break; }
             }
 

@@ -38,6 +38,21 @@ namespace Gladiator.Town
         public int Buildings { get; private set; }
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
+        public TownGuards Guards { get; private set; }
+
+        /// <summary>After the guards beat the player: wake up somewhere safe with half the health. Returns where (for the message).</summary>
+        public string WakeUpAfterBeating(out Vector3 at)
+        {
+            at = Layout.LudusGate + Layout.LudusFacing * 3.5f + Vector3.up * 0.05f;
+            var cc = Player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            Player.transform.position = at;
+            if (cc != null) cc.enabled = true;
+            if (Player.InActivity) Player.StopActivity();
+            Player.Health.Heal(Player.Health.Max * 0.5f - Player.Health.Current);
+            if (Cam != null) Cam.SnapToTarget();
+            return "junto a la puerta del ludus";
+        }
         /// <summary>The homes you can walk into.</summary>
         public System.Collections.Generic.List<HouseInterior> Houses { get; private set; }
 
@@ -167,6 +182,8 @@ namespace Gladiator.Town
             Hud.SetHint("WASD mover  BLOQ MAYUS caminar/correr  T burlas  X acciones  E interactuar  puerta del ludus: volver  puerta de la arena: combate  F3 el pueblo  F4 donde esta cada uno  ESC menu");
             Spawner = new GameObject("Citizens").AddComponent<CitizenSpawner>();
             Spawner.Init(Player);
+            Guards = new GameObject("TownGuards").AddComponent<TownGuards>();
+            Guards.Init(this);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
             // online: the other players who are in the town too
@@ -380,6 +397,7 @@ namespace Gladiator.Town
                 return;
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;
+            if (npc != null && npc.Controlled) npc = null; // a guard warning or fighting you does not chat
             if (npc != null && npc.Citizen != null && !npc.Fleeing)
             {
                 town.Hud.SetPrompt(key + "HABLAR CON " + npc.Citizen.Name.ToUpperInvariant() + " (" + npc.Citizen.JobName + ")");

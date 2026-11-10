@@ -23,6 +23,8 @@ namespace Gladiator.Town
         /// <summary>Heading for their door (home, or work inside) and for how long.</summary>
         public bool GoingIn => goingIn && !arrived;
         public float GoingInSeconds { get; private set; }
+        /// <summary>Driven by someone else (TownGuards: a guard coming to warn you, or fighting you): own brain off.</summary>
+        [System.NonSerialized] public bool Controlled;
         /// <summary>Metres walked since materialising (tests).</summary>
         public float Travelled { get; private set; }
 
@@ -60,7 +62,7 @@ namespace Gladiator.Town
             gameObject.name = "Citizen_" + c.Name;
         }
 
-        public void Clear() { Citizen = null; corners.Clear(); Fighter.Move(Vector3.zero); }
+        public void Clear() { Citizen = null; Controlled = false; corners.Clear(); Fighter.Move(Vector3.zero); }
 
         public void Flee(Vector3 from, float seconds)
         {
@@ -73,7 +75,7 @@ namespace Gladiator.Town
 
         void Update()
         {
-            if (Citizen == null || sim == null || !Fighter.IsAlive) return;
+            if (Citizen == null || sim == null || !Fighter.IsAlive || Controlled) return;
             float dt = Time.deltaTime;
             float moved = Flat(transform.position - lastPos); // since the last frame
             Travelled += moved;

@@ -77,6 +77,7 @@ namespace Gladiator.Town
                 float d = Flat(npc.transform.position - p);
                 // going indoors: through the door, or simply gone once out of close view (or after a while)
                 bool homeBound = npc.GoingIn && (d > 26f || npc.GoingInSeconds > 40f);
+                if (npc.Controlled) continue; // a guard dealing with the player stays
                 if (d > ReleaseRadius || npc.Finished || homeBound) release.Add(kv.Key);
             }
             foreach (int id in release) Release(id);
@@ -201,12 +202,13 @@ namespace Gladiator.Town
             var npc = r.Target.GetComponent<CitizenNPC>();
             if (npc == null || npc.Citizen == null) return;
             sim.ChangeRelation(npc.Citizen, -15);
+            if (npc.Controlled || npc.Citizen.Job == Job.Guardia) return; // guards do not run: TownGuards deals with it
             npc.Flee(player.transform.position, 7f);
             var net = Gladiator.Net.NetSession.Instance;
             if (net != null && net.InGame)
                 net.Send("CH", npc.Citizen.Id + "|" + Gladiator.Net.NetSession.F(player.transform.position.x) + "|" + Gladiator.Net.NetSession.F(player.transform.position.z));
             foreach (var other in active.Values)
-                if (other != npc && Flat(other.transform.position - npc.transform.position) < 9f)
+                if (other != npc && !other.Controlled && other.Citizen.Job != Job.Guardia && Flat(other.transform.position - npc.transform.position) < 9f)
                 {
                     sim.ChangeRelation(other.Citizen, -4);
                     other.Flee(player.transform.position, 5f);
