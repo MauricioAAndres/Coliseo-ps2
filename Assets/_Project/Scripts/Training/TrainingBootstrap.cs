@@ -36,11 +36,20 @@ namespace Gladiator.Training
         public static readonly Vector3 TownDoorPoint = new Vector3(HalfX - 1.1f, 0f, TownDoorZ);
         const float TownDoorZ = 4.5f;
 
+        /// <summary>The ludus now stands inside the town (LudusInTown): loading the old "Training" scene goes to the town.</summary>
+        public static bool RedirectToTown = true;
+
         void Awake()
         {
             Time.timeScale = 1f;
             var gm = GameManager.Ensure();
             gm.DayCycle.NotifySceneStarted(DayPhase.Training);
+            if (RedirectToTown)
+            {
+                ArriveFromTown = false;
+                UnityEngine.SceneManagement.SceneManager.LoadScene(Gladiator.Town.TownBootstrap.SceneName);
+                return;
+            }
             PS2Materials.Init(PS2LitShader);
             SetupRenderSettings();
 
@@ -103,7 +112,7 @@ namespace Gladiator.Training
             Manager = new GameObject("TrainingManager").AddComponent<TrainingManager>();
             Manager.Init(Player, pc, hud, camCtl, stations, new Vector3(0, 0, HalfZ - 1.6f), shopPoint);
             Manager.TownDoor = TownDoorPoint;
-            BuildPartners(env, cam, hud);
+            Partners = BuildPartners(env, cam, hud);
             // Multiplayer: the other players' gladiators share the yard.
             if (multi) gameObject.AddComponent<Gladiator.Net.NetAvatars>().Init(Player, cam, SlotSpawn, msg => hud.ShowMessage(msg, 3f));
 
@@ -113,10 +122,19 @@ namespace Gladiator.Training
         /// <summary>Where each player of a multiplayer game appears (roster order), side by side in the south of the yard.</summary>
         public static Vector3 SlotSpawn(int slot) => new Vector3(-2.4f + 1.6f * Mathf.Clamp(slot, 0, 3), 0.05f, -7.5f);
 
-        static T MakeStation<T>(string name, Vector3 pos, float yaw, System.Action<T> configure = null) where T : TrainingMinigame
+        /// <summary>When set, stations are built as children of this transform (positions are then local to it: the ludus in the town).</summary>
+        internal static Transform StationRoot;
+
+        internal static T MakeStation<T>(string name, Vector3 pos, float yaw, System.Action<T> configure = null) where T : TrainingMinigame
         {
             var go = new GameObject(name);
-            go.transform.SetPositionAndRotation(pos, Quaternion.Euler(0, yaw, 0));
+            if (StationRoot != null)
+            {
+                go.transform.SetParent(StationRoot, false);
+                go.transform.localPosition = pos;
+                go.transform.localRotation = Quaternion.Euler(0, yaw, 0);
+            }
+            else go.transform.SetPositionAndRotation(pos, Quaternion.Euler(0, yaw, 0));
             var s = go.AddComponent<T>();
             configure?.Invoke(s);
             s.Build();
@@ -134,7 +152,7 @@ namespace Gladiator.Training
         /// Two more stations of each kind, each taken by a training partner who practises all day (the player has the
         /// third, original one). Partners have their own wooden gladius; hitting them does no damage.
         /// </summary>
-        void BuildPartners(Transform env, Camera cam, TrainingHUD hud)
+        internal static List<TrainingMinigame> BuildPartners(Transform env, Camera cam, TrainingHUD hud)
         {
             var silent = new GameObject("PartnersHUD", typeof(RectTransform)).AddComponent<TrainingHUD>();
             silent.Init(cam);
@@ -163,14 +181,14 @@ namespace Gladiator.Training
                 var npc = f.gameObject.AddComponent<TrainingNPC>();
                 npc.Begin(f, st, silent, hud);
             }
-            Partners = extra;
+            return extra;
         }
 
         /// <summary>The partners' stations (autotest).</summary>
         public List<TrainingMinigame> Partners { get; private set; }
 
         /// <summary>Ring on the sand + a small signpost coloured by stat, so stations read from afar.</summary>
-        static void MakeStationMarker(Transform parent, TrainingMinigame s)
+        internal static void MakeStationMarker(Transform parent, TrainingMinigame s)
         {
             Color c = s.Stat == StatType.Strength ? new Color(0.75f, 0.2f, 0.12f)
                     : s.Stat == StatType.Agility ? new Color(0.25f, 0.6f, 0.2f) : new Color(0.25f, 0.35f, 0.7f);
@@ -308,7 +326,8 @@ namespace Gladiator.Training
             }
         }
 
-        void BuildYard(Transform parent)
+        /// <param name="inTown">The ludus inside the town: its north gate opens onto the town by itself (no arena gate, no east door).</param>
+        internal static void BuildYard(Transform parent, bool inTown = false)
         {
             Material sand = PS2Materials.Get("sand", PS2Textures.Sand, Color.white);
             Material stone = PS2Materials.Get("stone", PS2Textures.Stone, Color.white);
@@ -336,7 +355,7 @@ namespace Gladiator.Training
                 c[i] = new Color(ao, ao, ao, 1f);
             }
             floor.colors = c;
-            PS2Spawn.Mesh(yard, "Floor", floor, Vector3.zero, sand);
+            PS2Spawn.Mesh(yard, "Floor", floor, inTown ? Vector3.up * 0.012f : Vector3.zero, sand);
 
             // Perimeter walls (plaster with a stone base), north wall split by the gate.
             void Wall(string n, Vector3 center, Vector3 size)
@@ -363,16 +382,41 @@ namespace Gladiator.Training
             PS2Spawn.Box(gate, "JambR", new Vector3(0.6f, WallH + 0.8f, 1.4f), new Vector3(GateHalf + 0.3f, (WallH + 0.8f) * 0.5f, 0), stone);
             PS2Spawn.Box(gate, "Lintel", new Vector3(GateHalf * 2f + 1.8f, 1.2f, 1.4f), new Vector3(0, WallH + 0.2f, 0), stone);
             PS2Spawn.Box(gate, "Banner", new Vector3(GateHalf * 2f - 0.4f, 0.8f, 0.05f), new Vector3(0, WallH + 0.2f, -0.73f), banner);
-            PS2Spawn.Box(gate, "DoorL", new Vector3(GateHalf - 0.05f, 3.6f, 0.25f), new Vector3(-GateHalf * 0.5f, 1.8f, 0.1f), darkWood, null, 0.8f);
-            PS2Spawn.Box(gate, "DoorR", new Vector3(GateHalf - 0.05f, 3.6f, 0.25f), new Vector3(GateHalf * 0.5f, 1.8f, 0.1f), darkWood, null, 0.8f);
             PS2Spawn.Box(gate, "Fill", new Vector3(GateHalf * 2f, WallH - 3.6f, 0.6f), new Vector3(0, 3.6f + (WallH - 3.6f) * 0.5f, 0), plaster);
-            for (int i = -1; i <= 1; i += 2)
-                PS2Spawn.Box(gate, "Band", new Vector3(GateHalf * 2f, 0.12f, 0.3f), new Vector3(0, 1.8f + i * 1.1f, 0.0f),
-                    PS2Materials.Get("iron", PS2Textures.Metal, new Color(0.45f, 0.42f, 0.4f)));
-            PS2Spawn.BoxCollider(gate, new Vector3(0, WallH * 0.5f, 0), new Vector3(GateHalf * 2f + 1.2f, WallH, 1.4f));
+            if (inTown)
+            {
+                // two leaves on hinges that swing open when someone walks up to the gate (push it open: no E, no loading)
+                var doors = gate.gameObject.AddComponent<LudusGateDoors>();
+                var iron = PS2Materials.Get("iron", PS2Textures.Metal, new Color(0.45f, 0.42f, 0.4f));
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    var hinge = new GameObject(side < 0 ? "HingeL" : "HingeR").transform;
+                    hinge.SetParent(gate, false);
+                    hinge.localPosition = new Vector3(side * GateHalf, 0, 0.1f);
+                    float leafX = -side * (GateHalf - 0.05f) * 0.5f;
+                    PS2Spawn.Box(hinge, "Leaf", new Vector3(GateHalf - 0.05f, 3.6f, 0.25f), new Vector3(leafX, 1.8f, 0), darkWood, null, 0.8f);
+                    for (int i = -1; i <= 1; i += 2)
+                        PS2Spawn.Box(hinge, "Band", new Vector3(GateHalf - 0.1f, 0.12f, 0.3f), new Vector3(leafX, 1.8f + i * 1.1f, 0f), iron);
+                    if (side < 0) doors.Left = hinge; else doors.Right = hinge;
+                }
+                // the frame only: the doorway itself stays open to walk through
+                PS2Spawn.BoxCollider(gate, new Vector3(-GateHalf - 0.3f, WallH * 0.5f, 0), new Vector3(0.6f, WallH, 1.4f));
+                PS2Spawn.BoxCollider(gate, new Vector3(GateHalf + 0.3f, WallH * 0.5f, 0), new Vector3(0.6f, WallH, 1.4f));
+                PS2Spawn.BoxCollider(gate, new Vector3(0, 3.6f + (WallH - 3.6f) * 0.5f, 0), new Vector3(GateHalf * 2f, WallH - 3.6f, 1.4f));
+            }
+            else
+            {
+                PS2Spawn.Box(gate, "DoorL", new Vector3(GateHalf - 0.05f, 3.6f, 0.25f), new Vector3(-GateHalf * 0.5f, 1.8f, 0.1f), darkWood, null, 0.8f);
+                PS2Spawn.Box(gate, "DoorR", new Vector3(GateHalf - 0.05f, 3.6f, 0.25f), new Vector3(GateHalf * 0.5f, 1.8f, 0.1f), darkWood, null, 0.8f);
+                for (int i = -1; i <= 1; i += 2)
+                    PS2Spawn.Box(gate, "Band", new Vector3(GateHalf * 2f, 0.12f, 0.3f), new Vector3(0, 1.8f + i * 1.1f, 0.0f),
+                        PS2Materials.Get("iron", PS2Textures.Metal, new Color(0.45f, 0.42f, 0.4f)));
+                PS2Spawn.BoxCollider(gate, new Vector3(0, WallH * 0.5f, 0), new Vector3(GateHalf * 2f + 1.2f, WallH, 1.4f));
+            }
 
-            // East door to the town: stone frame, wooden door and a small sign.
+            // East door to the town: stone frame, wooden door and a small sign (not in the town: the north gate opens onto it).
             var townDoor = new GameObject("TownDoor").transform;
+            if (inTown) townDoor.gameObject.SetActive(false);
             townDoor.SetParent(yard, false);
             townDoor.localPosition = new Vector3(HalfX, 0, TownDoorZ);
             townDoor.localRotation = Quaternion.Euler(0, -90f, 0); // faces into the yard (-x)

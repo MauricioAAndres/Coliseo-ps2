@@ -131,7 +131,7 @@ namespace Gladiator.Town
             BuildFountain();
             foreach (var s in L.Stalls) BuildStall(s.Key, s.Value);
             BuildArena();
-            BuildLudus();
+            // the ludus is built by Training.LudusInTown (its yard, open to the town)
             BuildTownWall();
 
             // merge: one mesh per material

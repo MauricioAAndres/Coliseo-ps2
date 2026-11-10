@@ -46,7 +46,7 @@ namespace Gladiator.Progression
     /// </summary>
     public class DayCycleManager : MonoBehaviour
     {
-        public const string TrainingScene = "Training";
+        public const string TrainingScene = "Town"; // the ludus is inside the town now
         public const string ArenaScene = "Arena";
 
         public int Day { get; private set; } = 1;

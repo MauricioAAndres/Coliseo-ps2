@@ -48,6 +48,69 @@ namespace Gladiator.Town
             if (cc != null) cc.enabled = true;
         }
 
+        /// <summary>
+        /// The ludus inside the town: the yard with its stations and partners, the gate that opens by itself, walking
+        /// out to the street and back in (same scene), and a station that still works.
+        /// </summary>
+        IEnumerator LudusTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcL = pl.GetComponent<PlayerController>();
+            if (pcL != null) pcL.enabled = false;
+            var gate = town.Ludus.GetComponentInChildren<Gladiator.Training.LudusGateDoors>();
+            int partners = Gladiator.Training.TrainingNPC.All.Count;
+            Log($"LUDUS inTown={(town.Ludus != null)} stations={town.Training.Stations.Count} partners={partners} gate={(gate != null)} scene={SceneManager.GetActiveScene().name}");
+            town.GetComponent<TownManager>().GoToLudus();
+            yield return Wait(0.5f);
+            bool inYard = town.InLudus(pl.transform.position);
+            // overview of the yard
+            var gcam = town.Cam;
+            for (float t = 0f; t < 1.2f; t += Time.unscaledDeltaTime) { gcam.FocusOverride = town.Ludus.position; gcam.Distance = 30f; gcam.Pitch = 60f; yield return null; }
+            yield return Shot("10_ludus_en_el_pueblo");
+            gcam.FocusOverride = null;
+            // walk out: to the gate, through it, into the street; then back in
+            Vector3[] route =
+            {
+                town.Ludus.TransformPoint(new Vector3(0f, 0f, 8.5f)),
+                town.Ludus.TransformPoint(new Vector3(0f, 0f, 16f)),
+                town.Ludus.TransformPoint(new Vector3(0f, 0f, 2f)),
+            };
+            bool gateOpened = false, wentOut = false, cameBack = false;
+            float walked = 0f;
+            for (int i = 0; i < route.Length; i++)
+            {
+                float t = 0f;
+                while (t < 12f)
+                {
+                    Vector3 to = route[i] - pl.transform.position; to.y = 0f;
+                    if (to.magnitude < 1.0f) break;
+                    pl.Move(to.normalized);
+                    pl.SetFacing(to);
+                    if (gate != null && gate.IsOpen) gateOpened = true;
+                    t += Time.deltaTime;
+                    yield return null;
+                }
+                walked += t;
+                pl.Move(Vector3.zero);
+                if (i == 0) yield return Shot("10b_puerta_abierta");
+                if (i == 1) { wentOut = !town.InLudus(pl.transform.position) && (route[1] - pl.transform.position).magnitude < 1.5f; yield return Shot("10c_fuera_del_ludus"); }
+                if (i == 2) cameBack = town.InLudus(pl.transform.position);
+            }
+            yield return Wait(4f);
+            Log($"LUDUS spawnInYard={inYard} gateOpened={gateOpened} wentOut={wentOut} cameBack={cameBack} gateClosedAfter={(gate != null && !gate.IsOpen)} sameScene={(TownBootstrap.Instance == town)} time={walked:0.0}s");
+            // a station still works in the town (free practice, then stop)
+            var st = town.Training.Stations[0];
+            bool started = town.Training.StartStation(st, true);
+            yield return Wait(4f);
+            bool running = Gladiator.Training.TrainingMinigame.PlayerRunning == st;
+            yield return Shot("10d_entrenando_en_el_pueblo");
+            st.StopRequested = true;
+            float t1 = Time.time;
+            while (town.Training.Busy && Time.time - t1 < 15f) yield return null;
+            Log($"LUDUS station {st.Id} started={started} running={running} finished={!town.Training.Busy}");
+            if (pcL != null) pcL.enabled = true;
+        }
+
         /// <summary>The infirmary: ten beds, public (no trespassing), you wake up lying in a bed and get up by moving.</summary>
         IEnumerator InfirmaryTest(TownBootstrap town)
         {
@@ -352,6 +415,7 @@ namespace Gladiator.Town
                 gcam.FocusOverride = null;
                 yield return GuardsTest(town);
                 yield return InfirmaryTest(town);
+                yield return LudusTest(town);
                 town.Guards.Suspended = true; // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
@@ -913,27 +977,8 @@ namespace Gladiator.Town
             Log($"WALK reached={reached}/{route.Length - 1} time={walkTime:0.0}s atArenaGate={(Flat(town.Layout.ArenaGate - player.transform.position) < 3.2f)}");
             yield return Shot("07_puerta_arena");
 
-            // back to the ludus, then out again through the east door
-            var tm = town.GetComponent<TownManager>();
-            tm.GoToLudus();
-            t0 = Time.realtimeSinceStartup;
-            TrainingBootstrap tb = null;
-            while ((tb = FindAnyObjectByType<TrainingBootstrap>()) == null && Time.realtimeSinceStartup - t0 < 30f) yield return null;
-            yield return Wait(1.5f);
-            if (tb != null)
-            {
-                float d = Flat(tb.Player.transform.position - TrainingBootstrap.TownDoorPoint);
-                bool merchant = false;
-                foreach (var f in Fighter.All) if (f.DisplayName == "Mercator") merchant = true;
-                Log($"LUDUS arrived nearEastDoor={d < 2f} dist={d:0.0} merchantStall={merchant} (expected False)");
-                yield return Shot("08_ludus_puerta_este");
-                tb.Player.GetComponent<PlayerController>().enabled = false;
-                tb.Manager.GoToTown();
-                t0 = Time.realtimeSinceStartup;
-                while (TownBootstrap.Instance == null && Time.realtimeSinceStartup - t0 < 30f) yield return null;
-                Log($"BACK IN TOWN={(TownBootstrap.Instance != null)} sameSeed={(TownBootstrap.Instance != null && TownBootstrap.Instance.Layout.Seed == town.Layout.Seed)}");
-            }
-            else Log("LUDUS NOT LOADED");
+            // the ludus is part of the town: in and out through its gate, no loading
+            yield return LudusTest(town);
             yield return Wait(1f);
             Log("DONE");
             Quit();

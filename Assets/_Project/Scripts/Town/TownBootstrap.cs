@@ -39,6 +39,12 @@ namespace Gladiator.Town
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
         public TownGuards Guards { get; private set; }
+        /// <summary>The ludus yard inside the town (+z towards the town) and its training manager.</summary>
+        public Transform Ludus { get; private set; }
+        public Gladiator.Training.TrainingManager Training { get; private set; }
+        Transform ludusMarkers;
+        System.Collections.Generic.List<Gladiator.Training.TrainingMinigame> ludusStations;
+        public bool InLudus(Vector3 p) => Ludus != null && Gladiator.Training.LudusInTown.Inside(Ludus, p);
 
         /// <summary>After the guards beat the player: wake up in the infirmary with half the health. Returns where (for the message).</summary>
         public string WakeUpAfterBeating(out Vector3 at)
@@ -184,6 +190,11 @@ namespace Gladiator.Town
             Buildings = builder.BuildingCount;
             Houses = builder.Houses;
             MarkOwned();
+            // the ludus: its training yard inside the town, the gate opens onto the street (no loading, no E)
+            Ludus = new GameObject("Ludus").transform;
+            Ludus.SetPositionAndRotation(Layout.LudusCenter, Quaternion.LookRotation(Layout.LudusFacing));
+            ludusMarkers = new GameObject("LudusMarkers").transform;
+            ludusStations = Gladiator.Training.LudusInTown.BuildStructure(Ludus, ludusMarkers);
             // streets for the townsfolk: navmesh baked from the colliders just built (before any fighter exists)
             Vector3 mid = (Layout.WallCorners[0] + Layout.WallCorners[2]) * 0.5f;
             float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
@@ -192,7 +203,10 @@ namespace Gladiator.Town
             Gladiator.PS2Style.DayNightCycle.Attach(env); // dawn / day / dusk / night from the town clock, clouds
             Camera cam = BuildCamera();
 
-            Vector3 spawn = Layout.LudusGate + Layout.LudusFacing * 3.5f + Vector3.up * 0.05f; // clear of the ludus wall (camera)
+            // the day starts in the ludus yard (online: side by side)
+            var netS = Gladiator.Net.NetSession.Instance;
+            bool multiS = netS != null && netS.InGame;
+            Vector3 spawn = multiS ? Gladiator.Training.LudusInTown.Spawn(Ludus, netS.SlotOf(netS.LocalId)) : Ludus.TransformPoint(new Vector3(0f, 0.05f, -7.5f));
             Player = CharacterFactory.Create(gm.Profile.Name, gm.Profile.Appearance, spawn, Quaternion.LookRotation(Layout.LudusFacing), 0, gm.Profile.ArmorSet);
             Player.Equip(WeaponFactory.Create(WeaponLibrary.Rudis));
             Player.DisarmResistance = 1f;
@@ -225,7 +239,8 @@ namespace Gladiator.Town
 
             Hud = new GameObject("TownHUD", typeof(RectTransform)).AddComponent<TrainingHUD>();
             Hud.Init(cam);
-            Hud.SetHint("WASD mover  BLOQ MAYUS caminar/correr  T burlas  X acciones  E interactuar  puerta del ludus: volver  puerta de la arena: combate  F3 el pueblo  F4 donde esta cada uno  ESC menu");
+            Hud.SetHint("WASD mover  BLOQ MAYUS caminar/correr  T burlas  X acciones  E interactuar / entrenar  puerta de la arena: combate  F3 el pueblo  F4 donde esta cada uno  ESC menu");
+            Training = Gladiator.Training.LudusInTown.Begin(Ludus, ludusMarkers, ludusStations, Player, pc, Hud, Cam, cam);
             Spawner = new GameObject("Citizens").AddComponent<CitizenSpawner>();
             Spawner.Init(Player);
             Guards = new GameObject("TownGuards").AddComponent<TownGuards>();
@@ -238,10 +253,9 @@ namespace Gladiator.Town
             {
                 var nav = gameObject.AddComponent<Gladiator.Net.NetAvatars>();
                 nav.SceneCode = 1;
-                nav.Init(Player, cam, slot => Layout.LudusGate + Layout.LudusFacing * (3.5f + slot), msg => Hud.ShowMessage(msg, 3f));
+                nav.Init(Player, cam, slot => Gladiator.Training.LudusInTown.Spawn(Ludus, slot), msg => Hud.ShowMessage(msg, 3f));
             }
             gameObject.AddComponent<TownManager>().Init(this, pc);
-            Hud.ShowMessage("EL PUEBLO", 2.5f);
             if (Gladiator.Progression.DayCycleManager.WakeInInfirmary)
             {
                 // lost in the arena: wake up in an infirmary bed (move to get up)
@@ -408,6 +422,7 @@ namespace Gladiator.Town
             if (town.Hud.Shop.IsOpen) { town.Hud.SetPrompt(""); return; } // the shop has its own keys (Esc closes)
             string key = GameInput.UsingGamepad ? "(A) " : "[" + InputBindings.Short(GameAction.Interact) + "] ";
             Vector3 p = town.Player.transform.position;
+            if (town.InLudus(p)) return; // in the ludus yard: the training manager has the prompts
             // inside a house, or at its door: its roof and ceiling go away so the camera sees in; say which room
             var inHouse = town.HouseAt(p);
             if (inHouse == null)
@@ -461,12 +476,6 @@ namespace Gladiator.Town
                 if (GameInput.InteractPressed) TalkTo(npc);
                 return;
             }
-            if (Flat(town.Layout.LudusGate - p) < GateRadius)
-            {
-                town.Hud.SetPrompt(key + "VOLVER AL LUDUS");
-                if (GameInput.InteractPressed) GoToLudus();
-                return;
-            }
             if (Flat(town.Layout.ArenaGate - p) < GateRadius)
             {
                 town.Hud.SetPrompt(key + "PUERTA DE LA ARENA: ELEGIR COMBATE");
@@ -505,12 +514,14 @@ namespace Gladiator.Town
             return line;
         }
 
+        /// <summary>The ludus is part of the town now: just walks the player into the yard (tests, menus).</summary>
         public void GoToLudus()
         {
-            if (leaving) return;
-            leaving = true;
-            TrainingBootstrap.ArriveFromTown = true;
-            SceneManager.LoadScene("Training");
+            var cc = town.Player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            town.Player.transform.SetPositionAndRotation(town.Ludus.TransformPoint(new Vector3(0f, 0.05f, -7.5f)), town.Ludus.rotation);
+            if (cc != null) cc.enabled = true;
+            if (town.Cam != null) town.Cam.SnapToTarget();
         }
 
         public void OpenArenaGate()

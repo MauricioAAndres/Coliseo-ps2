@@ -728,7 +728,7 @@ namespace Gladiator.Net
             if (PauseMenu.Instance != null && PauseMenu.Instance.IsOpen) PauseMenu.Instance.Close();
             if (ChoiceMenu.Instance != null) ChoiceMenu.Instance.Close();
             Time.timeScale = 1f;
-            if (Phase == PhaseLudus) SceneManager.LoadScene("Training");
+            if (Phase == PhaseLudus) SceneManager.LoadScene("Town"); // the ludus is inside the town
             else if (Phase == PhaseArena) SceneManager.LoadScene("Arena");
         }
 

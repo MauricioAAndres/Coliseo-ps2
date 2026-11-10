@@ -19,7 +19,7 @@ namespace Gladiator.Character
         public Shader PS2LitShader;
         public Shader PS2PostShader;
 
-        public const string NextScene = "Training";
+        public const string NextScene = "Town"; // the ludus is inside the town
         static readonly Color FogColor = new Color(0.12f, 0.08f, 0.06f);
         static readonly Color AmbientSky = new Color(0.46f, 0.4f, 0.4f);
         static readonly Color AmbientGround = new Color(0.3f, 0.2f, 0.14f);

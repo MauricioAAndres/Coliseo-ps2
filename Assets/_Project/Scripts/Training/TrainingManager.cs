@@ -28,6 +28,8 @@ namespace Gladiator.Training
         public float ShopRadius = 2f;
 
         public bool Busy { get; private set; }
+        /// <summary>The ludus inside the town: the manager only acts while the player is in the yard (the town handles the rest).</summary>
+        public Transform Yard;
 
         GameManager gm;
         float baseDistance, basePitch;
@@ -59,6 +61,7 @@ namespace Gladiator.Training
         void Update()
         {
             GameInput.UpdateDeviceMode();
+            if (Yard != null && !Busy && TrainingMinigame.PlayerRunning == null && !LudusInTown.Inside(Yard, Player.transform.position)) return;
             if (Hud.Shop.IsOpen) { Hud.SetPrompt(""); return; } // the shop handles its own input (Esc closes it)
             if (UI.ArenaGateMenu.Instance != null && UI.ArenaGateMenu.Instance.IsOpen) { Hud.SetPrompt(""); return; }
             if (UI.ChoiceMenu.Instance != null && UI.ChoiceMenu.Instance.IsOpen) { Hud.SetPrompt(""); return; }
@@ -196,7 +199,7 @@ namespace Gladiator.Training
             Debug.Log($"[TRAINING] day={gm.DayCycle.Day} station={s.Id} score={s.LastScore:0.00} +{pts} {s.Stat}");
             Hud.ShowResult(pts > 0 ? PlayerProfile.Label(s.Stat) + "  +" + pts : "SIN MEJORA",
                            "Rendimiento " + Mathf.RoundToInt(s.LastScore * 100f) + "%" + (gm.DayCycle.StationsUsedCount >= Stations.Count
-                               ? "   -   Entrenamiento completo: ve a la puerta norte" : ""), 3f);
+                               ? (Yard != null ? "   -   Entrenamiento completo: a la arena (al norte del pueblo)" : "   -   Entrenamiento completo: ve a la puerta norte") : ""), 3f);
 
             Cam.FocusOverride = null;
             Cam.Distance = baseDistance;
