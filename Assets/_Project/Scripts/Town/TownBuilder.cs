@@ -179,6 +179,7 @@ namespace Gladiator.Town
         // ------------------------------------------------------------------ buildings
         void BuildLot(TownLot lot)
         {
+            if (lot.Hidden) return; // under the jail
             BuildingCount++;
             switch (lot.Kind)
             {
@@ -188,6 +189,7 @@ namespace Gladiator.Town
                 case BuildingKind.Forum: Basilica(lot); return;
                 case BuildingKind.Infirmary: Infirmary(lot); return;
                 case BuildingKind.Governor: GovernorDomus(lot); return;
+                case BuildingKind.Jail: Jail(lot); return;
             }
             if (lot.IsHome) { HomeHouse(lot); return; }
             // shops: a real door and the inside of a home (kitchen, bedroom, bathroom); the trade goes outside the front
@@ -502,6 +504,14 @@ namespace Gladiator.Town
             Houses.Add(house);
         }
 
+        /// <summary>Getting out of an infirmary bed: on the floor at its foot.</summary>
+        static Vector3 InfirmaryStand(Pose bed)
+        {
+            Vector3 v = bed.position + bed.rotation * Vector3.forward * 1.65f;
+            v.y = bed.position.y - 0.52f + 0.05f;
+            return v;
+        }
+
         /// <summary>Where the next storey's side door goes (local z); NaN = over the first stair's landing, near the front.</summary>
         float sideDoorZ = float.NaN;
 
@@ -513,14 +523,6 @@ namespace Gladiator.Town
         /// first), the kitchen / bedroom / bathroom partition, the floors, the windows and the door on its hinge.
         /// Walls go into the current batch; returns the storey's interior (rooms, door).
         /// </summary>
-        /// <summary>Getting out of an infirmary bed: on the floor at its foot.</summary>
-        static Vector3 InfirmaryStand(Pose bed)
-        {
-            Vector3 v = bed.position + bed.rotation * Vector3.forward * 1.65f;
-            v.y = bed.position.y - 0.52f + 0.05f;
-            return v;
-        }
-
         HouseInterior Storey(TownLot lot, int level, Material wall, bool sideDoor, int ss)
         {
             Quaternion q = lot.Rotation;
@@ -1322,6 +1324,200 @@ namespace Gladiator.Town
             foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("DomusTop"), Vector3.zero, kv.Key);
             LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
             PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, H + 0.9f, 0), new Vector3(w + 0.6f, 1.6f, d + 0.6f), q);
+            house.Upper = upper;
+            house.Hide.Add(upper);
+            Houses.Add(house);
+        }
+
+        /// <summary>
+        /// The jail (carcer), beside the arena: thick dark stone walls, a heavy iron-banded door, the jailer's room in
+        /// front (table, chair, keys, a rack of spears) and at the back two cells behind iron bars, each with its own
+        /// barred gate that opens with E, a straw pallet, a bucket, shackles on the wall and a high barred window.
+        /// The roof hides while you are inside.
+        /// </summary>
+        void Jail(TownLot lot)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, d = lot.Depth, H = 3.4f, t = 0.3f;
+            float hx = w * 0.5f, hz = d * 0.5f;
+            var wall = PS2Materials.Get("jail_wall", PS2Textures.Stone, new Color(0.52f, 0.5f, 0.47f));
+            var floorM = PS2Materials.Get("jail_floor", PS2Textures.Stone, new Color(0.42f, 0.4f, 0.37f));
+            var bars = PS2Materials.Get("jail_iron", PS2Textures.Metal, new Color(0.3f, 0.3f, 0.32f));
+            var go = new GameObject("Jail_" + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(lot.Center, q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz; house.Floor = 0; house.Public = true;
+
+            void Seg(float x0, float x1, float z0, float z1, float ya, float yb, bool outside)
+            {
+                if (x1 - x0 < 0.05f || z1 - z0 < 0.02f || yb - ya < 0.02f) return;
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, (z0 + z1) * 0.5f);
+                Box(wall, c, size, q);
+                Collider(c, size, q);
+                if (outside) Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.4f, (z0 + z1) * 0.5f), new Vector3(size.x + 0.12f, 0.8f, size.z + 0.12f), q);
+            }
+            // a small barred window: a dark hole and three iron bars (on the wall at z, facing out along +z or -z)
+            void Window(float x, float y, float z, float sz)
+            {
+                Box(dark, LP(lot, x, y, z), new Vector3(0.8f, 0.5f, 0.04f), q);
+                for (int i = -1; i <= 1; i++) Box(bars, LP(lot, x + i * 0.22f, y, z + sz * 0.03f), new Vector3(0.05f, 0.52f, 0.05f), q);
+            }
+
+            // ---- walls: the front with the door in the middle
+            float dw = 0.6f;
+            Seg(-hx, hx, -hz, -hz + t, 0, H, true);
+            Seg(-hx, -hx + t, -hz, hz, 0, H, true);
+            Seg(hx - t, hx, -hz, hz, 0, H, true);
+            Seg(-hx, -dw, hz - t, hz, 0, H, true);
+            Seg(dw, hx, hz - t, hz, 0, H, true);
+            Seg(-dw, dw, hz - t, hz, 2.4f, H, false);
+            Box(stoneDark, LP(lot, 0, 2.5f, hz + 0.06f), new Vector3(dw * 2f + 0.5f, 0.24f, 0.16f), q);   // lintel
+            foreach (int s in new[] { -1, 1 }) Window(s * 3.8f, 2.0f, hz + 0.02f, 1f);                      // front windows
+            Box(floorM, LP(lot, 0, 0.03f, 0), new Vector3(w - 2f * t, 0.06f, d - 2f * t), q, 0.5f);
+
+            // ---- the cells: a stone wall between them, the bars along zb, a gate in each
+            float ix0 = -hx + t, ix1 = hx - t, iz0 = -hz + t, zb = -0.4f, bh = 2.6f;
+            Seg(-0.15f, 0.15f, iz0, zb, 0, H, false);                                                        // between the cells
+            Seg(ix0, ix1, zb - 0.12f, zb + 0.12f, bh, H, false);                                             // over the bars
+            house.Rooms.Add(new HouseInterior.Room { Name = "CELDA", X0 = -hx, X1 = 0f, Z0 = -hz, Z1 = zb });
+            house.Rooms.Add(new HouseInterior.Room { Name = "CELDA", X0 = 0f, X1 = hx, Z0 = -hz, Z1 = zb });
+            house.Rooms.Add(new HouseInterior.Room { Name = "CALABOZO", X0 = -hx, X1 = hx, Z0 = zb, Z1 = hz });
+            const float gw = 1.0f, pitch = 0.17f;
+            for (int c = 0; c < 2; c++)
+            {
+                int side = c == 0 ? -1 : 1;
+                float cx0 = c == 0 ? ix0 : 0.15f, cx1 = c == 0 ? -0.15f : ix1, cmid = (cx0 + cx1) * 0.5f;
+                float g0 = cmid - gw * 0.5f, g1 = cmid + gw * 0.5f;
+                // fixed bars either side of the gate
+                foreach (var (a, b) in new[] { (cx0, g0), (g1, cx1) })
+                {
+                    if (b - a < 0.1f) continue;
+                    int n = Mathf.Max(1, Mathf.RoundToInt((b - a) / pitch));
+                    for (int i = 0; i <= n; i++) Box(bars, LP(lot, a + (b - a) * i / n, bh * 0.5f, zb), new Vector3(0.05f, bh, 0.05f), q, 0f);
+                    foreach (float y in new[] { 0.1f, 1.25f, bh - 0.08f })
+                        Box(bars, LP(lot, (a + b) * 0.5f, y, zb), new Vector3(b - a, 0.06f, 0.08f), q, 0f);
+                    Collider(LP(lot, (a + b) * 0.5f, bh * 0.5f, zb), new Vector3(b - a, bh, 0.14f), q);
+                }
+                // the gate: bars on a hinge (it swings into the cell)
+                var holder = new GameObject("CellGate" + (c + 1)).transform;
+                holder.SetParent(go.transform, false);
+                var hinge = new GameObject("GateHinge").transform;
+                hinge.SetParent(holder, false);
+                hinge.localPosition = new Vector3(g0, 0f, zb);
+                var gate = new GameObject("GatePanel");
+                gate.transform.SetParent(hinge, false);
+                for (int i = 0; i <= 5; i++)
+                    PS2Spawn.Box(gate.transform, "Bar", new Vector3(0.05f, bh - 0.12f, 0.05f), new Vector3(0.04f + (gw - 0.08f) * i / 5f, (bh - 0.12f) * 0.5f, 0f), bars);
+                foreach (float y in new[] { 0.12f, 1.25f, bh - 0.18f })
+                    PS2Spawn.Box(gate.transform, "Band", new Vector3(gw - 0.04f, 0.07f, 0.08f), new Vector3(gw * 0.5f, y, 0f), bars);
+                PS2Spawn.Box(gate.transform, "Lock", new Vector3(0.12f, 0.16f, 0.12f), new Vector3(gw - 0.1f, 1.1f, 0f), iron);
+                var gc = gate.AddComponent<BoxCollider>();
+                gc.center = new Vector3(gw * 0.5f, (bh - 0.12f) * 0.5f, 0f); gc.size = new Vector3(gw - 0.04f, bh - 0.12f, 0.12f);
+                LowPolyMesh.BakeAmbient(hinge.gameObject, AmbientSky, AmbientGround);
+                var door = holder.gameObject.AddComponent<TownDoor>();
+                door.Hinge = hinge; door.Width = gw; door.BaseRot = Quaternion.identity; door.Noun = "LA CELDA";
+                house.ExtraDoors.Add(door);
+
+                // inside: a straw pallet along the outer side wall, head to the back wall (you can lie on it)
+                float px = c == 0 ? ix0 + 0.55f : ix1 - 0.55f;
+                Box(darkWood, LP(lot, px, 0.1f, iz0 + 1.05f), new Vector3(0.9f, 0.2f, 2.0f), q);
+                Box(straw, LP(lot, px, 0.24f, iz0 + 1.05f), new Vector3(0.84f, 0.1f, 1.9f), q, 0f);
+                Collider(LP(lot, px, 0.14f, iz0 + 1.05f), new Vector3(0.9f, 0.28f, 2.0f), q);
+                house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActLie, new Pose(LP(lot, px, 0.29f, iz0 + 0.83f), q)));
+                // a bucket in the other back corner
+                float bx = c == 0 ? -0.15f - 0.4f : 0.15f + 0.4f;
+                AddMesh(darkWood, LowPolyMesh.Cylinder(0.18f, 0.38f, 8, true, false, 1f, 0.5f), LP(lot, bx, 0f, iz0 + 0.4f), q);
+                Box(iron, LP(lot, bx, 0.3f, iz0 + 0.4f), new Vector3(0.38f, 0.04f, 0.38f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                // shackles on the back wall: two rings, chains hanging
+                foreach (float sx in new[] { -0.5f, 0.5f })
+                {
+                    Box(iron, LP(lot, cmid + sx, 1.7f, iz0 + 0.04f), new Vector3(0.12f, 0.12f, 0.06f), q, 0f);
+                    Box(iron, LP(lot, cmid + sx, 1.35f, iz0 + 0.06f), new Vector3(0.04f, 0.6f, 0.04f), q, 0f);
+                    Box(iron, LP(lot, cmid + sx, 1.03f, iz0 + 0.07f), new Vector3(0.16f, 0.08f, 0.08f), q, 0f);
+                }
+                Window(cmid, 2.6f, -hz - 0.02f, -1f);
+                Window(cmid, 2.6f, iz0 + 0.02f, 1f);
+                // a dim light in the cell
+                var cl = new GameObject("CellLight").AddComponent<Light>();
+                cl.transform.SetParent(go.transform, false);
+                cl.transform.position = LP(lot, cmid, 2.5f, (iz0 + zb) * 0.5f);
+                cl.type = LightType.Point; cl.range = 4.5f; cl.intensity = 0.7f; cl.color = new Color(0.85f, 0.75f, 0.6f);
+                cl.shadows = LightShadows.None; cl.enabled = false;
+                house.Lights.Add(cl);
+                // where a prisoner sits: in the middle of the cell, looking out through the bars
+                house.CellSpots.Add(new Pose(LP(lot, cmid + side * 1.9f, 0.05f, zb - 1.0f), q));
+            }
+
+            // ---- the jailer's room: a table and a chair, the keys on the wall, a rack of spears, a bench
+            float tx = ix1 - 1.4f, tz = 2.4f;
+            Box(wood, LP(lot, tx, 0.74f, tz), new Vector3(1.25f, 0.07f, 0.72f), q);
+            foreach (float sx in new[] { -0.52f, 0.52f }) foreach (float sz in new[] { -0.28f, 0.28f })
+                Box(darkWood, LP(lot, tx + sx, 0.37f, tz + sz), new Vector3(0.07f, 0.74f, 0.07f), q, 0f);
+            Collider(LP(lot, tx, 0.4f, tz), new Vector3(1.25f, 0.8f, 0.72f), q);
+            Box(clay, LP(lot, tx - 0.3f, 0.86f, tz), new Vector3(0.18f, 0.2f, 0.18f), q * Quaternion.Euler(0, 45f, 0), 0f);
+            Box(iron, LP(lot, tx + 0.25f, 0.8f, tz + 0.1f), new Vector3(0.22f, 0.04f, 0.1f), q, 0f);           // a ring of keys
+            {
+                float cz = tz - 0.62f;
+                Box(darkWood, LP(lot, tx, 0.44f, cz), new Vector3(0.4f, 0.06f, 0.4f), q);
+                foreach (float lx in new[] { -0.16f, 0.16f }) foreach (float lz in new[] { -0.16f, 0.16f })
+                    Box(darkWood, LP(lot, tx + lx, 0.22f, cz + lz), new Vector3(0.05f, 0.44f, 0.05f), q, 0f);
+                Box(darkWood, LP(lot, tx, 0.75f, cz - 0.18f), new Vector3(0.4f, 0.55f, 0.05f), q, 0f);
+                Collider(LP(lot, tx, 0.4f, cz), new Vector3(0.4f, 0.8f, 0.4f), q);
+                house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActChair, new Pose(LP(lot, tx, 0.02f, cz), q)));
+            }
+            // keys hanging by the door, a rack of spears on the other wall, a bench under it
+            Box(darkWood, LP(lot, dw + 0.5f, 1.6f, hz - t - 0.03f), new Vector3(0.3f, 0.06f, 0.04f), q, 0f);
+            foreach (float kx in new[] { -0.08f, 0.04f, 0.12f })
+                Box(iron, LP(lot, dw + 0.5f + kx, 1.45f, hz - t - 0.05f), new Vector3(0.03f, 0.18f, 0.02f), q, 0f);
+            Box(darkWood, LP(lot, ix0 + 0.1f, 1.8f, 2.4f), new Vector3(0.1f, 0.08f, 1.6f), q, 0f);
+            for (int i = 0; i < 3; i++)
+            {
+                Box(darkWood, LP(lot, ix0 + 0.16f, 1.3f, 1.8f + i * 0.5f), new Vector3(0.04f, 2.2f, 0.04f), q, 0f);
+                Box(iron, LP(lot, ix0 + 0.16f, 2.45f, 1.8f + i * 0.5f), new Vector3(0.06f, 0.22f, 0.06f), q * Quaternion.Euler(0, 45f, 0), 0f);
+            }
+            Box(wood, LP(lot, ix0 + 0.45f, 0.42f, 3.6f), new Vector3(0.45f, 0.08f, 1.6f), q);
+            foreach (float bz in new[] { 2.95f, 4.25f }) Box(darkWood, LP(lot, ix0 + 0.45f, 0.19f, bz), new Vector3(0.4f, 0.38f, 0.08f), q, 0f);
+            Collider(LP(lot, ix0 + 0.45f, 0.23f, 3.6f), new Vector3(0.45f, 0.46f, 1.6f), q);
+            // two lamps in the jailer's room
+            foreach (float lx in new[] { -hx * 0.45f, hx * 0.45f })
+            {
+                var lamp = new GameObject("JailLamp").AddComponent<Light>();
+                lamp.transform.SetParent(go.transform, false);
+                lamp.transform.position = LP(lot, lx, 2.7f, 2.2f);
+                lamp.type = LightType.Point; lamp.range = 6.5f; lamp.intensity = 1.1f; lamp.color = new Color(1f, 0.7f, 0.4f);
+                lamp.shadows = LightShadows.None; lamp.enabled = false;
+                house.Lights.Add(lamp);
+                Box(ember, LP(lot, lx, 2.85f, 2.2f), new Vector3(0.12f, 0.12f, 0.12f), q);
+            }
+
+            // ---- the front door: heavy planks with iron bands (it swings inwards)
+            var dh = new GameObject("DoorHinge").transform;
+            dh.SetParent(go.transform, false);
+            dh.localPosition = new Vector3(-dw, 0f, hz - t * 0.5f);
+            var panel = PS2Spawn.Box(dh, "DoorPanel", new Vector3(dw * 2f - 0.04f, 2.36f, 0.1f), new Vector3(dw, 1.2f, 0f), darkWood, null, 0.8f);
+            foreach (float y in new[] { -0.8f, 0f, 0.8f })
+                PS2Spawn.Box(panel.transform, "Band", new Vector3(dw * 2f - 0.08f, 0.1f, 0.13f), new Vector3(0, y, 0f), iron);
+            PS2Spawn.Box(panel.transform, "Grille", new Vector3(0.36f, 0.26f, 0.13f), new Vector3(0, 0.45f, 0f), dark);
+            panel.AddComponent<BoxCollider>().size = new Vector3(dw * 2f - 0.04f, 2.36f, 0.14f);
+            LowPolyMesh.BakeAmbient(dh.gameObject, AmbientSky, AmbientGround);
+            var front = go.AddComponent<TownDoor>();
+            front.Hinge = dh; front.Width = dw * 2f; front.BaseRot = Quaternion.identity;
+            house.Door = front;
+
+            // ---- above: the ceiling and a low tiled roof, hidden while you are inside
+            var mine = new Dictionary<Material, MeshBuilder>();
+            current = mine;
+            Box(wall, LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+            float rise = 1.2f;
+            Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, H, 0), q, w + 0.5f, d + 0.5f, rise);
+            current = null;
+            var upper = new GameObject("Upper_" + lot.Id);
+            upper.transform.SetParent(root, false);
+            foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("JailTop"), Vector3.zero, kv.Key);
+            LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, H + 0.2f + rise * 0.5f, 0), new Vector3(w + 0.5f, rise, d + 0.5f), q);
             house.Upper = upper;
             house.Hide.Add(upper);
             Houses.Add(house);

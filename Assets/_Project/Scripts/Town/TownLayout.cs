@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Gladiator.Town
 {
     /// <summary>What stands on a lot.</summary>
-    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum, Infirmary, Governor }
+    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum, Infirmary, Governor, Jail }
 
     /// <summary>A named spot the simulation can send citizens to (a home, a workplace, the plaza...).</summary>
     public enum PlaceKind { Home, Work, Plaza, Fountain, Market, ArenaGate, LudusGate, GuardPost }
@@ -25,6 +25,8 @@ namespace Gladiator.Town
         public int StairSide;
         /// <summary>Empty, for the player to buy (nobody lives there).</summary>
         public bool ForSale;
+        /// <summary>A plot given up to a public building built later over it (the jail): nothing is built, nobody lives there.</summary>
+        public bool Hidden;
         /// <summary>Large home: kitchen, hallway, 2 bedrooms, 2 bathrooms and a 2 x 2 m storeroom.</summary>
         public bool Large;
         public int Price;
@@ -106,6 +108,9 @@ namespace Gladiator.Town
         public const float InfirmaryX = SideX + SideHalfW + 1.2f + 5.5f, InfirmaryZ = 78f;
         /// <summary>The infirmary's lot (beds inside: TownBuilder.Infirmary).</summary>
         public TownLot InfirmaryLot { get; private set; }
+        /// <summary>The jail (carcer), mirroring the infirmary on the other side of the arena.</summary>
+        public TownLot JailLot { get; private set; }
+        public const float JailX = -InfirmaryX, JailZ = InfirmaryZ;
 
         Quaternion rot;
 
@@ -237,6 +242,8 @@ namespace Gladiator.Town
                                 lot.DoorOffset = 0f;
                                 lot.StreetPath = kind != BuildingKind.Garden;
                                 if (kind == BuildingKind.Domus && rng.NextDouble() < 0.35) { lot.Large = true; lot.Floors = 1; }
+                                if (Mathf.Abs(cx - JailX) < LotDepth * 0.5f + 5.5f + 0.6f && Mathf.Abs(cz - JailZ) < LotWidth * 0.5f + 6.5f + 0.6f)
+                                { lot.Hidden = true; lot.StreetPath = false; }
                                 gridLots.Add(lot);
                             }
                         }
@@ -247,12 +254,18 @@ namespace Gladiator.Town
                 Vector3 gate = W(new Vector3(0, 0, LudusZ + LudusHalfZ + 2.2f));
                 foreach (var lot in gridLots)
                 {
-                    if (lot.Kind == BuildingKind.Garden) continue;
+                    if (lot.Kind == BuildingKind.Garden || lot.Hidden) continue;
                     float d = (lot.Door - gate).sqrMagnitude;
                     if (d < bd) { bd = d; best = lot; }
                 }
                 if (best != null) { best.Kind = BuildingKind.Smithy; best.Floors = 1; best.Large = false; }
             }
+
+            // ---- the jail (carcer) beside the arena, across the main street from the infirmary (its own dice, appended
+            // last: the other plots keep their numbers)
+            AddLot(new System.Random(Seed * 131 + 9), BuildingKind.Jail, new Vector3(JailX, 0, JailZ), Vector3.right, 13f, 11f);
+            JailLot = Lots[Lots.Count - 1];
+            JailLot.Floors = 1; JailLot.DoorOffset = 0f; JailLot.StreetPath = true;
 
             // ---- landmarks
             Fountain = W(Vector3.zero);
@@ -346,6 +359,7 @@ namespace Gladiator.Town
                     float dist = new Vector2(l.x, l.z).magnitude;
                     if (dist < 22f) continue;
                     float score = dist * (0.6f + (float)rng.NextDouble() * 0.8f);
+                    if (lot.Hidden) continue;
                     if (score > bestScore) { bestScore = score; pick = lot; }
                 }
                 if (pick != null) { pick.ForSale = true; pick.Price = 250 + rng.Next(0, 6) * 50; }
@@ -354,7 +368,7 @@ namespace Gladiator.Town
             int homes = 0;
             foreach (var lot in Lots)
             {
-                if (lot.Kind == BuildingKind.Garden) continue;
+                if (lot.Kind == BuildingKind.Garden || lot.Hidden) continue;
                 if (lot.ForSale) { homes++; continue; } // empty: nobody lives there
                 bool home = lot.IsHome;
                 string name = home ? (lot.Kind == BuildingKind.Insula ? "Insula " : lot.Large ? "Casa grande " : "Casa ") + (++homes) : KindName(lot.Kind);
@@ -378,6 +392,7 @@ namespace Gladiator.Town
                 case BuildingKind.Garden: return "Huerto";
                 case BuildingKind.Infirmary: return "Enfermeria";
                 case BuildingKind.Governor: return "Domus del gobernador";
+                case BuildingKind.Jail: return "Calabozo";
                 default: return "Casa";
             }
         }

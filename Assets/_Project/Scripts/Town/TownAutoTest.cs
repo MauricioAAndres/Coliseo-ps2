@@ -227,6 +227,112 @@ namespace Gladiator.Town
             if (pcS != null) pcS.enabled = true;
         }
 
+        /// <summary>The jail beside the arena: the front door, the jailer's room, two cells behind bars whose gates open
+        /// with E (closed you cannot walk in), the prisoner who talks through the bars.</summary>
+        IEnumerator JailTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcJ = pl.GetComponent<PlayerController>();
+            if (pcJ != null) pcJ.enabled = false;
+            var gcam = town.Cam;
+            var tm = town.GetComponent<TownManager>();
+            var jail = town.Jail;
+            if (jail == null) { Log("JAIL none"); if (pcJ != null) pcJ.enabled = true; yield break; }
+            var L = town.Layout;
+            float toArenaEdge = Vector3.ProjectOnPlane(jail.transform.position - L.ArenaCenter, Vector3.up).magnitude - TownLayout.ArenaRadius;
+            int hidden = L.Lots.FindAll(l => l.Hidden).Count;
+            Log($"JAIL lot={jail.Lot.Id} cells={jail.CellSpots.Count} gates={jail.ExtraDoors.Count} prisoner={(town.Prisoner != null ? town.Prisoner.Name : "none")} " +
+                $"toArenaEdge={toArenaEdge:0}m infirmaryToArenaEdge={Vector3.ProjectOnPlane(L.InfirmaryLot.Center - L.ArenaCenter, Vector3.up).magnitude - TownLayout.ArenaRadius:0}m hiddenPlots={hidden}");
+            IEnumerator WalkTo(Vector3 target, float seconds)
+            {
+                for (float t = 0f; t < seconds; t += Time.deltaTime)
+                {
+                    Vector3 to = target - pl.transform.position; to.y = 0f;
+                    if (to.magnitude < 0.4f) break;
+                    pl.Move(to.normalized * 0.6f); pl.SetFacing(to);
+                    gcam.FocusOverride = pl.transform.position + Vector3.up; gcam.Distance = 6f; gcam.Pitch = 45f;
+                    yield return null;
+                }
+                pl.Move(Vector3.zero);
+            }
+            Vector3 fwd = jail.transform.forward;
+            // from above: the jail next to the colosseum
+            Vector3 mid = (jail.transform.position + L.ArenaCenter) * 0.5f;
+            for (float t = 0f; t < 1.2f; t += Time.deltaTime)
+            {
+                gcam.FocusOverride = jail.transform.position; gcam.Distance = 34f; gcam.Pitch = 42f;
+                gcam.Yaw = Quaternion.LookRotation(Vector3.ProjectOnPlane(L.ArenaCenter - jail.transform.position, Vector3.up)).eulerAngles.y; yield return null;
+            }
+            yield return Shot("15a_calabozo_junto_al_coliseo");
+            // in through the front door
+            Vector3 front = jail.Door.Center + fwd * 1.5f;
+            Teleport(pl, front, -fwd);
+            yield return Wait(0.3f);
+            int w0 = town.Guards.Warnings;
+            if (!jail.Door.IsOpen) jail.Door.Toggle();
+            yield return Wait(0.6f);
+            yield return WalkTo(jail.Door.Center - fwd * 1.6f, 5f);
+            yield return Wait(0.4f);
+            Log($"JAIL inside={jail.Contains(pl.transform.position)} room={tm.CurrentRoom} roofHidden={!jail.Upper.activeSelf} warnings {w0}->{town.Guards.Warnings}");
+            for (float t = 0f; t < 1.0f; t += Time.deltaTime)
+            {
+                gcam.FocusOverride = jail.transform.position + Vector3.up * 1.2f; gcam.Distance = 7.5f; gcam.Pitch = 38f;
+                gcam.Yaw = Quaternion.LookRotation(-fwd).eulerAngles.y; yield return null;
+            }
+            yield return Shot("15b_celdas");
+            // cell 1: closed, you cannot walk in; open it with E, walk in
+            var gate = jail.ExtraDoors[0];
+            Vector3 atGate = gate.Center + fwd * 0.9f;
+            yield return WalkTo(atGate, 5f);
+            var near = town.NearestDoor(pl.transform.position, 1.7f);
+            Vector3 inCell = gate.Center - fwd * 2.0f;
+            yield return WalkTo(inCell, 2.5f);
+            float depthClosed = Vector3.Dot(pl.transform.position - gate.Center, -fwd);
+            Log($"JAIL gate prompt={(near == gate ? "ABRIR " + gate.Noun : "none")} closed: walkedIntoCell={depthClosed > 0.3f} (expected False, depth {depthClosed:0.00})");
+            yield return WalkTo(atGate, 3f);
+            gate.Toggle();
+            yield return Wait(0.7f);
+            yield return WalkTo(inCell, 4f);
+            yield return Wait(0.3f);
+            float depthOpen = Vector3.Dot(pl.transform.position - gate.Center, -fwd);
+            Log($"JAIL gate open={gate.IsOpen} walkedIntoCell={depthOpen > 0.8f} (expected True, depth {depthOpen:0.00}) room={tm.CurrentRoom}");
+            for (float t = 0f; t < 1.0f; t += Time.deltaTime)
+            {
+                gcam.FocusOverride = pl.transform.position + Vector3.up * 1.0f; gcam.Distance = 4.5f; gcam.Pitch = 30f;
+                gcam.Yaw = Quaternion.LookRotation(-fwd).eulerAngles.y + 180f; yield return null;
+            }
+            yield return Shot("15c_dentro_de_la_celda");
+            yield return WalkTo(atGate, 4f);
+            gate.Toggle();
+            yield return Wait(0.5f);
+            // the prisoner in cell 2, through the bars
+            if (town.Prisoner != null && jail.ExtraDoors.Count > 1)
+            {
+                var g2 = jail.ExtraDoors[1];
+                yield return WalkTo(g2.Center + fwd * 0.7f, 6f);
+                Vector3 pp = town.Prisoner.Fighter.transform.position; pp.y = pl.transform.position.y;
+                yield return WalkTo(pp + fwd * 1.45f, 4f);
+                var nearDoor = town.NearestDoor(pl.transform.position, 1.7f);
+                Log($"JAIL at the bars by the prisoner: doorPromptWins={(nearDoor != null && !tm.PrisonerFirst(nearDoor, pl.transform.position))} (expected False) nearestDoor={(nearDoor != null ? nearDoor.Noun : "none")}");
+                pl.SetFacing(town.Prisoner.Fighter.transform.position - pl.transform.position);
+                yield return Wait(0.4f);
+                string said = town.Prisoner.Talk();
+                town.Hud.ShowMessage(said, 4f);
+                Log($"JAIL prisoner dist={(town.Prisoner.Fighter.transform.position - pl.transform.position).magnitude:0.0}m sitting={town.Prisoner.Fighter.InActivity} says='{said}'");
+                for (float t = 0f; t < 0.8f; t += Time.deltaTime)
+                {
+                    gcam.FocusOverride = (pl.transform.position + town.Prisoner.Fighter.transform.position) * 0.5f + Vector3.up; gcam.Distance = 4.5f; gcam.Pitch = 25f;
+                    gcam.Yaw = Quaternion.LookRotation(-fwd).eulerAngles.y + 35f; yield return null;
+                }
+                yield return Shot("15d_preso");
+            }
+            Teleport(pl, front, -fwd);
+            yield return Wait(0.3f);
+            if (jail.Door.IsOpen) jail.Door.Toggle();
+            gcam.FocusOverride = null;
+            if (pcJ != null) pcJ.enabled = true;
+        }
+
         /// <summary>E by a bed (lie on it), a chair (sit on it), the temple's altar (pray); getting up puts you back on
         /// the floor; the X wheel no longer has lying down or sitting.</summary>
         IEnumerator FurnitureTest(TownBootstrap town)
@@ -668,7 +774,8 @@ namespace Gladiator.Town
                 yield return ThreeStoreyTest(town);
                 yield return ShopsTest(town);
                 yield return TempleDomusTest(town);
-                yield return FurnitureTest(town); // the older tests walk into houses: no warnings there
+                yield return FurnitureTest(town);
+                yield return JailTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

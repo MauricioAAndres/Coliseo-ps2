@@ -158,11 +158,11 @@ namespace Gladiator.Town
             guardJobs.Add((Job.Guardia, "guard_east", Shift.Manana)); guardJobs.Add((Job.Guardia, "guard_west", Shift.Tarde));
             guardJobs.Add((Job.Guardia, "guard_forum_l", Shift.Manana)); guardJobs.Add((Job.Guardia, "guard_forum_r", Shift.Tarde));
             foreach (var lot in Layout.Lots)
-                if (lot.Kind == BuildingKind.Garden) jobs.Enqueue((Job.Hortelano, "garden" + lot.Id, Shift.Manana));
+                if (lot.Kind == BuildingKind.Garden && !lot.Hidden) jobs.Enqueue((Job.Hortelano, "garden" + lot.Id, Shift.Manana));
             jobs.Enqueue((Job.Aguador, "fountain", Shift.Manana));
             // gardens are workplaces too (outdoors)
             foreach (var lot in Layout.Lots)
-                if (lot.Kind == BuildingKind.Garden)
+                if (lot.Kind == BuildingKind.Garden && !lot.Hidden)
                     places["garden" + lot.Id] = new TownPlace { Id = "garden" + lot.Id, Name = "Huerto", Kind = PlaceKind.Work, Position = lot.Center, LotId = lot.Id };
 
             // ---- families in the houses until the town has its population

@@ -50,6 +50,10 @@ namespace Gladiator.Town
 
         /// <summary>Furniture you can use with E: beds (lie down), chairs (sit), the altar (pray).</summary>
         public readonly List<FurnitureSpot> Furniture = new List<FurnitureSpot>();
+        /// <summary>More doors inside (the jail's cell gates).</summary>
+        public readonly List<TownDoor> ExtraDoors = new List<TownDoor>();
+        /// <summary>The jail: where a prisoner sits in each cell.</summary>
+        public readonly List<Pose> CellSpots = new List<Pose>();
 
         /// <summary>The nearest piece of furniture to <paramref name="p"/> (same floor), or null.</summary>
         public FurnitureSpot? NearestFurniture(Vector3 p, float range)
@@ -142,6 +146,8 @@ namespace Gladiator.Town
         public float Width = 1.2f;
         /// <summary>The hinge's closed rotation (side doors are turned 90 degrees).</summary>
         public Quaternion BaseRot = Quaternion.identity;
+        /// <summary>What the prompt calls it ("ABRIR LA PUERTA", "ABRIR LA CELDA").</summary>
+        public string Noun = "LA PUERTA";
         float angle;
 
         /// <summary>Middle of the doorway, on the ground (where you stand to use it).</summary>

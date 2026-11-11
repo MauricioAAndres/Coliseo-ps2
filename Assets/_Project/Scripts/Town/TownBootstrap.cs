@@ -41,6 +41,10 @@ namespace Gladiator.Town
         public TownGuards Guards { get; private set; }
         /// <summary>The governor, in his domus on the plaza (null if the town has none).</summary>
         public GovernorNPC Governor { get; private set; }
+        /// <summary>The prisoner in the jail (null if the town has none).</summary>
+        public JailNPC Prisoner { get; private set; }
+        /// <summary>The jail by the arena.</summary>
+        public HouseInterior Jail => Houses != null ? Houses.Find(h => h.CellSpots.Count > 0) : null;
         /// <summary>The ludus yard inside the town (+z towards the town) and its training manager.</summary>
         public Transform Ludus { get; private set; }
         public Gladiator.Training.TrainingManager Training { get; private set; }
@@ -129,13 +133,17 @@ namespace Gladiator.Town
         {
             TownDoor best = null; float bd = range;
             if (Houses == null) return null;
+            void Try(TownDoor door)
+            {
+                Vector3 d = door.Center - p;
+                if (Mathf.Abs(d.y) > 1.3f) return; // a door upstairs is not this one
+                d.y = 0f;
+                if (d.magnitude < bd) { bd = d.magnitude; best = door; }
+            }
             foreach (var h in Houses)
             {
-                if (h.Door == null) continue;
-                Vector3 d = h.Door.Center - p;
-                if (Mathf.Abs(d.y) > 1.3f) continue; // a door upstairs is not this one
-                d.y = 0f;
-                if (d.magnitude < bd) { bd = d.magnitude; best = h.Door; }
+                if (h.Door != null) Try(h.Door);
+                foreach (var x in h.ExtraDoors) Try(x);
             }
             return best;
         }
@@ -250,6 +258,7 @@ namespace Gladiator.Town
             Guards = new GameObject("TownGuards").AddComponent<TownGuards>();
             Guards.Init(this);
             Governor = GovernorNPC.Spawn(this);
+            Prisoner = JailNPC.Spawn(this);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
             // online: the other players who are in the town too
@@ -380,9 +389,10 @@ namespace Gladiator.Town
         public static void SendDoor(TownDoor door)
         {
             var s = Gladiator.Net.NetSession.Instance;
-            var h = door != null ? door.GetComponent<HouseInterior>() : null;
+            var h = door != null ? door.GetComponentInParent<HouseInterior>() : null;
             if (s == null || !s.InGame || h == null) return;
-            s.Send("DR", h.Lot.Id + "|" + (door.IsOpen ? 1 : 0) + "|" + h.Floor);
+            int idx = h.Door == door ? 0 : h.ExtraDoors.IndexOf(door) + 1;
+            s.Send("DR", h.Lot.Id + "|" + (door.IsOpen ? 1 : 0) + "|" + h.Floor + "|" + idx);
         }
 
         /// <summary>Another player opened or closed a door in the same town.</summary>
@@ -392,8 +402,13 @@ namespace Gladiator.Town
             var a = payload.Split('|');
             if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
             int floor = a.Length > 2 && int.TryParse(a[2], out int fl) ? fl : 0;
+            int idx = a.Length > 3 && int.TryParse(a[3], out int di) ? di : 0;
             foreach (var h in town.Houses)
-                if (h.Lot.Id == lotId && h.Floor == floor && h.Door != null) { h.Door.SetOpen(a[1] == "1"); break; }
+                if (h.Lot.Id == lotId && h.Floor == floor)
+                {
+                    var door = idx == 0 ? h.Door : idx - 1 < h.ExtraDoors.Count ? h.ExtraDoors[idx - 1] : null;
+                    if (door != null) { door.SetOpen(a[1] == "1"); break; }
+                }
         }
 
         /// <summary>The front of the nearest smithy (where the smith sells), within a range.</summary>
@@ -417,6 +432,15 @@ namespace Gladiator.Town
             town.Player.Move(Vector3.zero);
             town.Player.SetBlock(false);
             town.Hud.Shop.Open(gm.Profile);
+        }
+
+        /// <summary>A cell gate and the prisoner both in reach: the nearer wins.</summary>
+        public bool PrisonerFirst(TownDoor door, Vector3 p)
+        {
+            var pr = town.Prisoner;
+            if (pr == null || pr.Fighter == null || door.Noun != "LA CELDA") return false;
+            float dp = Flat(pr.Fighter.transform.position - p);
+            return dp < 2.4f && dp < Flat(door.Center - p);
         }
 
         /// <summary>Lie down on the bed / sit on the chair / kneel at the altar (public for tests).</summary>
@@ -443,7 +467,7 @@ namespace Gladiator.Town
             if (inHouse == null)
             {
                 var atDoor = town.NearestDoor(p, 2.6f);
-                if (atDoor != null) inHouse = atDoor.GetComponent<HouseInterior>();
+                if (atDoor != null) inHouse = atDoor.GetComponentInParent<HouseInterior>();
             }
             if (inHouse != house)
             {
@@ -484,7 +508,8 @@ namespace Gladiator.Town
                 return;
             }
             var door = town.NearestDoor(p, 1.7f);
-            var dh = door != null ? door.GetComponent<HouseInterior>() : null;
+            if (door != null && PrisonerFirst(door, p)) door = null; // at the bars in front of the prisoner: talk to him
+            var dh = door != null && door.Noun == "LA PUERTA" ? door.GetComponentInParent<HouseInterior>() : null;
             if (dh != null && dh.Lot.ForSale && !HouseDeeds.Owns(town.Layout.Seed, dh.Lot.Id))
             {
                 var gmB = GameManager.Instance;
@@ -496,7 +521,7 @@ namespace Gladiator.Town
             if (door != null)
             {
                 bool mine = dh != null && dh.Lot.ForSale;
-                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA") + (mine ? "   (TU CASA)" : ""));
+                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR " : "ABRIR ") + door.Noun + (mine ? "   (TU CASA)" : ""));
                 if (GameInput.InteractPressed) { door.Toggle(); SendDoor(door); }
                 return;
             }
@@ -505,6 +530,13 @@ namespace Gladiator.Town
             {
                 town.Hud.SetPrompt(key + "HABLAR CON EL GOBERNADOR " + gov.Name.ToUpperInvariant());
                 if (GameInput.InteractPressed) town.Hud.ShowMessage(gov.Talk(town.Player), 5.5f);
+                return;
+            }
+            var pr = town.Prisoner;
+            if (pr != null && pr.Fighter != null && Flat(pr.Fighter.transform.position - p) < 2.4f)
+            {
+                town.Hud.SetPrompt(key + "HABLAR CON EL PRESO");
+                if (GameInput.InteractPressed) town.Hud.ShowMessage(pr.Talk(), 4.5f);
                 return;
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;
