@@ -117,8 +117,18 @@ namespace Gladiator.Net
             var doorH = townH.Houses.Find(hh => hh.Door != null).Door;
             doorH.Toggle(); Gladiator.Town.TownManager.SendDoor(doorH);
             Log($"TOWN host opened door of house {townH.Houses.Find(hh => hh.Door != null).Lot.Id}");
-            yield return Wait(4f);
+            // a cell gate of the jail, and lying on a bed: the client must see both
+            townH.Guards.Suspended = true;
+            var jailH = townH.Jail;
+            if (jailH != null) { jailH.ExtraDoors[1].Toggle(); Gladiator.Town.TownManager.SendDoor(jailH.ExtraDoors[1]); }
+            var bedHouseH = townH.Houses.Find(hh => !hh.Public && hh.Floor == 0 && hh.Furniture.Exists(f => f.Kind == Fighter.ActLie));
+            var bedH = bedHouseH.Furniture.Find(f => f.Kind == Fighter.ActLie);
+            bool lay = townH.GetComponent<Gladiator.Town.TownManager>().UseFurniture(bedH);
+            yield return Wait(6f);
+            Log($"TOWN host on the bed of house {bedHouseH.Lot.Id}: ok={lay} onFurniture={townH.Player.OnFurniture} offSpot={(townH.Player.transform.position - bedH.At.position).magnitude:0.00}m cellGateOpen={(jailH != null && jailH.ExtraDoors[1].IsOpen)}");
             yield return Shot("mp_host_pueblo");
+            townH.Player.StopActivity();
+            yield return Wait(2.5f);
 
             // ---- MP2: online arena, everyone for himself, no upgrades
             ns.StartArena(false, false);
@@ -247,7 +257,26 @@ namespace Gladiator.Net
             Log($"TOWN client seed={simC.Layout.Seed} netSeed={ns.TownSeed} hour={simC.Hour:0.00} seesHost={NetAvatars.Instance.Remotes.Any(x => x.Present)}");
             yield return Until(() => townC.Houses.Find(hh => hh.Door != null).Door.IsOpen, 15f);
             Log($"TOWN client sees door of house {townC.Houses.Find(hh => hh.Door != null).Lot.Id} open={townC.Houses.Find(hh => hh.Door != null).Door.IsOpen} (expected True) hour={simC.Hour:0.00}");
+            // the host lies on a bed and opens a cell of the jail: seen here too, on the bed (not on the floor next to it)
+            var bedHouseC = townC.Houses.Find(hh => !hh.Public && hh.Floor == 0 && hh.Furniture.Exists(f => f.Kind == Fighter.ActLie));
+            var bedC = bedHouseC.Furniture.Find(f => f.Kind == Fighter.ActLie);
+            RemoteFighter hostC = null;
+            yield return Until(() => (hostC = NetAvatars.Instance.Remotes.FirstOrDefault(x => x.Present && x.Fighter != null && x.Fighter.OnFurniture)) != null, 15f);
+            yield return Wait(1.5f);
+            var jailC = townC.Jail;
+            bool mat = GameObject.Find("ActivityProps") is GameObject apg && apg.transform.childCount > 0;
+            Log($"TOWN client sees host on the bed: onFurniture={(hostC != null)} (expected True) kind={(hostC != null ? hostC.Fighter.ActivityKind : -1)} " +
+                $"offSpot={(hostC != null ? (hostC.Fighter.transform.position - bedC.At.position).magnitude : -1f):0.00}m (expected ~0) matOnTheFloor={mat} (expected False) " +
+                $"cellGateOpen={(jailC != null && jailC.ExtraDoors[1].IsOpen)} (expected True)");
+            if (hostC != null)
+            {
+                var camC = townC.Cam;
+                for (float t = 0f; t < 0.8f; t += Time.deltaTime) { camC.FocusOverride = bedC.At.position + Vector3.up * 0.3f; camC.Distance = 4f; camC.Pitch = 50f; yield return null; }
+            }
             yield return Shot("mp_client_pueblo");
+            if (townC.Cam != null) townC.Cam.FocusOverride = null;
+            yield return Until(() => hostC == null || !hostC.Fighter.InActivity, 10f);
+            Log($"TOWN client: host got up={(hostC == null || !hostC.Fighter.InActivity)} ccOn={(hostC != null && hostC.Fighter.Controller.enabled)}");
 
             // MP2: the host starts the online arena; fight the host until the match ends
             yield return Until(() => NetArena.Instance != null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 45f);

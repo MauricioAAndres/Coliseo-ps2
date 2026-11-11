@@ -218,6 +218,15 @@ namespace Gladiator.Net
                 case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
+                case "activity" when local.OnFurniture:
+                {
+                    // on a bed / a chair / at the altar: the others need the furniture's spot (we are not on it yet) and
+                    // where we stand up afterwards
+                    Vector3 fa = local.FurnitureAt.position, fs = local.FurnitureStand;
+                    NetSession.Instance.Send("MV", "activity_at|" + local.ActivityKind + "|" + NetSession.F(fa.x) + "|" + NetSession.F(fa.y) + "|" + NetSession.F(fa.z) + "|" +
+                        NetSession.F(local.FurnitureAt.rotation.eulerAngles.y) + "|" + NetSession.F(fs.x) + "|" + NetSession.F(fs.y) + "|" + NetSession.F(fs.z) + "|" + (local.ActivitySkipIn ? 1 : 0));
+                    break;
+                }
                 case "activity": case "activity_end":
                     NetSession.Instance.Send("MV", kind + "|" + local.ActivityKind + "|" + PosYaw());
                     break;
@@ -271,6 +280,14 @@ namespace Gladiator.Net
                     break;
                 case "MV":
                     if (a.Length < 6) return;
+                    if (a[0] == "activity_at")
+                    {
+                        if (a.Length < 10) return;
+                        r.OnFurniture(int.TryParse(a[1], out int fk) ? fk : 0,
+                                      new Pose(new Vector3(NetSession.PF(a[2]), NetSession.PF(a[3]), NetSession.PF(a[4])), Quaternion.Euler(0, NetSession.PF(a[5]), 0)),
+                                      new Vector3(NetSession.PF(a[6]), NetSession.PF(a[7]), NetSession.PF(a[8])), a[9] == "1");
+                        break;
+                    }
                     r.OnMove(a[0], int.TryParse(a[1], out int k) ? k : 0,
                              new Vector3(NetSession.PF(a[2]), NetSession.PF(a[3]), NetSession.PF(a[4])), NetSession.PF(a[5]));
                     break;
@@ -377,8 +394,18 @@ namespace Gladiator.Net
             Fighter.TryAttack(type);
         }
 
+        /// <summary>They lay down on a bed / sat on a chair / knelt at the altar: our copy goes onto the same furniture.</summary>
+        public void OnFurniture(int kind, Pose at, Vector3 stand, bool skipIn)
+        {
+            if (Fighter.InActivity) return;
+            if (!Fighter.TryActivityAt(kind, at, stand, skipIn)) pendingFurniture = (kind, at, stand, Time.time + 1.5f);
+        }
+        // could not start yet (still landing, mid gesture...): retried for a moment
+        (int kind, Pose at, Vector3 stand, float until)? pendingFurniture;
+
         public void OnMove(string kind, int tauntKind, Vector3 pos, float yaw)
         {
+            if (kind == "activity_end") pendingFurniture = null;
             SnapIfFar(pos, yaw, 0.35f);
             Vector3 fwd = Quaternion.Euler(0, yaw, 0) * Vector3.forward;
             switch (kind)
@@ -423,6 +450,12 @@ namespace Gladiator.Net
         void Update()
         {
             if (Fighter == null || !hasState) return;
+            if (pendingFurniture.HasValue)
+            {
+                var pf = pendingFurniture.Value;
+                if (Time.time > pf.until || Fighter.InActivity || Fighter.TryActivityAt(pf.kind, pf.at, pf.stand, true)) pendingFurniture = null;
+            }
+            if (Fighter.OnFurniture) return; // placed on the furniture: no chasing the network position
             StatesSeen.Add(Fighter.State);
             Travelled = Mathf.Max(Travelled, (transform.position - startPos).magnitude);
             float age = Mathf.Min(Time.time - recvTime, 0.25f);

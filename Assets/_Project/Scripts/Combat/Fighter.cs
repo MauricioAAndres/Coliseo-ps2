@@ -300,6 +300,8 @@ namespace Gladiator.Combat
         public bool OnFurniture { get; private set; }
         /// <summary>Where the fighter goes when he gets up from the furniture.</summary>
         public Vector3 FurnitureStand => furnStand;
+        /// <summary>Where the body is on the furniture (online: the others put their copy of this fighter there too).</summary>
+        public Pose FurnitureAt => furnAt;
         public int ActivityKind { get; private set; }
         /// <summary>Getting up: the "in" clip plays backwards (StatePhase 0..1).</summary>
         public bool ActivityLeaving { get; private set; }
