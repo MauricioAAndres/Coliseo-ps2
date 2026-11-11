@@ -39,6 +39,8 @@ namespace Gladiator.Town
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
         public TownGuards Guards { get; private set; }
+        /// <summary>The governor, in his domus on the plaza (null if the town has none).</summary>
+        public GovernorNPC Governor { get; private set; }
         /// <summary>The ludus yard inside the town (+z towards the town) and its training manager.</summary>
         public Transform Ludus { get; private set; }
         public Gladiator.Training.TrainingManager Training { get; private set; }
@@ -245,6 +247,7 @@ namespace Gladiator.Town
             Spawner.Init(Player);
             Guards = new GameObject("TownGuards").AddComponent<TownGuards>();
             Guards.Init(this);
+            Governor = GovernorNPC.Spawn(this);
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
             // online: the other players who are in the town too
@@ -466,6 +469,13 @@ namespace Gladiator.Town
                 bool mine = dh != null && dh.Lot.ForSale;
                 town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR LA PUERTA" : "ABRIR LA PUERTA") + (mine ? "   (TU CASA)" : ""));
                 if (GameInput.InteractPressed) { door.Toggle(); SendDoor(door); }
+                return;
+            }
+            var gov = town.Governor;
+            if (gov != null && gov.Fighter != null && Flat(gov.Fighter.transform.position - p) < 2.4f)
+            {
+                town.Hud.SetPrompt(key + "HABLAR CON EL GOBERNADOR " + gov.Name.ToUpperInvariant());
+                if (GameInput.InteractPressed) town.Hud.ShowMessage(gov.Talk(town.Player), 5.5f);
                 return;
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;

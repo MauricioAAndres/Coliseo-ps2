@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Gladiator.Town
 {
     /// <summary>What stands on a lot.</summary>
-    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum, Infirmary }
+    public enum BuildingKind { Domus, Insula, Shop, Garden, Temple, Tavern, Smithy, Bakery, Baths, Pottery, Forum, Infirmary, Governor }
 
     /// <summary>A named spot the simulation can send citizens to (a home, a workplace, the plaza...).</summary>
     public enum PlaceKind { Home, Work, Plaza, Fountain, Market, ArenaGate, LudusGate, GuardPost }
@@ -150,13 +150,14 @@ namespace Gladiator.Town
             AddPaving(new Vector3(0, 0, MainEnd + 1.5f), new Vector2(18f, 5f), 0f, true);
 
             // ---- the plaza's eight frontages hold the special buildings (shuffled by the seed)
-            var specials = new List<BuildingKind> { BuildingKind.Temple, BuildingKind.Tavern, BuildingKind.Smithy, BuildingKind.Bakery,
-                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum, BuildingKind.Shop };
+            var specials = new List<BuildingKind> { BuildingKind.Tavern, BuildingKind.Smithy, BuildingKind.Bakery,
+                                                    BuildingKind.Baths, BuildingKind.Pottery, BuildingKind.Forum };
             // two smithies in every town (weapons, armour, shields): this one on the plaza, the other by the ludus gate
             Shuffle(specials, rng);
-            // Temple always on the north side (looking down the plaza from the arena road), as in a forum.
-            specials.Remove(BuildingKind.Temple);
-            specials.Insert(rng.Next(2), BuildingKind.Temple);
+            // On the north side, flanking the road to the arena: the temple on the left and the governor's domus on the
+            // right, as seen walking towards the arena (a mirrored town swaps the template's sides).
+            specials.Insert(0, Mirrored ? BuildingKind.Governor : BuildingKind.Temple);
+            specials.Insert(1, Mirrored ? BuildingKind.Temple : BuildingKind.Governor);
             var taken = new List<Rect> { new Rect(-PlazaHalf - 1f, -PlazaHalf - 1f, PlazaHalf * 2f + 2f, PlazaHalf * 2f + 2f) }; // template space
             var plazaSlots = new List<(Vector3 c, Vector3 f)>
             {
@@ -168,8 +169,9 @@ namespace Gladiator.Town
             for (int i = 0; i < plazaSlots.Count; i++)
             {
                 var kind = specials[i];
-                float w = kind == BuildingKind.Temple ? 8f : 7.4f + (float)rng.NextDouble() * 0.6f;
-                float d = kind == BuildingKind.Temple ? 9.5f : 8f + (float)rng.NextDouble() * 1.5f;
+                bool grand = kind == BuildingKind.Temple || kind == BuildingKind.Governor;
+                float w = grand ? 8f : 7.4f + (float)rng.NextDouble() * 0.6f;
+                float d = grand ? 9.5f : 8f + (float)rng.NextDouble() * 1.5f;
                 AddLot(rng, kind, plazaSlots[i].c, plazaSlots[i].f, w, d);
                 bool alongZ = Mathf.Abs(plazaSlots[i].f.z) > 0.5f;
                 taken.Add(new Rect(plazaSlots[i].c.x - (alongZ ? w : d) * 0.5f, plazaSlots[i].c.z - (alongZ ? d : w) * 0.5f, alongZ ? w : d, alongZ ? d : w));
@@ -375,6 +377,7 @@ namespace Gladiator.Town
                 case BuildingKind.Insula: return "Insula";
                 case BuildingKind.Garden: return "Huerto";
                 case BuildingKind.Infirmary: return "Enfermeria";
+                case BuildingKind.Governor: return "Domus del gobernador";
                 default: return "Casa";
             }
         }
@@ -392,6 +395,7 @@ namespace Gladiator.Town
                        : rng.NextDouble() < 0.5 ? 2 : 1;
             bool shop = kind == BuildingKind.Shop || kind == BuildingKind.Tavern || kind == BuildingKind.Smithy ||
                         kind == BuildingKind.Bakery || kind == BuildingKind.Pottery;
+            if (kind == BuildingKind.Governor) floors = 1;
             if (shop) floors = 1; // shops are one storey you can walk into (the dice above still roll: same towns)
             Lots.Add(new TownLot
             {

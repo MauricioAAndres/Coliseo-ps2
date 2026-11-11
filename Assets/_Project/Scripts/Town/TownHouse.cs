@@ -27,6 +27,10 @@ namespace Gladiator.Town
         /// <summary>One entry per bed placed (tests: never two in one bedroom).</summary>
         public readonly List<string> Beds = new List<string>();
 
+        /// <summary>The temple: where you kneel to pray (in front of the altar, facing the god).</summary>
+        public Pose? AltarSpot;
+        /// <summary>The governor's domus: where the governor stands, in front of his chair of state.</summary>
+        public Pose? ThroneSpot;
         /// <summary>A public building (the infirmary): walking in is not trespassing.</summary>
         public bool Public;
         /// <summary>Infirmary beds: where a patient lies (root position on the mattress, facing the foot of the bed).</summary>

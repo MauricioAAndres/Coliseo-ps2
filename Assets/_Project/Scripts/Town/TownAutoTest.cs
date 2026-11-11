@@ -227,6 +227,75 @@ namespace Gladiator.Town
             if (pcS != null) pcS.enabled = true;
         }
 
+        /// <summary>The temple (up the steps, into the cella) and the governor's domus (door, the governor, talk to him).</summary>
+        IEnumerator TempleDomusTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcT = pl.GetComponent<PlayerController>();
+            if (pcT != null) pcT.enabled = false;
+            var gcam = town.Cam;
+            var temple = town.Houses.Find(h => h.AltarSpot.HasValue);
+            var domus = town.Houses.Find(h => h.ThroneSpot.HasValue);
+            // seen from the plaza, looking at the arena: temple on the left, domus on the right?
+            bool templeLeft = false;
+            if (temple != null && domus != null)
+            {
+                Vector3 right = Vector3.Cross(Vector3.up, -town.Layout.ArenaFacing);
+                templeLeft = Vector3.Dot(temple.transform.position - domus.transform.position, right) < 0f;
+            }
+            Log($"TEMPLE found={(temple != null)} domus={(domus != null)} governor={(town.Governor != null ? town.Governor.Name : "none")} templeOnTheLeft={templeLeft}");
+            Teleport(pl, town.Layout.Find("plaza").Position, -town.Layout.ArenaFacing);
+            for (float t = 0f; t < 1.2f; t += Time.deltaTime) { gcam.FocusOverride = town.Layout.ToWorld(new Vector3(0, 0, 8f)) + Vector3.up * 2f; gcam.Distance = 16f; gcam.Pitch = 20f; gcam.Yaw = Quaternion.LookRotation(-town.Layout.ArenaFacing).eulerAngles.y; yield return null; }
+            yield return Shot("13a_templo_y_domus");
+            IEnumerator WalkTo(Vector3 target, float seconds)
+            {
+                for (float t = 0f; t < seconds; t += Time.deltaTime)
+                {
+                    Vector3 to = target - pl.transform.position; to.y = 0f;
+                    if (to.magnitude < 0.5f) break;
+                    pl.Move(to.normalized * 0.7f); pl.SetFacing(to);
+                    gcam.FocusOverride = pl.transform.position + Vector3.up; gcam.Distance = 7f; gcam.Pitch = 35f;
+                    yield return null;
+                }
+                pl.Move(Vector3.zero);
+            }
+            if (temple != null)
+            {
+                // from the plaza in front of the steps, up and in, to the altar
+                Vector3 fwd = temple.transform.forward;
+                Vector3 start = temple.AltarSpot.Value.position + fwd * 7.5f; start.y = 0.05f;
+                Teleport(pl, start, -fwd);
+                yield return Wait(0.3f);
+                yield return WalkTo(temple.AltarSpot.Value.position, 9f);
+                yield return Wait(0.5f);
+                var tm = town.GetComponent<TownManager>();
+                Log($"TEMPLE walkedIn inside={temple.Contains(pl.transform.position)} room={tm.CurrentRoom} y={pl.transform.position.y:0.00} (expected ~1.2) roofHidden={!temple.Upper.activeSelf} warnings={town.Guards.Warnings}");
+                yield return Shot("13b_dentro_templo");
+            }
+            if (domus != null && town.Governor != null)
+            {
+                Vector3 fwd = domus.transform.forward;
+                Vector3 front = domus.Door.Center + fwd * 1.4f;
+                Teleport(pl, front, -fwd);
+                yield return Wait(0.3f);
+                if (!domus.Door.IsOpen) domus.Door.Toggle();
+                yield return Wait(0.6f);
+                yield return WalkTo(domus.Door.Center - fwd * 1.2f, 4f);
+                yield return WalkTo(town.Governor.Fighter.transform.position + fwd * 1.6f, 6f);
+                yield return Wait(0.5f);
+                string said = town.Governor.Talk(pl);
+                town.Hud.ShowMessage(said, 5f);
+                yield return Wait(0.8f);
+                Log($"DOMUS inside={domus.Contains(pl.transform.position)} roofHidden={!domus.Upper.activeSelf} distToGovernor={(town.Governor.Fighter.transform.position - pl.transform.position).magnitude:0.0} says='{said}'");
+                yield return Shot("13c_gobernador");
+                Teleport(pl, front, -fwd);
+                yield return Wait(0.3f);
+                if (domus.Door.IsOpen) domus.Door.Toggle();
+            }
+            gcam.FocusOverride = null;
+            if (pcT != null) pcT.enabled = true;
+        }
+
         /// <summary>The infirmary: ten beds, public (no trespassing), you wake up lying in a bed and get up by moving.</summary>
         IEnumerator InfirmaryTest(TownBootstrap town)
         {
@@ -534,7 +603,8 @@ namespace Gladiator.Town
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;
                 yield return ThreeStoreyTest(town);
-                yield return ShopsTest(town); // the older tests walk into houses: no warnings there
+                yield return ShopsTest(town);
+                yield return TempleDomusTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

@@ -187,6 +187,7 @@ namespace Gladiator.Town
                 case BuildingKind.Baths: Baths(lot); return;
                 case BuildingKind.Forum: Basilica(lot); return;
                 case BuildingKind.Infirmary: Infirmary(lot); return;
+                case BuildingKind.Governor: GovernorDomus(lot); return;
             }
             if (lot.IsHome) { HomeHouse(lot); return; }
             // shops: a real door and the inside of a home (kitchen, bedroom, bathroom); the trade goes outside the front
@@ -1096,24 +1097,218 @@ namespace Gladiator.Town
             Collider(LP(lot, w * 0.3f, 0.5f, d * 0.5f), new Vector3(w * 0.4f, 1f, 0.3f), q);
         }
 
+        /// <summary>
+        /// The temple (left of the arena road, on the plaza): a podium with steps up to a portico of four columns and the
+        /// cella you walk into. Inside: the god's statue on a pedestal at the back, an altar with fire in front of it
+        /// (pray there) and two braziers. Its roof, ceiling and pediment hide while you are inside.
+        /// </summary>
         void Temple(TownLot lot)
         {
             Quaternion q = lot.Rotation;
-            float w = lot.Width, d = lot.Depth;
-            Box(stone, LP(lot, 0, 0.6f, 0), new Vector3(w, 1.2f, d), q);                       // podium
-            for (int s = 0; s < 3; s++)                                                         // steps
-                Box(stone, LP(lot, 0, 0.2f + s * 0.4f, d * 0.5f + 0.9f - s * 0.3f), new Vector3(w * 0.7f, 0.4f, 0.6f), q);
-            Box(plaster[3], LP(lot, 0, 1.2f + 2.6f, -d * 0.15f), new Vector3(w - 1.6f, 5.2f, d * 0.6f), q); // cella
+            float w = lot.Width, d = lot.Depth, P = 1.2f, H = 5.0f, t = 0.3f;
+            float hx = w * 0.5f, hz = d * 0.5f;
+            var marble = PS2Materials.Get("marble", PS2Textures.Stone, new Color(0.93f, 0.91f, 0.86f));
+            var gold = PS2Materials.Get("gold", PS2Textures.Metal, new Color(1f, 0.82f, 0.35f));
+            // podium you can stand on, steps up from the plaza (a ramp under them)
+            Box(stone, LP(lot, 0, P * 0.5f, 0), new Vector3(w, P, d), q);
+            Collider(LP(lot, 0, P * 0.5f, 0), new Vector3(w, P, d), q);
+            const int ns = 4; const float sd = 0.42f;
+            for (int s = 0; s < ns; s++)
+            {
+                float top = P * (s + 1) / ns;
+                Box(stone, LP(lot, 0, top * 0.5f, hz + (ns - s - 0.5f) * sd), new Vector3(w * 0.8f, top, sd), q);
+            }
+            float rl = Mathf.Sqrt(ns * sd * ns * sd + P * P), ra = Mathf.Atan2(P, ns * sd) * Mathf.Rad2Deg;
+            PS2Spawn.BoxCollider(colliders, LP(lot, 0, P * 0.5f - 0.05f, hz + ns * sd * 0.5f), new Vector3(w * 0.8f, 0.1f, rl), q * Quaternion.Euler(ra, 0f, 0f));
+
+            // the cella: walls with a wide doorway at the front
+            float cz0 = -hz + 0.3f, cz1 = hz - 2.6f, cx = hx - 0.5f, y0 = P, y1 = P + H, dwh = 1.1f;
+            void Seg(float x0, float x1, float z0, float z1, float ya, float yb)
+            {
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, (z0 + z1) * 0.5f);
+                Box(plaster[3], c, size, q);
+                Collider(c, size, q);
+            }
+            Seg(-cx, cx, cz0, cz0 + t, y0, y1);
+            Seg(-cx, -cx + t, cz0, cz1, y0, y1);
+            Seg(cx - t, cx, cz0, cz1, y0, y1);
+            Seg(-cx, -dwh, cz1 - t, cz1, y0, y1);
+            Seg(dwh, cx, cz1 - t, cz1, y0, y1);
+            Seg(-dwh, dwh, cz1 - t, cz1, y0 + 3.8f, y1);
+            Box(darkWood, LP(lot, 0, y0 + 3.86f, cz1 + 0.05f), new Vector3(dwh * 2f + 0.3f, 0.18f, 0.14f), q);
+            Box(marble, LP(lot, 0, P + 0.02f, (cz0 + cz1) * 0.5f), new Vector3(cx * 2f - 2f * t, 0.04f, cz1 - cz0 - t), q, 0.5f);
+            // portico: four columns in front of the cella
             for (int i = 0; i < 4; i++)
             {
-                Vector3 p = LP(lot, -w * 0.5f + 0.7f + i * (w - 1.4f) / 3f, 1.2f, d * 0.5f - 0.7f);
-                var cyl = LowPolyMesh.Cylinder(0.32f, 5.2f, 8, true, false, 1f, 1f / 3f);
-                AddMesh(stone, cyl, p, q);
-                Box(stone, p + Vector3.up * 5.25f, new Vector3(0.8f, 0.2f, 0.8f), q);
+                Vector3 p = LP(lot, -hx + 0.7f + i * (w - 1.4f) / 3f, P, hz - 0.7f);
+                AddMesh(marble, LowPolyMesh.Cylinder(0.32f, H, 8, true, false, 1f, 1f / 3f), p, q);
+                Box(marble, p + Vector3.up * (H + 0.05f), new Vector3(0.8f, 0.2f, 0.8f), q);
+                Collider(p + Vector3.up * (H * 0.5f), new Vector3(0.6f, H, 0.6f), q);
             }
-            Box(stone, LP(lot, 0, 6.55f, 0.2f), new Vector3(w, 0.5f, d - 0.4f), q);            // entablature
-            Gable(roofs[0], stone, LP(lot, 0, 6.8f, 0.2f), q * Quaternion.Euler(0, 90f, 0), d, w + 0.4f, 1.6f); // pediment faces the plaza
-            Collider(LP(lot, 0, 4.2f, 0), new Vector3(w, 8.4f, d + 1.4f), q);
+
+            // inside: the god on his pedestal, the altar with fire, two braziers
+            float sz = cz0 + t + 1.1f;
+            Box(stone, LP(lot, 0, P + 0.5f, sz), new Vector3(1.5f, 1.0f, 1.3f), q);
+            Collider(LP(lot, 0, P + 0.5f, sz), new Vector3(1.5f, 1.0f, 1.3f), q);
+            Box(marble, LP(lot, 0, P + 1.0f + 1.0f, sz), new Vector3(0.75f, 2.0f, 0.55f), q);          // robe
+            Box(marble, LP(lot, 0, P + 1.0f + 2.25f, sz), new Vector3(0.95f, 0.5f, 0.5f), q);          // shoulders
+            Box(marble, LP(lot, 0, P + 1.0f + 2.7f, sz + 0.02f), new Vector3(0.36f, 0.42f, 0.38f), q); // head
+            Box(gold, LP(lot, 0, P + 1.0f + 2.97f, sz + 0.02f), new Vector3(0.42f, 0.08f, 0.42f), q);  // laurel
+            Box(marble, LP(lot, 0.6f, P + 1.0f + 2.2f, sz + 0.1f), new Vector3(0.22f, 0.7f, 0.22f), q * Quaternion.Euler(0, 0, -20f)); // raised arm
+            Box(gold, LP(lot, 0.75f, P + 1.0f + 1.7f, sz + 0.12f), new Vector3(0.07f, 3.0f, 0.07f), q); // sceptre
+            Box(gold, LP(lot, -0.48f, P + 1.0f + 1.6f, sz + 0.25f), new Vector3(0.3f, 0.3f, 0.06f), q); // a golden eagle on the hand
+            float az = sz + 2.4f;
+            Box(stone, LP(lot, 0, P + 0.45f, az), new Vector3(1.2f, 0.9f, 0.8f), q);
+            Box(stoneDark, LP(lot, 0, P + 0.93f, az), new Vector3(1.3f, 0.06f, 0.9f), q);
+            Box(ember, LP(lot, 0, P + 1.0f, az), new Vector3(0.6f, 0.08f, 0.4f), q, 0f);
+            Box(flameMat, LP(lot, 0, P + 1.15f, az), new Vector3(0.3f, 0.25f, 0.25f), q * Quaternion.Euler(0, 45f, 0), 0f);
+            Collider(LP(lot, 0, P + 0.45f, az), new Vector3(1.2f, 0.9f, 0.8f), q);
+            var go = new GameObject("Temple_" + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(LP(lot, 0, P, (cz0 + cz1) * 0.5f), q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = cx; house.HalfZ = (cz1 - cz0) * 0.5f; house.Floor = 0; house.Public = true;
+            house.Rooms.Add(new HouseInterior.Room { Name = "TEMPLO", X0 = -cx, X1 = cx, Z0 = -house.HalfZ, Z1 = house.HalfZ });
+            // where you kneel to pray: in front of the altar, facing the god
+            house.AltarSpot = new Pose(LP(lot, 0, P + 0.05f, az + 1.15f), q * Quaternion.LookRotation(Vector3.back));
+            foreach (float bx in new[] { -cx + 0.7f, cx - 0.7f })
+            {
+                Box(iron, LP(lot, bx, P + 0.5f, sz + 0.4f), new Vector3(0.12f, 1.0f, 0.12f), q);
+                Box(iron, LP(lot, bx, P + 1.05f, sz + 0.4f), new Vector3(0.5f, 0.12f, 0.5f), q);
+                Box(ember, LP(lot, bx, P + 1.13f, sz + 0.4f), new Vector3(0.35f, 0.06f, 0.35f), q, 0f);
+                var li = new GameObject("TempleFire").AddComponent<Light>();
+                li.transform.SetParent(go.transform, false);
+                li.transform.position = LP(lot, bx, P + 1.8f, sz + 0.4f);
+                li.type = LightType.Point; li.range = 7f; li.intensity = 1.3f; li.color = new Color(1f, 0.62f, 0.3f);
+                li.shadows = LightShadows.None; li.enabled = false;
+                house.Lights.Add(li);
+            }
+
+            // above: ceiling, entablature and the pediment over the portico (hidden while you are inside)
+            var mine = new Dictionary<Material, MeshBuilder>();
+            current = mine;
+            Box(plaster[3], LP(lot, 0, y1 + 0.075f, (cz0 + cz1) * 0.5f), new Vector3(cx * 2f, 0.15f, cz1 - cz0), q);
+            Box(marble, LP(lot, 0, y1 + 0.35f, 0.2f), new Vector3(w, 0.5f, d - 0.4f), q);
+            Gable(roofs[0], marble, LP(lot, 0, y1 + 0.6f, 0.2f), q * Quaternion.Euler(0, 90f, 0), d, w + 0.4f, 1.6f);
+            current = null;
+            var upper = new GameObject("Upper_" + lot.Id);
+            upper.transform.SetParent(root, false);
+            foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("TempleTop"), Vector3.zero, kv.Key);
+            LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, y1 + 1.2f, 0.2f), new Vector3(w + 0.4f, 2.2f, d), q);
+            house.Upper = upper;
+            house.Hide.Add(upper);
+            Houses.Add(house);
+        }
+
+        /// <summary>
+        /// The governor's domus (right of the arena road, on the plaza): a door on its hinge, a vestibule, the atrium with
+        /// its impluvium (a shallow pool under the opening in the roof) and four columns, and at the back the tablinum: a
+        /// raised dais with the governor's chair of state between purple hangings. The roof hides while you are inside.
+        /// </summary>
+        void GovernorDomus(TownLot lot)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, d = lot.Depth, H = 4.2f, t = 0.25f;
+            float hx = w * 0.5f, hz = d * 0.5f;
+            var wall = PS2Materials.Get("domus_wall", PS2Textures.Stone, new Color(0.96f, 0.86f, 0.72f));
+            var red = PS2Materials.Get("domus_red", PS2Textures.Stone, new Color(0.62f, 0.16f, 0.12f));
+            var purple = PS2Materials.Get("domus_purple", PS2Textures.Cloth, new Color(0.42f, 0.12f, 0.4f));
+            var mosaic = PS2Materials.Get("mosaic", PS2Textures.Stone, new Color(0.88f, 0.82f, 0.7f));
+            var marble = PS2Materials.Get("marble", PS2Textures.Stone, new Color(0.93f, 0.91f, 0.86f));
+            var gold = PS2Materials.Get("gold", PS2Textures.Metal, new Color(1f, 0.82f, 0.35f));
+            var go = new GameObject("Domus_" + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(lot.Center, q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz; house.Floor = 0; house.Public = true;
+            void Seg(Material m, float x0, float x1, float z0, float z1, float ya, float yb, bool outside)
+            {
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, (z0 + z1) * 0.5f);
+                Box(m, c, size, q);
+                Collider(c, size, q);
+                if (outside) Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.35f, (z0 + z1) * 0.5f), new Vector3(size.x + 0.1f, 0.7f, size.z + 0.1f), q);
+            }
+            float dw = 0.7f;
+            Seg(wall, -hx, hx, -hz, -hz + t, 0, H, true);
+            Seg(wall, -hx, -hx + t, -hz, hz, 0, H, true);
+            Seg(wall, hx - t, hx, -hz, hz, 0, H, true);
+            Seg(wall, -hx, -dw, hz - t, hz, 0, H, true);
+            Seg(wall, dw, hx, hz - t, hz, 0, H, true);
+            Seg(wall, -dw, dw, hz - t, hz, 2.6f, H, false);
+            // a red dado inside, a grand doorway outside: two pilasters and a lintel
+            foreach (int s in new[] { -1, 1 })
+                Box(marble, LP(lot, s * (dw + 0.2f), 1.4f, hz + 0.08f), new Vector3(0.35f, 2.8f, 0.2f), q);
+            Box(marble, LP(lot, 0, 2.95f, hz + 0.1f), new Vector3(dw * 2f + 0.9f, 0.35f, 0.25f), q);
+            Box(red, LP(lot, 0, 0.6f, -hz + t + 0.01f), new Vector3(w - 2f * t, 1.2f, 0.02f), q);
+            // floor: a pale mosaic
+            Box(mosaic, LP(lot, 0, 0.03f, 0), new Vector3(w - 2f * t, 0.06f, d - 2f * t), q, 0.5f);
+            // atrium: the impluvium and four columns
+            float ac = 0.6f;
+            Box(marble, LP(lot, 0, 0.1f, ac), new Vector3(2.4f, 0.2f, 2.0f), q);
+            Box(water, LP(lot, 0, 0.16f, ac), new Vector3(2.0f, 0.04f, 1.6f), q, 0f);
+            foreach (int sx in new[] { -1, 1 }) foreach (int szz in new[] { -1, 1 })
+            {
+                Vector3 p = LP(lot, sx * 1.6f, 0, ac + szz * 1.4f);
+                AddMesh(marble, LowPolyMesh.Cylinder(0.18f, H, 8, true, false, 1f, 1f / 3f), p, q);
+                Collider(p + Vector3.up * (H * 0.5f), new Vector3(0.36f, H, 0.36f), q);
+            }
+            // tablinum: the dais, the chair of state, hangings
+            float dz0 = -hz + t, dz1 = -hz + t + 2.2f;
+            Box(marble, LP(lot, 0, 0.15f, (dz0 + dz1) * 0.5f), new Vector3(w - 2f * t, 0.3f, dz1 - dz0), q);
+            Collider(LP(lot, 0, 0.15f, (dz0 + dz1) * 0.5f), new Vector3(w - 2f * t, 0.3f, dz1 - dz0), q);
+            float tz = dz0 + 0.7f;
+            Box(darkWood, LP(lot, 0, 0.3f + 0.25f, tz), new Vector3(0.9f, 0.5f, 0.7f), q);              // seat
+            Box(darkWood, LP(lot, 0, 0.3f + 1.0f, tz - 0.32f), new Vector3(0.9f, 1.4f, 0.1f), q);       // high back
+            Box(gold, LP(lot, 0, 0.3f + 1.75f, tz - 0.32f), new Vector3(0.5f, 0.12f, 0.12f), q);
+            foreach (int s in new[] { -1, 1 }) Box(darkWood, LP(lot, s * 0.48f, 0.3f + 0.7f, tz), new Vector3(0.08f, 0.15f, 0.7f), q); // arms
+            Box(purple, LP(lot, 0, 0.3f + 0.52f, tz + 0.02f), new Vector3(0.8f, 0.06f, 0.6f), q);      // cushion
+            Collider(LP(lot, 0, 0.3f + 0.5f, tz), new Vector3(0.9f, 1.0f, 0.7f), q);
+            foreach (int s in new[] { -1, 1 })
+                Box(purple, LP(lot, s * 1.5f, 2.2f, -hz + t + 0.05f), new Vector3(1.2f, 3.2f, 0.05f), q, 0.6f);
+            Box(gold, LP(lot, 0, 3.2f, -hz + t + 0.06f), new Vector3(1.0f, 0.5f, 0.05f), q);           // the eagle of Rome
+            house.Rooms.Add(new HouseInterior.Room { Name = "ATRIO", X0 = -hx, X1 = hx, Z0 = dz1, Z1 = hz });
+            house.Rooms.Add(new HouseInterior.Room { Name = "TABLINUM", X0 = -hx, X1 = hx, Z0 = -hz, Z1 = dz1 });
+            house.ThroneSpot = new Pose(LP(lot, 0, 0.35f, tz + 0.85f), q);
+            // lamps
+            foreach (float lx in new[] { -hx * 0.55f, hx * 0.55f })
+            {
+                var lamp = new GameObject("DomusLamp").AddComponent<Light>();
+                lamp.transform.SetParent(go.transform, false);
+                lamp.transform.position = LP(lot, lx, 2.8f, -0.5f);
+                lamp.type = LightType.Point; lamp.range = 7f; lamp.intensity = 1.2f; lamp.color = new Color(1f, 0.75f, 0.45f);
+                lamp.shadows = LightShadows.None; lamp.enabled = false;
+                house.Lights.Add(lamp);
+            }
+            // the door on its hinge (it swings inwards)
+            var hinge = new GameObject("DoorHinge").transform;
+            hinge.SetParent(go.transform, false);
+            hinge.localPosition = new Vector3(-dw, 0f, hz - t * 0.5f);
+            var panel = PS2Spawn.Box(hinge, "DoorPanel", new Vector3(dw * 2f - 0.04f, 2.56f, 0.08f), new Vector3(dw, 1.3f, 0f), darkWood, null, 0.8f);
+            PS2Spawn.Box(panel.transform, "Band", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, 0.6f, 0f), gold);
+            PS2Spawn.Box(panel.transform, "Band2", new Vector3(dw * 2f - 0.1f, 0.1f, 0.1f), new Vector3(0, -0.7f, 0f), gold);
+            panel.AddComponent<BoxCollider>().size = new Vector3(dw * 2f - 0.04f, 2.56f, 0.12f);
+            LowPolyMesh.BakeAmbient(hinge.gameObject, AmbientSky, AmbientGround);
+            var door = go.AddComponent<TownDoor>();
+            door.Hinge = hinge; door.Width = dw * 2f; door.BaseRot = Quaternion.identity;
+            house.Door = door;
+            // above: ceiling (open over the impluvium) and a tiled roof
+            var mine = new Dictionary<Material, MeshBuilder>();
+            current = mine;
+            Box(wall, LP(lot, 0, H + 0.075f, (ac + 1.2f + hz) * 0.5f), new Vector3(w, 0.15f, hz - ac - 1.2f), q);
+            Box(wall, LP(lot, 0, H + 0.075f, (-hz + ac - 1.2f) * 0.5f), new Vector3(w, 0.15f, ac - 1.2f + hz), q);
+            Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, H, 0), q, w + 0.6f, d + 0.6f, 1.6f);
+            current = null;
+            var upper = new GameObject("Upper_" + lot.Id);
+            upper.transform.SetParent(root, false);
+            foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("DomusTop"), Vector3.zero, kv.Key);
+            LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, H + 0.9f, 0), new Vector3(w + 0.6f, 1.6f, d + 0.6f), q);
+            house.Upper = upper;
+            house.Hide.Add(upper);
+            Houses.Add(house);
         }
 
         void Baths(TownLot lot)

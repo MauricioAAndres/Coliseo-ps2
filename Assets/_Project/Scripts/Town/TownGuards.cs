@@ -60,6 +60,11 @@ namespace Gladiator.Town
         void OnHit(HitResult r)
         {
             if (player == null || r.Attacker != player || r.Target == null) return;
+            if (r.Target.GetComponent<GovernorNPC>() != null || r.Target.GetComponent<GovernorGuard>() != null)
+            {
+                Offence("¡NADIE TOCA AL GOBERNADOR!");
+                return;
+            }
             var npc = r.Target.GetComponent<CitizenNPC>();
             if (npc == null || npc.Citizen == null) return;
             if (npc == Hostile) { guardDamage += r.Damage; return; }
