@@ -144,7 +144,7 @@ namespace Gladiator.Arena
             Vector3 d = to - from;
             float len = d.magnitude;
             if (len < 0.01f) return false;
-            int n = Physics.SphereCastNonAlloc(from, 0.25f, d / len, occHits, len, ~0, QueryTriggerInteraction.Ignore);
+            int n = Physics.SphereCastNonAlloc(from, 0.25f, d / len, occHits, len, Gladiator.Combat.Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
             {
                 var c = occHits[i].collider;
@@ -253,7 +253,7 @@ namespace Gladiator.Arena
             float len = dir.magnitude;
             if (len > 0.01f)
             {
-                var hits = Physics.SphereCastAll(pivot, 0.22f, dir / len, len, ~0, QueryTriggerInteraction.Ignore);
+                var hits = Physics.SphereCastAll(pivot, 0.22f, dir / len, len, Gladiator.Combat.Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
                 float nearest = len;
                 foreach (var h in hits)
                 {

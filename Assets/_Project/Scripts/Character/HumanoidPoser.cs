@@ -237,9 +237,39 @@ namespace Gladiator.Character
             for (int i = 0; i < SK.Count; i++) b[i].rotation = br * (blend[i] * retarget[i]);
         }
 
+        // ---- back from the rag doll: blend up from the pose the body lay in
+        Quaternion[] limpRot;
+        Vector3 limpHips;
+        float limpTime, limpDuration;
+
+        /// <summary>The body was a rag doll in this pose (world rotations, pelvis position): blend from it to the animation.</summary>
+        public void BlendFrom(Quaternion[] worldRotations, Vector3 hipsWorld, float seconds)
+        {
+            limpRot = worldRotations; limpHips = hipsWorld;
+            limpTime = limpDuration = Mathf.Max(0.01f, seconds);
+            hasLast = false; hasYaw = false;
+            smoothVel = Vector3.zero;
+        }
+
         void LateUpdate()
         {
             if (Rig == null || restLocal == null) return;
+            // a rag doll: physics moves the bones
+            if (Fighter != null && Fighter.Ragdolled) { hasLast = false; hasYaw = false; return; }
+            Pose();
+            if (limpTime > 0f && limpRot != null)
+            {
+                limpTime -= Time.deltaTime;
+                float w = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(limpTime / limpDuration));
+                var b = Rig.Bones;
+                b[SK.Hips].position = Vector3.Lerp(b[SK.Hips].position, limpHips, w);
+                for (int i = 0; i < SK.Count; i++) b[i].rotation = Quaternion.Slerp(b[i].rotation, limpRot[i], w); // parents first
+                if (limpTime <= 0f) limpRot = null;
+            }
+        }
+
+        void Pose()
+        {
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
             time += dt;
@@ -394,7 +424,7 @@ namespace Gladiator.Character
                 FighterState st = Fighter.State;
                 if (st != lastState) { stateTime = 0f; lastState = st; }
                 stateTime += dt;
-                dead = st == FighterState.Dead;
+                dead = st == FighterState.Dead || st == FighterState.KnockedOut;
                 armed = Fighter.CurrentWeapon != null && !dead;
                 switch (st)
                 {
@@ -465,6 +495,7 @@ namespace Gladiator.Character
                         if (stateTime < 0.3f && staggerClip != null) { clip = staggerClip; t = stateTime / 0.3f * 0.45f; }
                         else if (stunnedClip != null) { clip = stunnedClip; t = Mathf.Repeat((stateTime - 0.3f) / stunnedClip.Duration, 1f); }
                         break;
+                    case FighterState.KnockedOut: // only without a rag doll: the canned fall
                     case FighterState.Dead:
                         clip = deathClip;
                         t = Mathf.Min(1f, stateTime / (clip != null ? clip.Duration * 0.8f : 1f));

@@ -48,6 +48,7 @@ namespace Gladiator.Arena
         /// </summary>
         public static void RebuildBody(Fighter f, CharacterAppearance look, ArmorSet armor)
         {
+            if (f.Ragdolled) f.Rag.Release(0f);
             var oldRig = f.GetComponentInChildren<HumanoidRig>();
             Transform body = f.BodyRoot != null ? f.BodyRoot : f.transform;
             if (oldRig != null)

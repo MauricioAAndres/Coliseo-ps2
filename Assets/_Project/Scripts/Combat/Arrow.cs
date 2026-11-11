@@ -43,7 +43,7 @@ namespace Gladiator.Combat
 
             velocity += Vector3.down * Gravity * dt;
             Vector3 from = transform.position, step = velocity * dt;
-            var hits = Physics.RaycastAll(from, step.normalized, step.magnitude + 0.05f, ~0, QueryTriggerInteraction.Ignore);
+            var hits = Physics.RaycastAll(from, step.normalized, step.magnitude + 0.05f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
             System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
             foreach (var h in hits)
             {

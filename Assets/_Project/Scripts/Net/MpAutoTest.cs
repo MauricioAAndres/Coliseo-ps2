@@ -325,7 +325,7 @@ namespace Gladiator.Net
             }
             meA.Move(Vector3.zero);
             yield return Wait(0.5f);
-            Log($"ARENA END winner='{na.Winner}' hitsSent={na.HitsSent} hostHpSeen={hostA.Fighter.Health.Current:0} hostDeadSeen={!hostA.Fighter.IsAlive} myHp={meA.Health.Current:0}");
+            Log($"ARENA END winner='{na.Winner}' hitsSent={na.HitsSent} hostHpSeen={hostA.Fighter.Health.Current:0} hostDeadSeen={!hostA.Fighter.IsAlive} hostRagdoll={hostA.Fighter.Ragdolled} ragdolls={Ragdoll.Activations} myHp={meA.Health.Current:0}");
             yield return Shot("mp_client_final");
             yield return Until(() => NetArena.Instance == null && ns.Phase == NetSession.PhaseLudus && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 20f);
             Log($"BACK phase={ns.Phase} scene={UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}");

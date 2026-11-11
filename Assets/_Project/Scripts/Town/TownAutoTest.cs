@@ -713,6 +713,60 @@ namespace Gladiator.Town
         }
 
         /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
+        /// <summary>Rag doll: a dummy is killed with a blow and falls with physics; the player is knocked out and comes round.</summary>
+        IEnumerator RagdollTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            Ragdoll.Measure = true;
+            Ragdoll.KneeMin = Ragdoll.KneeMax = Ragdoll.ElbowMin = Ragdoll.ElbowMax = 0f;
+            int before = Ragdoll.Activations;
+            Vector3 fwd = pl.transform.forward;
+            for (int n = 0; n < 2; n++)
+            {
+                Vector3 at = pl.transform.position + fwd * 2.4f + pl.transform.right * (n == 0 ? -0.8f : 0.9f);
+                var look = new Gladiator.Arena.GladiatorLook { Tunic = n == 0 ? new Color(0.6f, 0.1f, 0.1f) : new Color(0.15f, 0.3f, 0.6f), Skin = new Color(0.8f, 0.6f, 0.45f), Helmet = n == 0, Crest = Color.red };
+                var d = Gladiator.Arena.CharacterFactory.Create(n == 0 ? "Muneco A" : "Muneco B", look, at, Quaternion.LookRotation(-fwd), 7);
+                d.Health.SetMax(40f);
+                d.Equip(WeaponFactory.Create(WeaponLibrary.Dagger));
+                if (n == 1) Shield.Attach(d, ShieldLibrary.Scutum, Color.white);
+                yield return HoldCam(cam, d, 1.0f, 0.9f, 5.5f, 14f, 70f);
+                Vector3 start = d.transform.position;
+                // A: a heavy blow from the front; B: a kick from the side
+                Vector3 dir = n == 0 ? fwd : (pl.transform.right + fwd * 0.3f).normalized;
+                d.ReceiveHit(null, 999f, n == 0 ? AttackType.Heavy : AttackType.Kick, dir);
+                Log($"RAGDOLL {d.DisplayName} dead={!d.IsAlive} ragdolled={d.Ragdolled} activations={Ragdoll.Activations - before}");
+                yield return HoldCam(cam, d, 0.22f, 0.9f, 5.5f, 14f, 70f);
+                yield return Shot(n == 0 ? "00a_ragdoll_golpe" : "00d_ragdoll_patada");
+                yield return HoldCam(cam, d, 0.4f, 0.7f, 5.5f, 16f, 70f);
+                yield return Shot(n == 0 ? "00b_ragdoll_cayendo" : "00e_ragdoll_cayendo");
+                yield return HoldCam(cam, d, 3.6f, 0.4f, 5.5f, 22f, 70f);
+                yield return Shot(n == 0 ? "00c_ragdoll_suelo" : "00f_ragdoll_suelo");
+                var rg = d.Rag;
+                float hipsUp = rg != null && rg.Hips != null ? rg.Hips.position.y - d.transform.position.y : -1f;
+                float chestUp = rg != null && rg.Chest != null ? rg.Chest.position.y - d.transform.position.y : -1f;
+                Vector3 moved = d.transform.position - start; moved.y = 0f;
+                Log($"RAGDOLL {d.DisplayName} rest: hips {hipsUp:0.00} m and chest {chestUp:0.00} m above the ground (expected under 0.45), slid {moved.magnitude:0.00} m " +
+                    $"along the blow {Vector3.Dot(moved, dir):0.00} m, settled={(rg != null && rg.Settled)} weaponDropped={d.CurrentWeapon == null}");
+            }
+            Log($"RAGDOLL joints: knees {Ragdoll.KneeMin:0}..{Ragdoll.KneeMax:0} deg (expected about -5..140: never forwards), right elbow {Ragdoll.ElbowMin:0}..{Ragdoll.ElbowMax:0} deg (expected about -145..5)");
+
+            // the player knocked out, then coming round
+            Vector3 p0 = pl.transform.position;
+            bool ko = pl.KnockDown(-fwd, 2.2f);
+            yield return HoldCam(cam, pl, 1.3f, 0.5f, 5f, 20f, 70f);
+            Log($"RAGDOLL knockout: started={ko} state={pl.State} ragdolled={pl.Ragdolled} controller={pl.Controller.enabled} alive={pl.IsAlive}");
+            yield return Shot("00g_inconsciente");
+            yield return HoldCam(cam, pl, 1.15f, 0.6f, 5f, 18f, 70f);
+            yield return Shot("00h_se_levanta");
+            yield return HoldCam(cam, pl, 1.0f, 0.9f, 5f, 14f, 70f);
+            Vector3 mv = pl.transform.position - p0; mv.y = 0f;
+            Log($"RAGDOLL awake: state={pl.State} ragdolled={pl.Ragdolled} controller={pl.Controller.enabled} moved {mv.magnitude:0.00} m hp={pl.Health.Current:0}");
+            yield return Shot("00i_de_pie");
+            Ragdoll.Measure = false;
+            cam.FocusOverride = null;
+        }
+
         IEnumerator GuardsTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -770,7 +824,11 @@ namespace Gladiator.Town
             if (guards.Hostile != null)
             {
                 pl.Health.TakeDamage(pl.Health.Current - pl.Health.Max * 0.2f);
-                yield return Wait(0.5f);
+                yield return HoldCam(gcam, pl, 1.2f, 0.5f, 6f, 22f);
+                Log($"GUARDS knocked out: outCold={guards.OutCold} ragdolled={pl.Ragdolled} state={pl.State}");
+                yield return Shot("02b2_inconsciente");
+                yield return Wait(TownGuards.OutSeconds);
+                Log($"GUARDS came round: outCold={guards.OutCold} ragdolled={pl.Ragdolled} state={pl.State}");
             }
             Log($"GUARDS end: outcome={guards.LastOutcome} warnings={guards.Warnings} hp={pl.Health.Current:0}/{pl.Health.Max:0} alive={pl.IsAlive} " +
                 $"inInfirmary={(town.Infirmary != null && town.Infirmary.Contains(pl.transform.position))}");
@@ -991,6 +1049,7 @@ namespace Gladiator.Town
                 pl.WalkMode = false;
                 if (pcw != null) pcw.enabled = true;
                 gcam.FocusOverride = null;
+                yield return RagdollTest(town);
                 yield return GuardsTest(town);
                 yield return InfirmaryTest(town);
                 yield return LudusTest(town);

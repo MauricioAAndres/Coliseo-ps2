@@ -747,6 +747,7 @@ namespace Gladiator.Town
             }
             // on a bed, a chair, at the altar: E gets up
             var pl = town.Player;
+            if (pl.KnockedOut) { town.Hud.SetPrompt(""); return; } // out cold: nothing to do
             if (pl.InActivity && pl.OnFurniture)
             {
                 // in a bed you may sleep in: E picks the hours; moving gets you up

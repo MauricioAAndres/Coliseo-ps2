@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Gladiator.Combat
 {
     public enum AttackType { Light, Heavy, Kick }
-    public enum FighterState { Idle, Windup, Active, Recovery, Blocking, Stagger, Dead, Dodge, Airborne, Landing, Traverse, Stunned, Taunt, Activity }
+    public enum FighterState { Idle, Windup, Active, Recovery, Blocking, Stagger, Dead, Dodge, Airborne, Landing, Traverse, Stunned, Taunt, Activity, KnockedOut }
     public enum TraverseKind { Vault, Climb }
     /// <summary>Attacks started in the air: light = slash in the air, kick = diving kick, heavy = slam to the ground.</summary>
     public enum AirAttackKind { None, Slash, DiveKick, Slam }
@@ -189,7 +189,14 @@ namespace Gladiator.Combat
         [System.NonSerialized] public float MinHealth;
         StunStars stunStars;
         /// <summary>Dodge i-frames: the first 70% of the roll / back-step.</summary>
-        public bool Invulnerable => state == FighterState.Dodge && Phase < 0.7f;
+        public bool Invulnerable => (state == FighterState.Dodge && Phase < 0.7f) || state == FighterState.KnockedOut;
+        /// <summary>Out cold on the ground (the town watch beat you): a rag doll until <see cref="WakeUp"/>.</summary>
+        public bool KnockedOut => state == FighterState.KnockedOut;
+        /// <summary>The body is a rag doll right now (dead, or knocked out).</summary>
+        public bool Ragdolled => rag != null && rag.Active;
+        public Ragdoll Rag => rag;
+        Ragdoll rag;
+        Vector3 lastHitPoint;
         public bool DodgeBack { get; private set; }
         /// <summary>Seconds in the air; Jumped = took off on purpose (vs walking off a ledge).</summary>
         public float AirTime { get; private set; }
@@ -243,6 +250,7 @@ namespace Gladiator.Combat
             Controller = GetComponent<CharacterController>();
             Health.Died += Die;
             mpb = new MaterialPropertyBlock();
+            gameObject.layer = Ragdoll.FighterLayer; // the living walk through the fallen
         }
 
         void OnEnable() { if (!spectator && !All.Contains(this)) All.Add(this); }
@@ -443,20 +451,20 @@ namespace Gladiator.Combat
             if (dir.sqrMagnitude < 1e-4f) return false;
             dir.Normalize();
             Vector3 feet = transform.position;
-            if (!Physics.Raycast(feet + Vector3.up * 0.3f, dir, out RaycastHit wall, Radius + 0.9f, ~0, QueryTriggerInteraction.Ignore)) return false;
+            if (!Physics.Raycast(feet + Vector3.up * 0.3f, dir, out RaycastHit wall, Radius + 0.9f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore)) return false;
             if (wall.collider.GetComponentInParent<Fighter>() != null) return false;
             Vector3 n = -wall.normal; n.y = 0f;
             if (n.sqrMagnitude < 0.25f || Vector3.Angle(n, dir) > 50f) return false;
             n.Normalize();
             Vector3 probe = wall.point + n * 0.3f + Vector3.up * 3.3f;
-            if (!Physics.Raycast(probe, Vector3.down, out RaycastHit top, 3.3f, ~0, QueryTriggerInteraction.Ignore)) return false;
+            if (!Physics.Raycast(probe, Vector3.down, out RaycastHit top, 3.3f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore)) return false;
             if (top.normal.y < 0.7f || top.collider.GetComponentInParent<Fighter>() != null) return false;
             float h = top.point.y - feet.y;
             if (h < 0.45f || h > 2.9f) return false;
             // Room to stand on top.
             float ch = standHeight > 0f ? standHeight : Controller.height;
             Vector3 onTop = new Vector3(wall.point.x, top.point.y, wall.point.z) + n * (Radius + 0.25f);
-            if (Physics.CheckCapsule(onTop + Vector3.up * (Radius + 0.05f), onTop + Vector3.up * (ch - Radius), Radius * 0.9f, ~0, QueryTriggerInteraction.Ignore))
+            if (Physics.CheckCapsule(onTop + Vector3.up * (Radius + 0.05f), onTop + Vector3.up * (ch - Radius), Radius * 0.9f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore))
                 return false;
 
             CurrentTraverse = h <= 1.35f ? TraverseKind.Vault : TraverseKind.Climb;
@@ -728,6 +736,14 @@ namespace Gladiator.Combat
             if (state == FighterState.Dead)
             {
                 AnimateDeath(dt);
+                return;
+            }
+            if (state == FighterState.KnockedOut)
+            {
+                stateTimer -= dt;
+                if (stateTimer <= 0f) WakeUp(0.5f);
+                UpdateFlash(dt);
+                moveInput = Vector3.zero;
                 return;
             }
 
@@ -1078,7 +1094,7 @@ namespace Gladiator.Combat
             if (AirAttack == AirAttackKind.Slash || AirAttack == AirAttackKind.DiveKick) { vertical = 2.3f; reach += 0.25f; }
             if (AirAttack == AirAttackKind.DiveKick) arc = 110f;
             if (AirAttack == AirAttackKind.Slam) { arc = Mathf.Max(arc, 200f); reach += 0.3f; }
-            Collider[] cols = Physics.OverlapSphere(origin, searchRadius, ~0, QueryTriggerInteraction.Ignore);
+            Collider[] cols = Physics.OverlapSphere(origin, searchRadius, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
             foreach (var c in cols)
             {
                 var f = c.GetComponentInParent<Fighter>();
@@ -1125,6 +1141,8 @@ namespace Gladiator.Combat
         public HitResult ReceiveHit(Fighter attacker, float damage, AttackType type, Vector3 dir)
         {
             LastRawDamage = damage;
+            // out cold on the ground: nothing more to do to him
+            if (state == FighterState.KnockedOut) return new HitResult { Attacker = attacker, Target = this, Type = type, Outcome = HitOutcome.Hit, Point = transform.position };
             var r = new HitResult
             {
                 Attacker = attacker,
@@ -1197,6 +1215,7 @@ namespace Gladiator.Combat
 
             bufferedAttack = null;
             lastHitDir = dir;
+            lastHitPoint = r.Point;
             r.Damage = damage;
 
             if (!Harmless && CurrentWeapon != null && disarmChance > 0f && UnityEngine.Random.value < disarmChance)
@@ -1249,7 +1268,9 @@ namespace Gladiator.Combat
             deathT = 0f;
             if (OffWeapon != null) DropOff(lastHitDir * 1.5f + Vector3.up * 3f + transform.right);
             if (CurrentWeapon != null) DropWeapon(lastHitDir * 2f + Vector3.up * 3f, false);
+            Vector3 moving = Controller.enabled ? Controller.velocity : Vector3.zero;
             Controller.enabled = false;
+            GoLimp(moving);
             Vector3 d = lastHitDir.sqrMagnitude > 0.01f ? lastHitDir : -transform.forward;
             deathAxis = Vector3.Cross(Vector3.up, d).normalized;
             if (deathAxis.sqrMagnitude < 0.01f) deathAxis = transform.right;
@@ -1257,6 +1278,52 @@ namespace Gladiator.Combat
             if (BlobShadow != null) BlobShadow.SetActive(false);
             BloodPool.Spawn(this);
             AnyDied?.Invoke(this);
+        }
+
+        /// <summary>The body becomes a rag doll, carried by what it was doing and shoved by the last blow.</summary>
+        void GoLimp(Vector3 moving)
+        {
+            rag = Ragdoll.For(this);
+            if (rag == null) return;
+            moving.y = Mathf.Clamp(moving.y, -6f, 3f);
+            Vector3 push = knockback;
+            float force = Mathf.Clamp(push.magnitude, 0f, 10f);
+            Vector3 dir = lastHitDir.sqrMagnitude > 0.01f ? lastHitDir.normalized : force > 0.1f ? push.normalized : -transform.forward;
+            Vector3 point = lastHitPoint.sqrMagnitude > 0.01f && (lastHitPoint - transform.position).sqrMagnitude < 9f
+                ? lastHitPoint : transform.position + Vector3.up * (standHeight > 0f ? standHeight : 1.8f) * 0.66f;
+            rag.Activate(moving * 0.6f + push * 0.22f, (dir + Vector3.up * 0.2f) * (22f + force * 17f), point);
+            knockback = Vector3.zero;
+        }
+
+        /// <summary>
+        /// Knocked out: the body drops as a rag doll and lies there for <paramref name="seconds"/> (or until
+        /// <see cref="WakeUp"/>). Nothing can hit it meanwhile. False if it cannot (dead, already down).
+        /// </summary>
+        public bool KnockDown(Vector3 dir, float seconds)
+        {
+            if (!IsAlive || state == FighterState.KnockedOut) return false;
+            Vector3 moving = Controller != null && Controller.enabled ? Controller.velocity : Vector3.zero;
+            blockHeld = false;
+            bufferedAttack = null;
+            SetState(FighterState.KnockedOut, Mathf.Max(0.2f, seconds));
+            if (Controller != null) Controller.enabled = false;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.001f) { lastHitDir = dir.normalized; knockback = lastHitDir * 4f; }
+            lastHitPoint = Vector3.zero;
+            GoLimp(moving);
+            AnyMove?.Invoke(this, "knockdown");
+            return true;
+        }
+
+        /// <summary>Comes round: the animator takes the body back, blending up from the floor in <paramref name="blend"/> seconds (0 = at once).</summary>
+        public void WakeUp(float blend = 0.5f)
+        {
+            if (state != FighterState.KnockedOut) return;
+            if (rag != null) rag.Release(blend);
+            knockback = Vector3.zero;
+            verticalVelocity = 0f;
+            if (Controller != null) Controller.enabled = true;
+            SetState(FighterState.Idle, 0f);
         }
 
         // ------------------------------------------------------------------ procedural animation
@@ -1294,10 +1361,11 @@ namespace Gladiator.Combat
         void AnimateDeath(float dt)
         {
             if (BodyRoot == null) return;
+            if (Ragdolled) { UpdateFlash(dt); return; } // physics has the body
             if (ExternalDeathAnimation)
             {
                 // Killed in the air or while climbing: fall to whatever is below.
-                if (Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, out RaycastHit g, 50f, ~0, QueryTriggerInteraction.Ignore)
+                if (Physics.Raycast(transform.position + Vector3.up * 0.1f, Vector3.down, out RaycastHit g, 50f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore)
                     && g.distance > 0.12f)
                 {
                     deathFall += Physics.gravity.y * dt;

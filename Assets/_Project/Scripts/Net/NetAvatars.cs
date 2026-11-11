@@ -215,7 +215,7 @@ namespace Gladiator.Net
             if (f != local || NetSession.Instance == null || !NetSession.Instance.InGame) return;
             switch (kind)
             {
-                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture":
+                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture": case "knockdown":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
                 case "activity" when local.OnFurniture:
@@ -403,6 +403,9 @@ namespace Gladiator.Net
         // could not start yet (still landing, mid gesture...): retried for a moment
         (int kind, Pose at, Vector3 stand, float until)? pendingFurniture;
 
+        /// <summary>Times we saw this player knocked out (tests).</summary>
+        public int Knockdowns { get; private set; }
+
         public void OnMove(string kind, int tauntKind, Vector3 pos, float yaw)
         {
             if (kind == "activity_end") pendingFurniture = null;
@@ -417,6 +420,7 @@ namespace Gladiator.Net
                 case "taunt": case "cheer": case "gesture": Fighter.TryTaunt(tauntKind); break;
                 case "activity": Fighter.TryActivity(tauntKind); break;
                 case "activity_end": Fighter.StopActivity(); break;
+                case "knockdown": Fighter.KnockDown(-fwd, 2.8f); Knockdowns++; break;
             }
         }
 
@@ -456,6 +460,7 @@ namespace Gladiator.Net
                 if (Time.time > pf.until || Fighter.InActivity || Fighter.TryActivityAt(pf.kind, pf.at, pf.stand, true)) pendingFurniture = null;
             }
             if (Fighter.OnFurniture) return; // placed on the furniture: no chasing the network position
+            if (Fighter.Ragdolled) return; // on the ground: the body lies where it fell here
             StatesSeen.Add(Fighter.State);
             Travelled = Mathf.Max(Travelled, (transform.position - startPos).magnitude);
             float age = Mathf.Min(Time.time - recvTime, 0.25f);

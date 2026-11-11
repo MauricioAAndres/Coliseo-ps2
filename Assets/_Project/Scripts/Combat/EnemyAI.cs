@@ -196,7 +196,7 @@ namespace Gladiator.Combat
             if ((traverseCheck -= Time.deltaTime) > 0f || move.sqrMagnitude < 0.09f) return;
             traverseCheck = 0.2f;
             Vector3 d = Flat(move).normalized;
-            if (Physics.Raycast(transform.position + Vector3.up * 0.3f, d, out RaycastHit hit, self.Radius + 0.45f, ~0, QueryTriggerInteraction.Ignore)
+            if (Physics.Raycast(transform.position + Vector3.up * 0.3f, d, out RaycastHit hit, self.Radius + 0.45f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore)
                 && hit.collider.GetComponentInParent<Fighter>() == null)
                 self.TryTraverse(d);
         }

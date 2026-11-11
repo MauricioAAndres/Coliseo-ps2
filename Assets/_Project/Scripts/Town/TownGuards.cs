@@ -217,7 +217,34 @@ namespace Gladiator.Town
         void KnockOut()
         {
             Warnings = 0;
+            Vector3 from = Hostile != null ? player.transform.position - Hostile.transform.position : -player.transform.forward;
             EndFight("knockout", "");
+            if (player.KnockDown(from, 30f))
+            {
+                // out cold on the street for a moment, then the bed
+                Say("TE DEJARON INCONSCIENTE...", OutSeconds);
+                OutCold = true;
+                StartCoroutine(ComeRound());
+            }
+            else Wake();
+        }
+
+        /// <summary>How long you lie on the street before waking up elsewhere.</summary>
+        public const float OutSeconds = 2.8f;
+        /// <summary>Lying knocked out right now (tests).</summary>
+        public bool OutCold { get; private set; }
+
+        System.Collections.IEnumerator ComeRound()
+        {
+            yield return new WaitForSeconds(OutSeconds);
+            Wake();
+        }
+
+        void Wake()
+        {
+            OutCold = false;
+            if (player == null) return;
+            player.WakeUp(0f);
             Vector3 at;
             string where = town.WakeUpAfterBeating(out at);
             Say("TE DEJARON INCONSCIENTE... despiertas " + where, 6f);

@@ -37,7 +37,7 @@ namespace Gladiator.Combat
             if (body != null)
             {
                 // Centre it under the torso (the body lies along its facing, roughly).
-                Vector3 p = body.transform.position - body.transform.forward * 0.55f;
+                Vector3 p = body.Ragdolled ? body.Rag.Center : body.transform.position - body.transform.forward * 0.55f;
                 p.y = body.transform.position.y + 0.025f;
                 transform.SetPositionAndRotation(p, Quaternion.Euler(0, body.transform.eulerAngles.y, 0));
             }

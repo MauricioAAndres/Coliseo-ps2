@@ -98,7 +98,7 @@ namespace Gladiator.Combat
             if (OnGround && transform.position.y < -5f) PlaceAt(safeSpawn);
             if (thrownBy == null) return;
             if (Time.time > thrownUntil || thrownBy.Harmless) { thrownBy = null; return; } // a copy never hurts (its owner decides)
-            var hits = Physics.OverlapSphere(col.bounds.center, Mathf.Max(0.35f, Stats.Length * 0.35f), ~0, QueryTriggerInteraction.Ignore);
+            var hits = Physics.OverlapSphere(col.bounds.center, Mathf.Max(0.35f, Stats.Length * 0.35f), Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
             foreach (var h in hits)
             {
                 var f = h.GetComponentInParent<Fighter>();
