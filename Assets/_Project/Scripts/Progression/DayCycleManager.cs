@@ -56,7 +56,34 @@ namespace Gladiator.Progression
         /// <summary>Denarii earned in the last fight (shown in the ludus the next morning).</summary>
         public int LastReward { get; set; }
 
+        /// <summary>The arena was fought today already: one fight a day (sleep, or wait for midnight).</summary>
+        public bool FoughtToday { get; private set; }
+        /// <summary>Game hours a fight in the arena takes.</summary>
+        public const float ArenaHours = 2f;
+
         readonly HashSet<string> stationsUsedToday = new HashSet<string>();
+
+        /// <summary>Midnight passed (awake or asleep): a new day. Stations and the arena are available again.</summary>
+        public void NextDay()
+        {
+            Day++;
+            FoughtToday = false;
+            stationsUsedToday.Clear();
+            Changed?.Invoke();
+        }
+
+        /// <summary>Online, a guest: the host's day.</summary>
+        public void SetDay(int day)
+        {
+            if (day == Day) return;
+            Day = day;
+            FoughtToday = false;
+            stationsUsedToday.Clear();
+            Changed?.Invoke();
+        }
+
+        /// <summary>Online arena: it counts as today's fight too.</summary>
+        public void MarkFought() { FoughtToday = true; Changed?.Invoke(); }
 
         public event Action Changed;
 
@@ -95,10 +122,12 @@ namespace Gladiator.Progression
         public void CompleteArena(bool won)
         {
             LastFightWon = won;
-            Day++;
+            FoughtToday = true;
             Phase = DayPhase.Training;
-            stationsUsedToday.Clear();
             Changed?.Invoke();
+            // the fight took a couple of hours (the town's clock; past midnight it is a new day)
+            var sim = Gladiator.Town.TownSimulation.Instance;
+            if (sim != null) sim.AdvanceHours(ArenaHours);
             if (!won) { WakeInInfirmary = true; Load(TownScene); return; }
             Load(TrainingScene);
         }

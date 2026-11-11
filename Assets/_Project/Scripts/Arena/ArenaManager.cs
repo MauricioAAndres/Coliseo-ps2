@@ -138,7 +138,7 @@ namespace Gladiator.Arena
             if (hud != null)
                 hud.ShowBanner(won ? "VICTORIA" : "DERROTA",
                                "+" + Reward + " DENARIOS" + (PlayerKills > 0 ? " (" + PlayerKills + (PlayerKills == 1 ? " baja)" : " bajas)") : "") +
-                               "      E / ENTER  -  (A) / START:  volver al ludus (" + next + ")",
+                               "      E / ENTER  -  (A) / START:  volver al pueblo",
                                won ? new Color(1f, 0.8f, 0.25f) : new Color(0.85f, 0.15f, 0.1f));
         }
 

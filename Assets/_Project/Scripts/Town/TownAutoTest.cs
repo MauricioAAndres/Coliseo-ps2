@@ -227,6 +227,202 @@ namespace Gladiator.Town
             if (pcS != null) pcS.enabled = true;
         }
 
+        /// <summary>The new rules: beds for one / two, sleeping the hours away, one arena a day, doors locked at night,
+        /// the carpenter's furniture in a bought house, the chest's inventory, townspeople with knives.</summary>
+        IEnumerator RulesTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcR = pl.GetComponent<PlayerController>();
+            if (pcR != null) pcR.enabled = false;
+            var gcam = town.Cam;
+            var tm = town.GetComponent<TownManager>();
+            var sim = TownSimulation.Instance;
+            var gm = GameManager.Instance;
+            int seed = town.Layout.Seed;
+            IEnumerator GetUp()
+            {
+                if (pl.InActivity) pl.StopActivity();
+                float t0 = Time.time;
+                while (pl.State == FighterState.Activity && Time.time - t0 < 5f) { pl.Move(Vector3.zero); yield return null; }
+            }
+
+            // ---- beds: a double bed takes two (one per side), a single bed one
+            HouseInterior dblHouse = null, sglHouse = null;
+            foreach (var h in town.Houses)
+            {
+                if (h.Public || h.Floor != 0 || h.Lot.ForSale) continue;
+                var beds = h.Furniture.FindAll(f => f.Kind == Fighter.ActLie);
+                if (beds.Count == 2 && (beds[0].At.position - beds[1].At.position).magnitude < 1f && dblHouse == null) dblHouse = h;
+                if (beds.Count == 1 && sglHouse == null) sglHouse = h;
+            }
+            if (dblHouse != null)
+            {
+                var beds = dblHouse.Furniture.FindAll(f => f.Kind == Fighter.ActLie);
+                Teleport(pl, beds[0].At.position + Vector3.up * 0.1f, dblHouse.transform.forward);
+                yield return Wait(0.2f);
+                bool ok = tm.UseFurniture(beds[0]);
+                yield return Wait(0.5f);
+                var next = dblHouse.NearestFurniture(beds[0].At.position, 1.25f, null);
+                Log($"BEDS double: lay={ok} sideA occupied={HouseInterior.Occupied(beds[0], null)} sideB occupied={HouseInterior.Occupied(beds[1], null)} " +
+                    $"aSecondPersonGets={(next.HasValue && (next.Value.At.position - beds[1].At.position).magnitude < 0.05f ? "the other side" : "nothing free")} (expected the other side)");
+                yield return GetUp();
+            }
+            else Log("BEDS no double bed found");
+            if (sglHouse != null)
+            {
+                var bed = sglHouse.Furniture.Find(f => f.Kind == Fighter.ActLie);
+                Teleport(pl, bed.At.position + Vector3.up * 0.1f, sglHouse.transform.forward);
+                yield return Wait(0.2f);
+                bool ok = tm.UseFurniture(bed);
+                yield return Wait(0.5f);
+                var next = sglHouse.NearestFurniture(bed.At.position, 1.25f, null);
+                Log($"BEDS single: lay={ok} aSecondPersonFinds={(next.HasValue && HouseInterior.Occupied(next.Value, null) ? "CAMA OCUPADA" : "a free bed")} (expected CAMA OCUPADA) " +
+                    $"sleepAllowedInSomebodyElsesHouse={tm.CanSleepIn(sglHouse)} (expected False)");
+                yield return GetUp();
+            }
+
+            // ---- sleeping in the infirmary: 3 hours in ~3 seconds, health back; then past midnight: a new day
+            town.PutInInfirmaryBed(out _);
+            yield return Wait(0.8f);
+            sim.Hour = 14f;
+            pl.Health.TakeDamage(pl.Health.Current - pl.Health.Max * 0.4f);
+            float h0 = sim.Hour, hp0 = pl.Health.Normalized; int d0 = sim.Day;
+            bool started = tm.StartSleep(3);
+            yield return Wait(1.5f);
+            yield return Shot("16a_durmiendo");
+            float tS = Time.time;
+            while (tm.Sleeping && Time.time - tS < 6f) yield return null;
+            Log($"SLEEP started={started} canSleepInInfirmary={tm.CanSleepIn(town.Infirmary)} hours {h0:0.0}->{sim.Hour:0.0} (expected ~17) in {Time.time - tS + 1.5f:0.0}s " +
+                $"hp {hp0:0.00}->{pl.Health.Normalized:0.00} (expected ~+0.30) stillInBed={pl.InActivity} clockRate={sim.ClockRate}");
+            // one arena a day: fought today -> the gate stays shut; sleeping past midnight opens it again
+            gm.DayCycle.MarkFought();
+            tm.OpenArenaGate();
+            bool gateOpenedAfterFight = Gladiator.UI.ArenaGateMenu.Instance != null && Gladiator.UI.ArenaGateMenu.Instance.IsOpen;
+            sim.Hour = 22.5f;
+            tm.StartSleep(3);
+            tS = Time.time;
+            while (tm.Sleeping && Time.time - tS < 6f) yield return null;
+            Log($"ARENA ONCE A DAY foughtToday->gateOpens={gateOpenedAfterFight} (expected False); slept past midnight: day {d0}->{sim.Day} cycleDay={gm.DayCycle.Day} hour={sim.Hour:0.0} " +
+                $"foughtToday={gm.DayCycle.FoughtToday} (expected False)");
+            yield return GetUp();
+
+            // ---- night: houses that are not yours stay locked from outside; the jail never closes
+            var someHome = sglHouse ?? dblHouse;
+            sim.Hour = 23f;
+            Vector3 outside = someHome.Door.Center + someHome.transform.forward * 1.5f;
+            Log($"NIGHT 23:00 lockedFromOutside={tm.LockedAtNight(someHome, outside)} (expected True) fromInside={tm.LockedAtNight(someHome, someHome.transform.position)} (expected False) " +
+                $"jail={tm.LockedAtNight(town.Jail, town.Jail.Door.Center + town.Jail.transform.forward * 1.5f)} (expected False)");
+            sim.Hour = 12f;
+            Log($"NIGHT 12:00 locked={tm.LockedAtNight(someHome, outside)} (expected False)");
+            if (!someHome.Door.IsOpen) someHome.Door.Toggle();
+            sim.Hour = 21.985f;
+            yield return Wait(2.5f);
+            Log($"NIGHT at 22:00 the open door closed={!someHome.Door.IsOpen} (expected True) hour={sim.Hour:0.00}");
+            sim.Hour = 10f;
+
+            // ---- buy a house, then its furniture from the carpenter; the chest shows the inventory
+            var sale = town.Houses.Find(h => h.Floor == 0 && h.Lot.ForSale && !HouseDeeds.Owns(seed, h.Lot.Id));
+            if (sale != null && town.Carpenter != null)
+            {
+                int money0 = gm.Profile.Denarii;
+                gm.Profile.AddDenarii(2000);
+                bool poorHouse = tm.BuyFurniture("bed");   // no house yet
+                bool bought = tm.TryBuy(sale);
+                int spent0 = gm.Profile.Denarii;
+                int builtN = 0;
+                foreach (var id in new[] { "bed", "table", "kitchen", "bath", "chest", "shelf" }) if (tm.BuyFurniture(id)) builtN++;
+                bool again = tm.BuyFurniture("chest");     // already there
+                int bedsSingle = sale.Furniture.FindAll(f => f.Kind == Fighter.ActLie).Count;
+                bool dblBought = tm.BuyFurniture("bed2");
+                yield return null;
+                int bedsDouble = sale.Furniture.FindAll(f => f.Kind == Fighter.ActLie).Count;
+                Log($"CARPENTER withoutHouse={poorHouse} (expected False) houseBought={bought} pieces={builtN}/6 twice={again} (expected False) spent={spent0 - gm.Profile.Denarii} " +
+                    $"bedSpots single={bedsSingle} (expected 1) -> double={bedsDouble} (expected 2) chairs={sale.Furniture.FindAll(f => f.Kind == Fighter.ActChair).Count} chests={sale.Chests.Count} " +
+                    $"saved=[{string.Join(",", HomeFurniture.Owned(seed, sale.Lot.Id))}]");
+                // the furnished house, from the door
+                if (!sale.Door.IsOpen) sale.Door.Toggle();
+                Teleport(pl, sale.Door.Center - sale.transform.forward * 1.3f, -sale.transform.forward);
+                for (float t = 0f; t < 1.2f; t += Time.deltaTime)
+                {
+                    gcam.FocusOverride = sale.transform.position + Vector3.up * 0.8f; gcam.Distance = 9.5f; gcam.Pitch = 52f;
+                    gcam.Yaw = Quaternion.LookRotation(-sale.transform.forward).eulerAngles.y; yield return null;
+                }
+                yield return Shot("16b_casa_amueblada");
+                // sleep is allowed in your own bed; the chest opens the inventory
+                var myBed = sale.Furniture.Find(f => f.Kind == Fighter.ActLie);
+                Teleport(pl, myBed.At.position + Vector3.up * 0.1f, sale.transform.forward);
+                yield return Wait(0.2f);
+                bool layHome = tm.UseFurniture(myBed);
+                yield return Wait(0.4f);
+                Log($"HOME bed lay={layHome} canSleepInMyHouse={tm.CanSleepIn(sale)} (expected True)");
+                yield return GetUp();
+                tm.OpenInventory();
+                yield return Wait(0.6f);
+                var inv = Gladiator.UI.InventoryPanel.Instance;
+                Log($"CHEST inventoryOpen={(inv != null && inv.IsOpen)} listsGladius={(inv != null && inv.Shown.Contains("Gladius"))} listsFurniture={(inv != null && inv.Shown.Contains("cama doble"))}");
+                yield return Shot("16c_cofre_inventario");
+                if (inv != null) inv.Close();
+                yield return Wait(0.3f);
+                // the carpenter at his bench on the plaza
+                Vector3 cp = town.Carpenter.Fighter.transform.position, cf = town.Carpenter.Fighter.transform.forward;
+                Teleport(pl, cp + town.Layout.ToWorld(Vector3.forward).normalized * 2.6f, cp - pl.transform.position);
+                yield return Wait(0.5f);
+                tm.OpenCarpenter();
+                yield return Wait(0.6f);
+                for (float t = 0f; t < 0.6f; t += Time.deltaTime) { gcam.FocusOverride = cp + Vector3.up; gcam.Distance = 6f; gcam.Pitch = 25f; yield return null; }
+                yield return Shot("16d_carpintero");
+                if (Gladiator.UI.ChoiceMenu.Instance != null) Gladiator.UI.ChoiceMenu.Instance.Close();
+                yield return Wait(0.3f);
+                // leave the save as it was
+                HouseDeeds.Remove(seed, sale.Lot.Id);
+                HomeFurniture.Clear(seed, sale.Lot.Id);
+                gm.Profile.AddDenarii(money0 - gm.Profile.Denarii);
+                if (sale.Door.IsOpen) sale.Door.Toggle();
+            }
+            else Log("CARPENTER no house for sale / no carpenter");
+
+            // ---- knives: some grown townspeople carry one and fight back; no child does
+            int armed = 0, adults = 0, kidsArmed = 0;
+            foreach (var c in sim.Citizens)
+            {
+                bool k = CitizenDefender.CarriesKnife(c);
+                if (c.Job != Job.Guardia && c.Age >= 16 && c.Age <= 60) { adults++; if (k) armed++; }
+                if ((c.Age < 16 || c.Job == Job.Nino) && k) kidsArmed++;
+            }
+            CitizenNPC knifeNpc = null;
+            sim.Hour = 17f; // everybody out
+            yield return Wait(2.5f);
+            Teleport(pl, town.Layout.Fountain + new Vector3(3f, 0.05f, 3f), Vector3.forward);
+            yield return Wait(2.5f);
+            foreach (var n in town.Spawner.Active)
+                if (n.Citizen != null && CitizenDefender.CarriesKnife(n.Citizen) && n.gameObject.activeInHierarchy && !n.Controlled) { knifeNpc = n; break; }
+            Log($"KNIVES adults={adults} carryKnife={armed} childrenWithKnife={kidsArmed} (expected 0) oneNearby={(knifeNpc != null)}");
+            if (knifeNpc != null)
+            {
+                Vector3 np = knifeNpc.transform.position;
+                Teleport(pl, np + Vector3.forward * 1.3f, -Vector3.forward);
+                pl.Health.Heal(pl.Health.Max);
+                float hpB = pl.Health.Current;
+                bool hasKnife = knifeNpc.Fighter.CurrentWeapon != null;
+                CitizenDefender.Begin(knifeNpc, pl);
+                for (float t = 0f; t < 6f; t += Time.deltaTime)
+                {
+                    pl.Move(Vector3.zero);
+                    gcam.FocusOverride = pl.transform.position + Vector3.up; gcam.Distance = 5f; gcam.Pitch = 20f;
+                    if (t > 2.5f && t < 2.5f + Time.deltaTime * 1.5f) yield return Shot("16e_vecino_con_cuchillo");
+                    yield return null;
+                }
+                Log($"KNIVES {knifeNpc.Citizen.Name} ({knifeNpc.Citizen.Age}) knifeInHand={hasKnife} defending={CitizenDefender.Active} playerHp {hpB:0}->{pl.Health.Current:0} (expected lower) alive={pl.IsAlive}");
+                Teleport(pl, np + Vector3.forward * 25f, Vector3.forward);
+                yield return Wait(1.0f);
+                Log($"KNIVES after backing off: defending={CitizenDefender.Active} (expected 0) outcome={CitizenDefender.LastOutcome} harmlessAgain={knifeNpc.Fighter.Harmless}");
+                pl.Health.Heal(pl.Health.Max);
+            }
+            sim.Hour = 10f;
+            gcam.FocusOverride = null;
+            if (pcR != null) pcR.enabled = true;
+        }
+
         /// <summary>The jail beside the arena: the front door, the jailer's room, two cells behind bars whose gates open
         /// with E (closed you cannot walk in), the prisoner who talks through the bars.</summary>
         IEnumerator JailTest(TownBootstrap town)
@@ -775,7 +971,8 @@ namespace Gladiator.Town
                 yield return ShopsTest(town);
                 yield return TempleDomusTest(town);
                 yield return FurnitureTest(town);
-                yield return JailTest(town); // the older tests walk into houses: no warnings there
+                yield return JailTest(town);
+                yield return RulesTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

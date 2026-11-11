@@ -48,6 +48,9 @@ namespace Gladiator.Net
         public bool Ended => ended;
         public bool Coop => coop;
         public string Winner { get; private set; }
+        /// <summary>The match's purse and this player's part of it (0 when today's arena was paid already).</summary>
+        public int Purse { get; private set; }
+        public int Share { get; private set; }
         public int HitsSent { get; private set; }
         public int HitsTaken { get; private set; }
         /// <summary>Co-op: blows landed on rivals (sent to the host, or applied by the host) and rival states received.</summary>
@@ -496,7 +499,29 @@ namespace Gladiator.Net
             bool iWon = coop ? text.StartsWith("VICTORIA")
                              : text.Contains(session.ArenaTeams && session.Local != null ? NetSession.ColorNames[session.Local.Color]
                                                                                         : (session.Local != null ? session.Local.G.Name.ToUpperInvariant() : "#"));
-            hud?.ShowBanner(text, session.IsHost ? "VOLVEIS AL LUDUS EN UNOS SEGUNDOS" : "EL ANFITRION OS LLEVARA AL LUDUS",
+            // the purse: one for the whole match, split between the players (co-op: everybody; versus: the winners
+            // collect their part, the rest a consolation). Only the first arena of the day pays.
+            int players = 0; foreach (var pl in session.Players) players++;
+            players = Mathf.Max(1, players);
+            var gm = Gladiator.Core.GameManager.Instance;
+            int day = gm != null ? gm.DayCycle.Day : 1;
+            int purse = session.ArenaMode == NetSession.ModeChampion ? 250 + 20 * day
+                      : session.ArenaMode == NetSession.ModeWaves ? 350 + 10 * day
+                      : 100 + 25 * day;
+            bool paid = gm != null && !gm.DayCycle.FoughtToday;
+            Purse = purse; Share = 0;
+            if (paid)
+            {
+                Share = coop ? (iWon ? purse / players : Mathf.Max(5, purse / players / 6))
+                             : (iWon ? purse / players : 10);
+                gm.Profile.AddDenarii(Share);
+                gm.Profile.RecordFight(iWon);
+                gm.DayCycle.LastReward = Share;
+                gm.DayCycle.MarkFought();
+            }
+            Debug.Log($"[NETARENA] purse={purse} players={players} share={Share} paid={paid} won={iWon}");
+            string money = paid ? "+" + Share + " DENARIOS (bolsa de " + purse + " entre " + players + ")   " : "AMISTOSO: HOY YA COBRASTE   ";
+            hud?.ShowBanner(text, money + (session.IsHost ? "VOLVEIS AL LUDUS EN UNOS SEGUNDOS" : "EL ANFITRION OS LLEVARA AL LUDUS"),
                             iWon ? new Color(1f, 0.8f, 0.25f) : new Color(0.85f, 0.15f, 0.1f));
         }
 

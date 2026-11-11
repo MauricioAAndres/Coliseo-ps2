@@ -697,9 +697,10 @@ namespace Gladiator.Town
                     for (int k = 0; k < (dbl ? 2 : 1); k++)
                         Box(awningA, P(cx + (dbl ? (k == 0 ? -0.35f : 0.35f) : 0f), 0.58f, z0 + 0.38f), new Vector3(0.5f, 0.1f, 0.32f), q, 0f);
                     house.Beds.Add(cx + "," + bz);
-                    float lx = dbl ? cx - farSide * 0.35f : cx;
-                    house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActLie,
-                        new Pose(P(lx, 0.53f, z0 + 0.83f), q * Quaternion.LookRotation(Vector3.forward))));
+                    // a single bed sleeps one; a double bed two, one on each side
+                    foreach (float lx in dbl ? new[] { cx - farSide * 0.35f, cx + farSide * 0.35f } : new[] { cx })
+                        house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActLie,
+                            new Pose(P(lx, 0.53f, z0 + 0.83f), q * Quaternion.LookRotation(Vector3.forward))));
                     if (chest && z0 + 2.7f < z1 - 0.1f) Chest(cx, z0 + 2.4f);
                     // chest of drawers on the back wall at the other end, if it fits; candle on it
                     float room = (x1 - x0) - 0.24f - width - 0.15f;

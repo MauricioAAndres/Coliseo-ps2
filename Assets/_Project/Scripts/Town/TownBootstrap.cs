@@ -43,6 +43,12 @@ namespace Gladiator.Town
         public GovernorNPC Governor { get; private set; }
         /// <summary>The prisoner in the jail (null if the town has none).</summary>
         public JailNPC Prisoner { get; private set; }
+        /// <summary>The carpenter on the plaza (furniture for your houses).</summary>
+        public CarpenterNPC Carpenter { get; private set; }
+        /// <summary>Online: houses bought by the other players (lot id -> owner's name).</summary>
+        public readonly System.Collections.Generic.Dictionary<int, string> OtherOwners = new System.Collections.Generic.Dictionary<int, string>();
+        /// <summary>The ground floor of a house (by lot id).</summary>
+        public HouseInterior HouseOfLot(int lotId) => Houses != null ? Houses.Find(h => h.Lot.Id == lotId && h.Floor == 0 && h.Door != null) : null;
         /// <summary>The jail by the arena.</summary>
         public HouseInterior Jail => Houses != null ? Houses.Find(h => h.CellSpots.Count > 0) : null;
         /// <summary>The ludus yard inside the town (+z towards the town) and its training manager.</summary>
@@ -259,6 +265,11 @@ namespace Gladiator.Town
             Guards.Init(this);
             Governor = GovernorNPC.Spawn(this);
             Prisoner = JailNPC.Spawn(this);
+            Carpenter = CarpenterNPC.Spawn(this);
+            Hud.TrackHealth(Player);
+            // the furniture bought for the houses you own
+            foreach (var h in Houses)
+                if (h.Floor == 0 && h.Lot.ForSale && HouseDeeds.Owns(Layout.Seed, h.Lot.Id)) HomeFurniture.Apply(h, HomeFurniture.Owned(Layout.Seed, h.Lot.Id));
             Info = new GameObject("TownInfo", typeof(RectTransform)).AddComponent<TownInfoPanel>();
             Info.Init(this, cam);
             // online: the other players who are in the town too
@@ -368,9 +379,240 @@ namespace Gladiator.Town
         PlayerController pc;
         bool leaving;
 
+        // ---------------------------------------------------------------- menus opened here: the player stands still
+        bool myMenu;
+        static bool AnyMenu => (ChoiceMenu.Instance != null && ChoiceMenu.Instance.IsOpen) || (InventoryPanel.Instance != null && InventoryPanel.Instance.IsOpen);
+        void MenuOpened() { myMenu = true; if (pc != null) pc.enabled = false; town.Player.Move(Vector3.zero); }
+
+        // ---------------------------------------------------------------- night: houses lock their doors
+        public static bool IsNight(float hour) => hour >= 22f || hour < 6f;
+        public bool Night { get { var s = TownSimulation.Instance; return s != null && IsNight(s.Hour); } }
+
+        bool Mine(HouseInterior h) => h != null && HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id);
+
+        /// <summary>From 22:00 to 6:00 a house that is not yours does not open from outside (the jail never closes).</summary>
+        public bool LockedAtNight(HouseInterior h, Vector3 from)
+        {
+            return h != null && Night && !Mine(h) && h.CellSpots.Count == 0 && !h.Contains(from);
+        }
+
+        void OnHour(int hour)
+        {
+            if (hour != 22 || town == null || town.Houses == null) return;
+            int closed = 0;
+            foreach (var h in town.Houses)
+                if (h.Door != null && h.Door.IsOpen && !Mine(h) && h.CellSpots.Count == 0) { h.Door.SetOpen(false); closed++; }
+            town.Hud.ShowMessage("LAS 22:00: LAS CASAS CIERRAN SUS PUERTAS HASTA LAS 6:00", 4f);
+            Debug.Log("[TOWN] 22:00 doors closed=" + closed);
+        }
+
+        // ---------------------------------------------------------------- sleeping: pick the hours, an hour a second
+        float sleepLeft;
+        int sleepHours;
+        public bool Sleeping => sleepLeft > 0f;
+        public const float SleepHealPerHour = 0.1f;
+
+        /// <summary>Beds you may sleep in: the infirmary's, the jail's pallets and the ones in your own houses.</summary>
+        public bool CanSleepIn(HouseInterior h) => h != null && (h.BedSpots.Count > 0 || h.CellSpots.Count > 0 || Mine(h));
+
+        static string Clock(float hour) { int m = Mathf.FloorToInt(Mathf.Repeat(hour, 24f) * 60f); return (m / 60).ToString("00") + ":" + (m % 60).ToString("00"); }
+
+        public void OpenSleepMenu()
+        {
+            var sim = TownSimulation.Instance;
+            var opts = new System.Collections.Generic.List<ChoiceMenu.Option>();
+            for (int h = 1; h <= 12; h++)
+            {
+                int hours = h;
+                float wake = sim != null ? sim.Hour + hours : hours;
+                opts.Add(new ChoiceMenu.Option
+                {
+                    Label = hours + (hours == 1 ? " HORA" : " HORAS"),
+                    Blurb = "Despiertas a las " + Clock(wake) + (wake >= 24f ? " de manana (nuevo dia)" : "") + ".  Recuperas " + Mathf.RoundToInt(hours * SleepHealPerHour * 100f) + "% de vida.",
+                    OnChoose = () => StartSleep(hours),
+                });
+            }
+            ChoiceMenu.Ensure().Open("DORMIR: ¿CUANTAS HORAS?", opts);
+            MenuOpened();
+        }
+
+        /// <summary>Sleep (lying in a bed): the clock runs an hour a second, health comes back. Online only the host's sleep moves the clock.</summary>
+        public bool StartSleep(int hours)
+        {
+            var pl = town.Player;
+            if (!pl.InActivity || pl.ActivityKind != Fighter.ActLie || !pl.OnFurniture) return false;
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != null && net.InGame && !net.IsHost)
+            {
+                town.Hud.ShowMessage("EN LINEA EL RELOJ ES DEL ANFITRION: SOLO EL PUEDE PASAR LAS HORAS DURMIENDO", 5f);
+                return false;
+            }
+            sleepHours = Mathf.Clamp(hours, 1, 12);
+            sleepLeft = sleepHours;
+            if (TownSimulation.Instance != null) TownSimulation.Instance.ClockRate = 60f; // an hour a second
+            if (pc != null) pc.enabled = false;
+            Debug.Log("[TOWN] sleeping " + sleepHours + "h");
+            return true;
+        }
+
+        void UpdateSleep()
+        {
+            var pl = town.Player;
+            var sim = TownSimulation.Instance;
+            float dt = Mathf.Min(Time.deltaTime, sleepLeft);
+            sleepLeft -= Time.deltaTime;
+            pl.Health.Heal(pl.Health.Max * SleepHealPerHour * dt);
+            string key = GameInput.UsingGamepad ? "(A)" : "[" + InputBindings.Short(GameAction.Interact) + "]";
+            town.Hud.SetPrompt("");
+            town.Hud.SetSleep(true, "DURMIENDO...   " + (sim != null ? Clock(sim.Hour) + "   DIA " + sim.Day : "") + "\n<size=15>" + key + " despertar</size>");
+            if (sleepLeft <= 0f || GameInput.InteractPressed || !pl.InActivity) EndSleep();
+        }
+
+        public void EndSleep()
+        {
+            float slept = sleepHours - Mathf.Max(0f, sleepLeft);
+            sleepLeft = 0f;
+            var sim = TownSimulation.Instance;
+            if (sim != null) sim.ClockRate = 1f;
+            town.Hud.SetSleep(false);
+            if (pc != null) pc.enabled = true;
+            town.Hud.ShowMessage("DESCANSASTE " + Mathf.RoundToInt(slept) + (Mathf.RoundToInt(slept) == 1 ? " HORA" : " HORAS") + (sim != null ? ":  SON LAS " + Clock(sim.Hour) + " DEL DIA " + sim.Day : ""), 5f);
+        }
+
+        // ---------------------------------------------------------------- your houses: furniture, chests, online
+        /// <summary>The house the carpenter delivers a piece to: the first of yours that lacks it.</summary>
+        public HouseInterior HouseFor(string itemId)
+        {
+            HouseInterior first = null;
+            foreach (var h in town.Houses)
+            {
+                if (h.Floor != 0 || !h.Lot.ForSale || !Mine(h)) continue;
+                if (first == null) first = h;
+                var have = HomeFurniture.Owned(town.Layout.Seed, h.Lot.Id);
+                if (!have.Contains(itemId) && !(itemId == "bed" && have.Contains("bed2"))) return h;
+            }
+            return null == first ? null : (itemId == null ? first : null);
+        }
+
+        public int HousesOwned() { int n = 0; foreach (var h in town.Houses) if (h.Floor == 0 && h.Lot.ForSale && Mine(h)) n++; return n; }
+
+        public void OpenCarpenter()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+            int houses = HousesOwned();
+            var opts = new System.Collections.Generic.List<ChoiceMenu.Option>();
+            foreach (var it in HomeFurniture.Catalog)
+            {
+                var item = it;
+                var target = HouseFor(item.Id);
+                bool afford = gm.Profile.Denarii >= item.Price;
+                opts.Add(new ChoiceMenu.Option
+                {
+                    Label = item.Name + "   " + item.Price + " d.",
+                    Enabled = houses > 0 && target != null && afford,
+                    Blurb = houses == 0 ? "Primero compra una casa (las que tienen el cartel SE VENDE)."
+                          : target == null ? "Ya lo tienes en tu casa."
+                          : !afford ? "No te alcanza: cuesta " + item.Price + " y tienes " + gm.Profile.Denarii + " denarios."
+                          : item.Blurb,
+                    OnChoose = () => { BuyFurniture(item.Id); OpenCarpenter(); },
+                });
+            }
+            ChoiceMenu.Ensure().Open("CARPINTERO   (" + gm.Profile.Denarii + " denarios)", opts);
+            MenuOpened();
+        }
+
+        /// <summary>Pay the carpenter: the piece is built in your house at once (saved).</summary>
+        public bool BuyFurniture(string id)
+        {
+            var gm = GameManager.Instance;
+            var item = HomeFurniture.ById(id);
+            var h = HouseFor(id);
+            if (gm == null || item == null || h == null) return false;
+            if (!gm.Profile.Spend(item.Price)) return false;
+            HomeFurniture.Add(town.Layout.Seed, h.Lot.Id, id);
+            HomeFurniture.Apply(h, HomeFurniture.Owned(town.Layout.Seed, h.Lot.Id));
+            town.Hud.ShowMessage(item.Name + ": YA ESTA EN TU CASA", 3.5f);
+            SendHouse(h.Lot.Id);
+            return true;
+        }
+
+        public Vector3? NearestChest(HouseInterior h, Vector3 p, float range)
+        {
+            if (h == null) return null;
+            Vector3? best = null; float bd = range;
+            foreach (var c in h.Chests)
+            {
+                if (Mathf.Abs(c.y - p.y) > 1f) continue;
+                float d = Flat(c - p);
+                if (d < bd) { bd = d; best = c; }
+            }
+            return best;
+        }
+
+        /// <summary>The chest: everything you own.</summary>
+        public void OpenInventory()
+        {
+            var gm = GameManager.Instance;
+            if (gm == null) return;
+            var pr = gm.Profile;
+            var weapons = new System.Collections.Generic.List<string>();
+            var shields = new System.Collections.Generic.List<string>();
+            var armour = new System.Collections.Generic.List<string>();
+            foreach (var id in pr.Owned)
+            {
+                var w = WeaponLibrary.ByName(id);
+                if (w != null) { weapons.Add(w.Name + (pr.MainHand == w.Id ? " (en la mano)" : pr.OffHand == w.Id ? " (mano izquierda)" : "")); continue; }
+                var sh = ShieldLibrary.ById(id);
+                if (sh != null) { shields.Add(sh.Name + (pr.ShieldId == sh.Id ? " (puesto)" : "")); continue; }
+                var ap = Gladiator.Character.ArmorLibrary.ById(id);
+                if (ap != null) { armour.Add(ap.Name + (System.Array.IndexOf(pr.Armor, ap.Id) >= 0 ? " (puesta)" : "")); continue; }
+            }
+            var homes = new System.Collections.Generic.List<string>();
+            foreach (var h in town.Houses)
+            {
+                if (h.Floor != 0 || !h.Lot.ForSale || !Mine(h)) continue;
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var f in HomeFurniture.Owned(town.Layout.Seed, h.Lot.Id)) names.Add(HomeFurniture.ById(f).Name.ToLowerInvariant());
+                homes.Add("Casa " + h.Lot.Id + ": " + (names.Count > 0 ? string.Join(", ", names) : "sin muebles"));
+            }
+            var sections = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, string>>
+            {
+                new System.Collections.Generic.KeyValuePair<string, string>("DENARIOS", pr.Denarii.ToString()),
+                new System.Collections.Generic.KeyValuePair<string, string>("ARMAS", string.Join(",  ", weapons)),
+                new System.Collections.Generic.KeyValuePair<string, string>("ESCUDOS", string.Join(",  ", shields)),
+                new System.Collections.Generic.KeyValuePair<string, string>("ARMADURA", string.Join(",  ", armour)),
+                new System.Collections.Generic.KeyValuePair<string, string>("CASAS Y MUEBLES", string.Join("\n", homes)),
+            };
+            InventoryPanel.Ensure().Open("COFRE: TU INVENTARIO", sections);
+            MenuOpened();
+        }
+
+        float houseSend;
+        /// <summary>Online: tell the others this house is ours and what is in it.</summary>
+        public void SendHouse(int lotId)
+        {
+            var s = Gladiator.Net.NetSession.Instance;
+            var gm = GameManager.Instance;
+            if (s == null || !s.InGame || gm == null) return;
+            s.Send("HB", lotId + "|" + gm.Profile.Name.Replace("|", " ") + "|" + string.Join(",", HomeFurniture.Owned(town.Layout.Seed, lotId)));
+        }
+
+        void OnHouseNet(string payload)
+        {
+            var a = payload.Split('|');
+            if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
+            town.OtherOwners[lotId] = a[1];
+            var h = town.HouseOfLot(lotId);
+            if (h == null) return;
+            if (h.SaleSign != null) h.SaleSign.SetActive(false);
+            if (a.Length > 2 && a[2].Length > 0) HomeFurniture.Apply(h, a[2].Split(','));
+        }
+
         public void Init(TownBootstrap t, PlayerController controller)
         {
             town = t; pc = controller;
+            if (TownSimulation.Instance != null) TownSimulation.Instance.HourChanged += OnHour;
             town.Hud.Shop.Closed += () => { if (pc != null) pc.enabled = true; };
         }
 
@@ -378,7 +620,11 @@ namespace Gladiator.Town
 
         void OnEnable() { }
 
-        void OnDestroy() { if (hooked != null) hooked.GameMessage -= OnNet; }
+        void OnDestroy()
+        {
+            if (hooked != null) hooked.GameMessage -= OnNet;
+            if (TownSimulation.Instance != null) { TownSimulation.Instance.HourChanged -= OnHour; TownSimulation.Instance.ClockRate = 1f; }
+        }
 
         void LateUpdate()
         {
@@ -398,6 +644,7 @@ namespace Gladiator.Town
         /// <summary>Another player opened or closed a door in the same town.</summary>
         void OnNet(int from, string type, string payload)
         {
+            if (type == "HB" && town != null && town.Houses != null) { OnHouseNet(payload); return; }
             if (type != "DR" || town == null || town.Houses == null) return;
             var a = payload.Split('|');
             if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
@@ -461,6 +708,23 @@ namespace Gladiator.Town
             if (town.Hud.Shop.IsOpen) { town.Hud.SetPrompt(""); return; } // the shop has its own keys (Esc closes)
             string key = GameInput.UsingGamepad ? "(A) " : "[" + InputBindings.Short(GameAction.Interact) + "] ";
             Vector3 p = town.Player.transform.position;
+            // a menu opened here (sleep, carpenter, chest): nothing else until it closes
+            if (myMenu)
+            {
+                if (AnyMenu) { town.Hud.SetPrompt(""); return; }
+                myMenu = false;
+                if (pc != null && !Sleeping) pc.enabled = true;
+                return; // the key that closed it does nothing else this frame
+            }
+            if (Sleeping) { UpdateSleep(); return; }
+            // online: the others learn (and are reminded) which houses are ours
+            if ((houseSend -= Time.unscaledDeltaTime) <= 0f)
+            {
+                houseSend = 6f;
+                var ns = Gladiator.Net.NetSession.Instance;
+                if (ns != null && ns.InGame)
+                    foreach (var oh in town.Houses) if (oh.Floor == 0 && oh.Lot.ForSale && Mine(oh)) SendHouse(oh.Lot.Id);
+            }
             if (town.InLudus(p)) return; // in the ludus yard: the training manager has the prompts
             // inside a house, or at its door: its roof and ceiling go away so the camera sees in; say which room
             var inHouse = town.HouseAt(p);
@@ -485,15 +749,25 @@ namespace Gladiator.Town
             var pl = town.Player;
             if (pl.InActivity && pl.OnFurniture)
             {
-                town.Hud.SetPrompt(pl.ActivityLeaving ? "" : key + "LEVANTARSE");
-                if (GameInput.InteractPressed && !pl.ActivityLeaving) pl.StopActivity();
+                // in a bed you may sleep in: E picks the hours; moving gets you up
+                bool bed = pl.ActivityKind == Fighter.ActLie && CanSleepIn(house ?? town.HouseAt(p));
+                town.Hud.SetPrompt(pl.ActivityLeaving ? "" : bed ? key + "DORMIR (ELEGIR HORAS)      MOVERSE: LEVANTARSE" : key + "LEVANTARSE");
+                if (GameInput.InteractPressed && !pl.ActivityLeaving) { if (bed) OpenSleepMenu(); else pl.StopActivity(); }
+                return;
+            }
+            // a chest of yours: your inventory
+            if (NearestChest(house, p, 1.3f).HasValue && pl.State == FighterState.Idle)
+            {
+                town.Hud.SetPrompt(key + "ABRIR EL COFRE (INVENTARIO)");
+                if (GameInput.InteractPressed) OpenInventory();
                 return;
             }
             // a bed, a chair, the temple's altar: E to lie down, sit, pray
-            var furn = house != null && pl.State == FighterState.Idle ? house.NearestFurniture(p, 1.25f) : null;
+            var furn = house != null && pl.State == FighterState.Idle ? house.NearestFurniture(p, 1.25f, pl) : null;
             if (furn.HasValue && town.NearestDoor(p, 1.2f) == null)
             {
                 var fs = furn.Value;
+                if (HouseInterior.Occupied(fs, pl)) { town.Hud.SetPrompt(fs.Kind == Fighter.ActLie ? "CAMA OCUPADA" : "OCUPADO"); return; }
                 town.Hud.SetPrompt(key + fs.Verb);
                 if (GameInput.InteractPressed) UseFurniture(fs);
                 return;
@@ -510,7 +784,7 @@ namespace Gladiator.Town
             var door = town.NearestDoor(p, 1.7f);
             if (door != null && PrisonerFirst(door, p)) door = null; // at the bars in front of the prisoner: talk to him
             var dh = door != null && door.Noun == "LA PUERTA" ? door.GetComponentInParent<HouseInterior>() : null;
-            if (dh != null && dh.Lot.ForSale && !HouseDeeds.Owns(town.Layout.Seed, dh.Lot.Id))
+            if (dh != null && dh.Lot.ForSale && !HouseDeeds.Owns(town.Layout.Seed, dh.Lot.Id) && !town.OtherOwners.ContainsKey(dh.Lot.Id))
             {
                 var gmB = GameManager.Instance;
                 int money = gmB != null ? gmB.Profile.Denarii : 0;
@@ -520,8 +794,10 @@ namespace Gladiator.Town
             }
             if (door != null)
             {
-                bool mine = dh != null && dh.Lot.ForSale;
-                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR " : "ABRIR ") + door.Noun + (mine ? "   (TU CASA)" : ""));
+                if (LockedAtNight(dh, p)) { town.Hud.SetPrompt("CERRADO DE NOCHE: ABREN A LAS 6:00"); return; }
+                bool mine = Mine(dh) && dh.Lot.ForSale;
+                string whose = mine ? "   (TU CASA)" : dh != null && town.OtherOwners.TryGetValue(dh.Lot.Id, out string ow) ? "   (CASA DE " + ow.ToUpperInvariant() + ")" : "";
+                town.Hud.SetPrompt(key + (door.IsOpen ? "CERRAR " : "ABRIR ") + door.Noun + whose);
                 if (GameInput.InteractPressed) { door.Toggle(); SendDoor(door); }
                 return;
             }
@@ -530,6 +806,13 @@ namespace Gladiator.Town
             {
                 town.Hud.SetPrompt(key + "HABLAR CON EL GOBERNADOR " + gov.Name.ToUpperInvariant());
                 if (GameInput.InteractPressed) town.Hud.ShowMessage(gov.Talk(town.Player), 5.5f);
+                return;
+            }
+            var carp = town.Carpenter;
+            if (carp != null && carp.Fighter != null && Flat(carp.Fighter.transform.position - p) < 2.6f)
+            {
+                town.Hud.SetPrompt(key + "CARPINTERO: MUEBLES PARA TU CASA");
+                if (GameInput.InteractPressed) OpenCarpenter();
                 return;
             }
             var pr = town.Prisoner;
@@ -549,6 +832,12 @@ namespace Gladiator.Town
             }
             if (Flat(town.Layout.ArenaGate - p) < GateRadius)
             {
+                var gmA = GameManager.Instance;
+                if (gmA != null && gmA.DayCycle.FoughtToday)
+                {
+                    town.Hud.SetPrompt("YA COMBATISTE HOY: DUERME EN UNA CAMA PARA PASAR EL DIA");
+                    return;
+                }
                 town.Hud.SetPrompt(key + "PUERTA DE LA ARENA: ELEGIR COMBATE");
                 if (GameInput.InteractPressed) OpenArenaGate();
                 return;
@@ -560,7 +849,7 @@ namespace Gladiator.Town
         public bool TryBuy(HouseInterior h)
         {
             var gm = GameManager.Instance;
-            if (gm == null || h == null || !h.Lot.ForSale || HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id)) return false;
+            if (gm == null || h == null || !h.Lot.ForSale || HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id) || town.OtherOwners.ContainsKey(h.Lot.Id)) return false;
             if (!gm.Profile.Spend(h.Lot.Price))
             {
                 town.Hud.ShowMessage("NO TE ALCANZA: CUESTA " + h.Lot.Price + " DENARIOS Y TIENES " + gm.Profile.Denarii, 3f);
@@ -570,7 +859,8 @@ namespace Gladiator.Town
             if (h.SaleSign != null) h.SaleSign.SetActive(false);
             h.Door.SetOpen(true);
             SendDoor(h.Door);
-            town.Hud.ShowMessage("¡CASA COMPRADA!  YA ES TUYA", 3.5f);
+            town.Hud.ShowMessage("¡CASA COMPRADA!  YA ES TUYA.  EL CARPINTERO DE LA PLAZA VENDE LOS MUEBLES", 5f);
+            SendHouse(h.Lot.Id);
             Gladiator.Audio.AudioManager.UI("ui_select");
             return true;
         }
@@ -598,7 +888,7 @@ namespace Gladiator.Town
         public void OpenArenaGate()
         {
             var gm = GameManager.Instance;
-            if (gm == null) return;
+            if (gm == null || gm.DayCycle.FoughtToday) return;
             ArenaGateMenu.Ensure().Open(gm.DayCycle.Day, mode => { leaving = true; gm.DayCycle.GoToArena(mode); });
         }
 

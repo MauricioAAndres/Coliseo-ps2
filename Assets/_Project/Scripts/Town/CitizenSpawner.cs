@@ -169,6 +169,8 @@ namespace Gladiator.Town
         public static void Arm(Fighter f, CitizenData c)
         {
             f.UnequipAll();
+            // some grown men and women carry a knife (pugio) at the belt hand: they defend themselves with it
+            if (CitizenDefender.CarriesKnife(c)) { f.Equip(WeaponFactory.Create(WeaponLibrary.Dagger)); return; }
             if (c.Job != Job.Guardia) return;
             f.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
             var sc = ShieldLibrary.ById("scutum");
@@ -203,9 +205,11 @@ namespace Gladiator.Town
             if (npc == null || npc.Citizen == null) return;
             sim.ChangeRelation(npc.Citizen, -15);
             if (npc.Controlled || npc.Citizen.Job == Job.Guardia) return; // guards do not run: TownGuards deals with it
-            npc.Flee(player.transform.position, 7f);
+            bool defends = CitizenDefender.CarriesKnife(npc.Citizen);
+            if (defends) CitizenDefender.Begin(npc, player); // knife out, until a guard comes
+            else npc.Flee(player.transform.position, 7f);
             var net = Gladiator.Net.NetSession.Instance;
-            if (net != null && net.InGame)
+            if (net != null && net.InGame && !defends)
                 net.Send("CH", npc.Citizen.Id + "|" + Gladiator.Net.NetSession.F(player.transform.position.x) + "|" + Gladiator.Net.NetSession.F(player.transform.position.z));
             foreach (var other in active.Values)
                 if (other != npc && !other.Controlled && other.Citizen.Job != Job.Guardia && Flat(other.transform.position - npc.transform.position) < 9f)

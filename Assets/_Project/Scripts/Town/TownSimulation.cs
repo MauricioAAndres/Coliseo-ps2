@@ -28,6 +28,24 @@ namespace Gladiator.Town
         public readonly List<CitizenData> Citizens = new List<CitizenData>();
         /// <summary>Hour of the day, 0..24.</summary>
         public float Hour { get; set; } = DayStartHour + 1f;
+        /// <summary>How fast the clock runs (1 = normal; asleep, 60: an hour a second).</summary>
+        [System.NonSerialized] public float ClockRate = 1f;
+
+        static bool Guest { get { var n = Gladiator.Net.NetSession.Instance; return n != null && n.InGame && !n.IsHost; } }
+
+        /// <summary>Time passes at once (a fight in the arena). Midnight starts a new day.</summary>
+        public void AdvanceHours(float hours) { Hour += hours; Wrap(); }
+
+        void Wrap()
+        {
+            while (Hour >= 24f)
+            {
+                Hour -= 24f;
+                scheduleCache.Clear();
+                var gm = GameManager.Instance;
+                if (!Guest && gm != null && gm.DayCycle != null) { gm.DayCycle.NextDay(); Day = gm.DayCycle.Day; }
+            }
+        }
         public int Day { get; private set; } = 1;
         /// <summary>Fires when the hour (integer) changes.</summary>
         public event System.Action<int> HourChanged;
@@ -79,7 +97,12 @@ namespace Gladiator.Town
             var a = payload.Split('|');
             if (a.Length < 2) return;
             float h = Gladiator.Net.NetSession.PF(a[0]);
-            if (int.TryParse(a[1], out int d) && d != Day) { Day = d; scheduleCache.Clear(); }
+            if (int.TryParse(a[1], out int d) && d != Day)
+            {
+                Day = d; scheduleCache.Clear();
+                var gmN = GameManager.Instance;
+                if (gmN != null && gmN.DayCycle != null) gmN.DayCycle.SetDay(d);
+            }
             Hour = Mathf.Repeat(h, 24f);
         }
 
@@ -91,7 +114,7 @@ namespace Gladiator.Town
             bool online = net != null && net.InGame;
             if (online && net.IsHost && (clockSend -= Time.unscaledDeltaTime) <= 0f)
             {
-                clockSend = 2f;
+                clockSend = ClockRate > 1f ? 0.25f : 2f;
                 net.Send("TC", Gladiator.Net.NetSession.F(Hour) + "|" + Day);
             }
             // A fight ends the game day: the town wakes up to a new morning (online, the host's day).
@@ -99,11 +122,10 @@ namespace Gladiator.Town
             if (!(online && !net.IsHost) && gm != null && gm.DayCycle != null && gm.DayCycle.Day != Day)
             {
                 Day = gm.DayCycle.Day;
-                Hour = DayStartHour;
                 scheduleCache.Clear();
             }
-            Hour += Time.deltaTime * MinutesPerSecond / 60f;
-            if (Hour >= 24f) { Hour -= 24f; scheduleCache.Clear(); }
+            Hour += Time.deltaTime * MinutesPerSecond / 60f * ClockRate;
+            Wrap();
             int hNow = Mathf.FloorToInt(Hour);
             if (hNow != lastHour) { lastHour = hNow; HourChanged?.Invoke(hNow); }
             if (relDirty && (relSaveTimer -= Time.unscaledDeltaTime) <= 0f) SaveRelations();

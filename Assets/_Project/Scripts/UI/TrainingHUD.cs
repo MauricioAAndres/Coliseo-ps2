@@ -21,6 +21,7 @@ namespace Gladiator.UI
         public void Init(Camera cam)
         {
             var root = PS2UI.CreateCanvas(gameObject, cam);
+            canvasRoot = root as RectTransform ?? root.GetComponent<RectTransform>();
             StatsPanel.Create(root, new Vector2(0, 1), new Vector2(10, -8));
 
             promptText = PS2UI.Text(root, "", 14, TextAnchor.MiddleCenter, new Vector2(0.5f, 0), new Vector2(0, 70), new Vector2(500, 20), new Color(1f, 0.92f, 0.5f));
@@ -61,6 +62,38 @@ namespace Gladiator.UI
 
         // ------------------------------------------------------------------ API
         public void SetPrompt(string s) { promptText.text = s ?? ""; }
+
+        // ---- the player's health (town): a bar at the bottom left
+        Gladiator.Combat.Fighter tracked;
+        RectTransform hpFill, canvasRoot;
+        Text hpText;
+        public void TrackHealth(Gladiator.Combat.Fighter f)
+        {
+            tracked = f;
+            if (hpFill != null || canvasRoot == null) return;
+            var frame = PS2UI.Anchored(PS2UI.Rect(canvasRoot, "HpFrame", new Color(0.02f, 0.01f, 0.01f, 0.9f)), new Vector2(0, 0), new Vector2(124, 34), new Vector2(224, 18));
+            var bg = PS2UI.Rect(frame, "HpBg", new Color(0.32f, 0.08f, 0.06f));
+            PS2UI.Stretch(bg, 2);
+            hpFill = PS2UI.Rect(bg, "HpFill", new Color(0.8f, 0.14f, 0.1f));
+            Span(hpFill, 0f, 1f);
+            hpText = PS2UI.Text(frame, "", 11, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(220, 16), Color.white);
+        }
+
+        // ---- asleep: the screen goes dark, the clock runs
+        RectTransform sleepDim;
+        Text sleepText;
+        public void SetSleep(bool on, string text = "")
+        {
+            if (sleepDim == null)
+            {
+                if (!on || canvasRoot == null) return;
+                sleepDim = PS2UI.Rect(canvasRoot, "SleepDim", new Color(0f, 0f, 0.03f, 0.86f));
+                PS2UI.Stretch(sleepDim);
+                sleepText = PS2UI.Text(sleepDim, "", 26, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900, 80), PS2UI.Gold);
+            }
+            sleepDim.gameObject.SetActive(on);
+            if (on) sleepText.text = text;
+        }
 
         Text hintText;
         /// <summary>The help line at the bottom (the town shows its own).</summary>
@@ -138,6 +171,12 @@ namespace Gladiator.UI
         void Update()
         {
             float dt = Time.unscaledDeltaTime;
+            if (tracked != null && hpFill != null)
+            {
+                float v = tracked.Health.Normalized;
+                Span(hpFill, 0f, Mathf.Clamp01(v));
+                hpText.text = "VIDA " + Mathf.CeilToInt(tracked.Health.Current) + " / " + Mathf.CeilToInt(tracked.Health.Max);
+            }
             if (msgTimer > 0f) { msgTimer -= dt; if (msgTimer <= 0f) msgText.text = ""; }
             if (feedbackTimer > 0f)
             {

@@ -10,7 +10,9 @@ namespace Gladiator.Town
         public int Kind;
         public Pose At;
         public Vector3? Stand;
-        public FurnitureSpot(int kind, Pose at, Vector3? stand = null) { Kind = kind; At = at; Stand = stand; }
+        /// <summary>The piece of bought furniture it belongs to ("bed", "bed2", "table"), or null.</summary>
+        public string Tag;
+        public FurnitureSpot(int kind, Pose at, Vector3? stand = null) { Kind = kind; At = at; Stand = stand; Tag = null; }
         public string Verb => Kind == Gladiator.Combat.Fighter.ActLie ? "ACOSTARSE EN LA CAMA"
                             : Kind == Gladiator.Combat.Fighter.ActChair ? "SENTARSE EN LA SILLA" : "REZAR ANTE EL ALTAR";
     }
@@ -50,23 +52,35 @@ namespace Gladiator.Town
 
         /// <summary>Furniture you can use with E: beds (lie down), chairs (sit), the altar (pray).</summary>
         public readonly List<FurnitureSpot> Furniture = new List<FurnitureSpot>();
+        /// <summary>Chests you can open (E): your inventory.</summary>
+        public readonly List<Vector3> Chests = new List<Vector3>();
         /// <summary>More doors inside (the jail's cell gates).</summary>
         public readonly List<TownDoor> ExtraDoors = new List<TownDoor>();
         /// <summary>The jail: where a prisoner sits in each cell.</summary>
         public readonly List<Pose> CellSpots = new List<Pose>();
 
-        /// <summary>The nearest piece of furniture to <paramref name="p"/> (same floor), or null.</summary>
-        public FurnitureSpot? NearestFurniture(Vector3 p, float range)
+        /// <summary>Somebody else is on that bed side / chair already.</summary>
+        public static bool Occupied(FurnitureSpot f, Gladiator.Combat.Fighter except)
         {
-            FurnitureSpot? best = null; float bd = range;
+            foreach (var o in Gladiator.Combat.Fighter.All)
+                if (o != null && o != except && o.OnFurniture && (o.FurnitureAt.position - f.At.position).sqrMagnitude < 0.09f) return true;
+            return false;
+        }
+
+        /// <summary>The nearest piece of furniture to <paramref name="p"/> (same floor), or null. A free one first (the
+        /// other side of a double bed); an occupied one only when nothing else is in reach.</summary>
+        public FurnitureSpot? NearestFurniture(Vector3 p, float range, Gladiator.Combat.Fighter user = null)
+        {
+            FurnitureSpot? best = null, taken = null; float bd = range, td = range;
             foreach (var f in Furniture)
             {
                 Vector3 d = f.At.position - p;
                 if (d.y < -0.4f || d.y > 0.9f) continue;
                 d.y = 0f;
+                if (Occupied(f, user)) { if (d.magnitude < td) { td = d.magnitude; taken = f; } continue; }
                 if (d.magnitude < bd) { bd = d.magnitude; best = f; }
             }
-            return best;
+            return best ?? taken;
         }
 
         public void SetLights(bool on) { foreach (var l in Lights) if (l != null) l.enabled = on; }
