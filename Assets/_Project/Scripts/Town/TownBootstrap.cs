@@ -87,7 +87,9 @@ namespace Gladiator.Town
             at = spot.position;
             Teleport(spot.position + Vector3.up * 0.05f, spot.rotation);
             Player.SetFacing(spot.rotation * Vector3.forward);
-            StartCoroutine(LieDownNextFrame());
+            Vector3? stand = null;
+            foreach (var f in inf.Furniture) if ((f.At.position - spot.position).sqrMagnitude < 0.01f) stand = f.Stand;
+            StartCoroutine(LieDownNextFrame(spot, stand ?? spot.position));
             return true;
         }
 
@@ -97,13 +99,13 @@ namespace Gladiator.Town
             a();
         }
 
-        System.Collections.IEnumerator LieDownNextFrame()
+        System.Collections.IEnumerator LieDownNextFrame(Pose bed, Vector3 stand)
         {
-            // land on the mattress, then asleep in the bed (a fresh scene may need a few frames)
+            // asleep in the bed (a fresh scene may need a few frames)
             for (float t = 0f; t < 3f; t += Time.deltaTime)
             {
                 yield return null;
-                if (Player.InActivity || Player.TryActivity(0, true)) yield break;
+                if (Player.InActivity || Player.TryActivityAt(Fighter.ActLie, bed, stand, true)) yield break;
             }
         }
         /// <summary>The homes you can walk into.</summary>
@@ -417,6 +419,16 @@ namespace Gladiator.Town
             town.Hud.Shop.Open(gm.Profile);
         }
 
+        /// <summary>Lie down on the bed / sit on the chair / kneel at the altar (public for tests).</summary>
+        public bool UseFurniture(FurnitureSpot fs)
+        {
+            var pl = town.Player;
+            Vector3 stand = fs.Stand ?? pl.transform.position;
+            bool ok = pl.TryActivityAt(fs.Kind, fs.At, stand);
+            if (ok && fs.Kind == Fighter.ActPray) town.Hud.ShowMessage("REZAS A LOS DIOSES...", 2.5f);
+            return ok;
+        }
+
         void Update()
         {
             GameInput.UpdateDeviceMode();
@@ -444,6 +456,23 @@ namespace Gladiator.Town
             {
                 string rn = house.RoomAt(p); // null at the door, outside
                 if (rn != null && rn != room) { room = rn; town.Hud.ShowMessage(rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn, 1.6f); }
+            }
+            // on a bed, a chair, at the altar: E gets up
+            var pl = town.Player;
+            if (pl.InActivity && pl.OnFurniture)
+            {
+                town.Hud.SetPrompt(pl.ActivityLeaving ? "" : key + "LEVANTARSE");
+                if (GameInput.InteractPressed && !pl.ActivityLeaving) pl.StopActivity();
+                return;
+            }
+            // a bed, a chair, the temple's altar: E to lie down, sit, pray
+            var furn = house != null && pl.State == FighterState.Idle ? house.NearestFurniture(p, 1.25f) : null;
+            if (furn.HasValue && town.NearestDoor(p, 1.2f) == null)
+            {
+                var fs = furn.Value;
+                town.Hud.SetPrompt(key + fs.Verb);
+                if (GameInput.InteractPressed) UseFurniture(fs);
+                return;
             }
             // the smithies: weapons, armour and shields
             var smithy = NearestSmithy(p, 1.6f); // standing on the yellow ring

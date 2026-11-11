@@ -283,11 +283,23 @@ namespace Gladiator.Combat
 
         bool FreeToMove => state == FighterState.Idle || state == FighterState.Blocking || state == FighterState.Recovery;
 
-        /// <summary>Activities (held until the fighter gets up): 0 lie down, 1 sit, 2 eat, 3 cook.</summary>
-        public const int ActivityKinds = 4;
-        public static readonly string[] ActivityNames = { "ACOSTARSE", "SENTARSE", "COMER", "COCINAR" };
+        /// <summary>Activities (held until the fighter gets up): 0 lie down, 1 sit on the ground, 2 eat, 3 cook,
+        /// 4 sit on a chair, 5 pray (kneeling).</summary>
+        public const int ActivityKinds = 6;
+        public const int ActLie = 0, ActSitGround = 1, ActEat = 2, ActCook = 3, ActChair = 4, ActPray = 5;
+        public static readonly string[] ActivityNames = { "ACOSTARSE", "SENTARSE", "COMER", "COCINAR", "SENTARSE", "REZAR" };
         /// <summary>Length of each activity's "in" clip (sitting down...); getting up plays it backwards, a bit faster.</summary>
-        static readonly float[] ActivityInTimes = { 2.63f, 1.67f, 1.67f, 0.97f };
+        static readonly float[] ActivityInTimes = { 2.63f, 1.67f, 1.67f, 0.97f, 1.67f, 1.67f };
+
+        // On a piece of furniture (a bed, a chair, the altar): the controller is off and the body is placed exactly
+        // on it; getting up it goes back to the floor next to it.
+        Vector3 furnFrom, furnStand;
+        Pose furnAt;
+        float furnTime;
+        /// <summary>In an activity on a piece of furniture (no mat on the floor, the body placed on it).</summary>
+        public bool OnFurniture { get; private set; }
+        /// <summary>Where the fighter goes when he gets up from the furniture.</summary>
+        public Vector3 FurnitureStand => furnStand;
         public int ActivityKind { get; private set; }
         /// <summary>Getting up: the "in" clip plays backwards (StatePhase 0..1).</summary>
         public bool ActivityLeaving { get; private set; }
@@ -301,6 +313,54 @@ namespace Gladiator.Combat
         /// <summary>Lie down, sit, eat or cook. Stays until <see cref="StopActivity"/> (or a hit).</summary>
         /// <summary>The activity started already in its loop (woke up lying in a bed): no "in" clip, no props.</summary>
         public bool ActivitySkipIn { get; private set; }
+
+        /// <summary>An activity on a piece of furniture: <paramref name="at"/> is where the body goes (lying: the hips;
+        /// on a chair: the seat, at floor height), <paramref name="standAt"/> where he stands when he gets up.</summary>
+        public bool TryActivityAt(int kind, Pose at, Vector3 standAt, bool skipIn = false)
+        {
+            if (!IsAlive || state != FighterState.Idle || !IsGrounded) return false;
+            OnFurniture = true;
+            furnFrom = transform.position;
+            furnAt = at;
+            furnStand = standAt;
+            furnTime = 0f;
+            if (!TryActivity(kind, skipIn)) { OnFurniture = false; return false; }
+            if (Controller != null) Controller.enabled = false;
+            verticalVelocity = 0f;
+            Vector3 fwd = at.rotation * Vector3.forward; fwd.y = 0f;
+            SetFacing(fwd);
+            transform.rotation = Quaternion.LookRotation(fwd);
+            if (skipIn) transform.position = at.position;
+            return true;
+        }
+
+        void UpdateFurniture(float dt)
+        {
+            furnTime += dt;
+            Vector3 p;
+            if (ActivityLeaving)
+            {
+                // stand up on it, then step down beside it
+                float k = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.45f, 1f, StatePhase));
+                p = Vector3.Lerp(furnAt.position, furnStand, k);
+            }
+            else
+            {
+                float k = ActivitySkipIn ? 1f : Mathf.SmoothStep(0f, 1f, furnTime / Mathf.Max(0.05f, ActivityInTime * 0.3f));
+                p = Vector3.Lerp(furnFrom, furnAt.position, k);
+            }
+            transform.position = p;
+            Vector3 fwd = furnAt.rotation * Vector3.forward; fwd.y = 0f;
+            if (fwd.sqrMagnitude > 0.001f) { transform.rotation = Quaternion.LookRotation(fwd); SetFacing(fwd); }
+        }
+
+        void LeaveFurniture()
+        {
+            if (!OnFurniture) return;
+            OnFurniture = false;
+            transform.position = furnStand;
+            if (Controller != null && IsAlive) Controller.enabled = true;
+        }
 
         public bool TryActivity(int kind, bool skipIn = false)
         {
@@ -683,6 +743,7 @@ namespace Gladiator.Combat
                     break;
                 case FighterState.Activity:
                     if (ActivityLeaving && stateTimer <= 0f) { ActivityLeaving = false; SetState(FighterState.Idle, 0f); }
+                    else if (OnFurniture) UpdateFurniture(dt);
                     break;
                 case FighterState.Traverse:
                     UpdateTraverse();
@@ -789,6 +850,7 @@ namespace Gladiator.Combat
         void SetState(FighterState s, float duration)
         {
             if (state == FighterState.Traverse && s != FighterState.Traverse && Controller != null) Controller.enabled = true;
+            if (state == FighterState.Activity && s != FighterState.Activity && OnFurniture) LeaveFurniture();
             state = s;
             if (s != FighterState.Windup && s != FighterState.Active && s != FighterState.Recovery) AirAttack = AirAttackKind.None;
             if (s == FighterState.Stunned && stunStars == null) stunStars = StunStars.Create(this);

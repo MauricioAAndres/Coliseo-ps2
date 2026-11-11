@@ -227,6 +227,69 @@ namespace Gladiator.Town
             if (pcS != null) pcS.enabled = true;
         }
 
+        /// <summary>E by a bed (lie on it), a chair (sit on it), the temple's altar (pray); getting up puts you back on
+        /// the floor; the X wheel no longer has lying down or sitting.</summary>
+        IEnumerator FurnitureTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcF = pl.GetComponent<PlayerController>();
+            if (pcF != null) pcF.enabled = false;
+            var gcam = town.Cam;
+            var tm = town.GetComponent<TownManager>();
+            Log($"WHEEL activity labels=[{string.Join(",", System.Array.ConvertAll(Gladiator.UI.TauntWheel.ActivityLabels, l => l ?? "-"))}]");
+            // a free floor point next to a spot (same floor), where a capsule fits
+            Vector3 FloorNear(Pose at, float floorY)
+            {
+                Vector3 best = at.position; best.y = floorY + 0.05f;
+                foreach (float r in new[] { 0.9f, 1.1f })
+                    for (int a = 0; a < 12; a++)
+                    {
+                        Vector3 c = at.position + Quaternion.Euler(0, a * 30f, 0) * Vector3.forward * r; c.y = floorY + 0.05f;
+                        if (!Physics.CheckCapsule(c + Vector3.up * 0.45f, c + Vector3.up * 1.5f, 0.32f, ~0, QueryTriggerInteraction.Ignore)) return c;
+                    }
+                return best;
+            }
+            IEnumerator Use(HouseInterior h, int kind, string label, float floorY, float camSide)
+            {
+                FurnitureSpot? spot = null;
+                foreach (var f in h.Furniture) if (f.Kind == kind) { spot = f; break; }
+                if (!spot.HasValue) { Log($"FURNITURE {label} none in {h.name}"); yield break; }
+                var fs = spot.Value;
+                Vector3 from = FloorNear(fs.At, floorY);
+                Teleport(pl, from, fs.At.position - from);
+                yield return HoldCam(gcam, pl, 0.4f);
+                var near = h.NearestFurniture(pl.transform.position, 1.25f);
+                bool ok = tm.UseFurniture(fs);
+                yield return HoldCam(gcam, pl, pl.ActivityInTime + 1.2f, 0.5f, 3.6f, 30f, camSide);
+                float dy = pl.transform.position.y - fs.At.position.y, dxz = Vector3.ProjectOnPlane(pl.transform.position - fs.At.position, Vector3.up).magnitude;
+                Log($"FURNITURE {label} promptFound={(near.HasValue ? near.Value.Verb : "none")} ok={ok} state={pl.State} kind={pl.ActivityKind} onFurniture={pl.OnFurniture} " +
+                    $"offSpot={dxz:0.00}m dy={dy:0.00} y={pl.transform.position.y:0.00} ccOff={!pl.Controller.enabled} mat={(GameObject.Find("ActivityProps") is GameObject apg && apg.transform.childCount > 0)}");
+                yield return Shot("14_" + label);
+                pl.StopActivity();
+                float t0 = Time.time;
+                while (pl.State == FighterState.Activity && Time.time - t0 < 5f) { pl.Move(Vector3.zero); yield return null; }
+                yield return HoldCam(gcam, pl, 0.4f);
+                Log($"FURNITURE {label} got up in {Time.time - t0:0.00}s state={pl.State} ccOn={pl.Controller.enabled} backAtStart={(pl.transform.position - from).magnitude:0.00}m y={pl.transform.position.y:0.00}");
+            }
+            var home = town.Houses.Find(h => !h.Public && h.Floor == 0 && h.Furniture.Exists(f => f.Kind == Fighter.ActLie) && h.Furniture.Exists(f => f.Kind == Fighter.ActChair));
+            if (home != null)
+            {
+                float fy = home.transform.position.y;
+                if (home.Door != null && !home.Door.IsOpen) home.Door.Toggle();
+                yield return Use(home, Fighter.ActLie, "cama", fy, 70f);
+                yield return Use(home, Fighter.ActChair, "silla", fy, 35f);
+                if (home.Door != null && home.Door.IsOpen) home.Door.Toggle();
+            }
+            else Log("FURNITURE no home with a bed and a chair");
+            var temple = town.Houses.Find(h => h.AltarSpot.HasValue);
+            if (temple != null) yield return Use(temple, Fighter.ActPray, "rezar", temple.AltarSpot.Value.position.y - 0.05f, 180f);
+            // the infirmary beds are furniture too
+            var inf = town.Infirmary;
+            Log($"FURNITURE infirmary beds={(inf != null ? inf.Furniture.FindAll(f => f.Kind == Fighter.ActLie).Count : 0)}");
+            gcam.FocusOverride = null;
+            if (pcF != null) pcF.enabled = true;
+        }
+
         /// <summary>The temple (up the steps, into the cella) and the governor's domus (door, the governor, talk to him).</summary>
         IEnumerator TempleDomusTest(TownBootstrap town)
         {
@@ -604,7 +667,8 @@ namespace Gladiator.Town
                 town.Guards.Suspended = true;
                 yield return ThreeStoreyTest(town);
                 yield return ShopsTest(town);
-                yield return TempleDomusTest(town); // the older tests walk into houses: no warnings there
+                yield return TempleDomusTest(town);
+                yield return FurnitureTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

@@ -41,7 +41,7 @@ namespace Gladiator.Combat
             switch (k)
             {
                 case 0: // straw mat under the body (the body lies back from the feet); none in a bed
-                    if (fighter.ActivitySkipIn) break;
+                    if (fighter.ActivitySkipIn || fighter.OnFurniture) break;
                     props.transform.SetPositionAndRotation(root.position, root.rotation);
                     Box(props.transform, new Vector3(0f, 0.012f, -0.45f), new Vector3(0.75f, 0.025f, 2.0f), new Color(0.72f, 0.6f, 0.34f));
                     Box(props.transform, new Vector3(0f, 0.05f, -1.28f), new Vector3(0.45f, 0.08f, 0.22f), new Color(0.82f, 0.78f, 0.66f)); // pillow

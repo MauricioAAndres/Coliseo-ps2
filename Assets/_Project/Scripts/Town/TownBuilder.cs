@@ -456,7 +456,9 @@ namespace Gladiator.Town
                 Box(blanketM, LP(lot, x, 0.53f, zc - headSide * 0.42f), new Vector3(0.88f, 0.05f, 1.05f), q);
                 // where a patient lies: hips about 0.78 m from the head end, looking to the foot of the bed
                 Vector3 at = LP(lot, x, 0.52f, zHead - headSide * 0.78f);
-                house.BedSpots.Add(new Pose(at, q * Quaternion.LookRotation(new Vector3(0, 0, -headSide))));
+                var bedPose = new Pose(at, q * Quaternion.LookRotation(new Vector3(0, 0, -headSide)));
+                house.BedSpots.Add(bedPose);
+                house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActLie, bedPose, InfirmaryStand(bedPose)));
             }
             for (int i = 0; i < 6; i++) Bed(-hx + 1.2f + i * (w - 2.4f) / 5f, -1);
             foreach (float x in new[] { -hx + 1.2f, -hx + 2.6f, hx - 2.6f, hx - 1.2f }) Bed(x, 1);
@@ -511,6 +513,14 @@ namespace Gladiator.Town
         /// first), the kitchen / bedroom / bathroom partition, the floors, the windows and the door on its hinge.
         /// Walls go into the current batch; returns the storey's interior (rooms, door).
         /// </summary>
+        /// <summary>Getting out of an infirmary bed: on the floor at its foot.</summary>
+        static Vector3 InfirmaryStand(Pose bed)
+        {
+            Vector3 v = bed.position + bed.rotation * Vector3.forward * 1.65f;
+            v.y = bed.position.y - 0.52f + 0.05f;
+            return v;
+        }
+
         HouseInterior Storey(TownLot lot, int level, Material wall, bool sideDoor, int ss)
         {
             Quaternion q = lot.Rotation;
@@ -685,6 +695,9 @@ namespace Gladiator.Town
                     for (int k = 0; k < (dbl ? 2 : 1); k++)
                         Box(awningA, P(cx + (dbl ? (k == 0 ? -0.35f : 0.35f) : 0f), 0.58f, z0 + 0.38f), new Vector3(0.5f, 0.1f, 0.32f), q, 0f);
                     house.Beds.Add(cx + "," + bz);
+                    float lx = dbl ? cx - farSide * 0.35f : cx;
+                    house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActLie,
+                        new Pose(P(lx, 0.53f, z0 + 0.83f), q * Quaternion.LookRotation(Vector3.forward))));
                     if (chest && z0 + 2.7f < z1 - 0.1f) Chest(cx, z0 + 2.4f);
                     // chest of drawers on the back wall at the other end, if it fits; candle on it
                     float room = (x1 - x0) - 0.24f - width - 0.15f;
@@ -825,6 +838,8 @@ namespace Gladiator.Town
                                 Box(darkWood, P(cx + lx, 0.22f, cz + lz), new Vector3(0.05f, 0.44f, 0.05f), q, 0f);
                         Box(darkWood, P(cx, 0.75f, cz + side * 0.18f), new Vector3(0.4f, 0.55f, 0.05f), q, 0f);
                         Collider(P(cx, 0.4f, cz), new Vector3(0.4f, 0.8f, 0.4f), q);
+                        house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActChair,
+                            new Pose(P(cx, 0.02f, cz), q * Quaternion.LookRotation(new Vector3(0, 0, -side)))));
                     }
                     Candle(tx + 0.25f, 0.78f, tz);
                     Box(clay, P(tx - 0.25f, 0.84f, tz + 0.05f), new Vector3(0.16f, 0.16f, 0.16f), q * Quaternion.Euler(0, 45f, 0), 0f);
@@ -1172,6 +1187,7 @@ namespace Gladiator.Town
             house.Rooms.Add(new HouseInterior.Room { Name = "TEMPLO", X0 = -cx, X1 = cx, Z0 = -house.HalfZ, Z1 = house.HalfZ });
             // where you kneel to pray: in front of the altar, facing the god
             house.AltarSpot = new Pose(LP(lot, 0, P + 0.05f, az + 1.15f), q * Quaternion.LookRotation(Vector3.back));
+            house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActPray, house.AltarSpot.Value));
             foreach (float bx in new[] { -cx + 0.7f, cx - 0.7f })
             {
                 Box(iron, LP(lot, bx, P + 0.5f, sz + 0.4f), new Vector3(0.12f, 1.0f, 0.12f), q);

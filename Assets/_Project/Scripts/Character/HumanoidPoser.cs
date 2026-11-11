@@ -125,8 +125,8 @@ namespace Gladiator.Character
             kickClip = MotionLibrary.Get("kick"); stunnedClip = MotionLibrary.Get("stunned");
             tauntChest = MotionLibrary.Get("taunt_chest"); tauntBeckon = MotionLibrary.Get("taunt_beckon"); cheerClip = MotionLibrary.Get("cheer");
             waveClip = MotionLibrary.Get("gesture_wave"); bowGestureClip = MotionLibrary.Get("gesture_bow"); noClip = MotionLibrary.Get("gesture_no");
-            actIn = new[] { MotionLibrary.Get("act_lie_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_cook_in") };
-            actLoop = new[] { MotionLibrary.Get("act_lie"), MotionLibrary.Get("act_sit"), MotionLibrary.Get("act_eat"), MotionLibrary.Get("act_cook") };
+            actIn = new[] { MotionLibrary.Get("act_lie_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_sit_in"), MotionLibrary.Get("act_cook_in"), MotionLibrary.Get("act_chair_in"), MotionLibrary.Get("act_pray_in") };
+            actLoop = new[] { MotionLibrary.Get("act_lie"), MotionLibrary.Get("act_sit"), MotionLibrary.Get("act_eat"), MotionLibrary.Get("act_cook"), MotionLibrary.Get("act_chair"), MotionLibrary.Get("act_pray") };
             dodgeClip = MotionLibrary.Get("dodge"); dodgeBackClip = MotionLibrary.Get("dodge_back");
             jumpClip = MotionLibrary.Get("jump"); fallClip = MotionLibrary.Get("fall"); landClip = MotionLibrary.Get("land");
             crouchClip = MotionLibrary.Get("crouch"); crouchWalkClip = MotionLibrary.Get("crouch_walk");

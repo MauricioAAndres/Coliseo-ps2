@@ -34,7 +34,7 @@ namespace Gladiator.Combat
             public void Close() { if (Open) Wheel.Close(); HeldTime = 0f; }
         }
         readonly HoldWheel tauntWheel = new HoldWheel(), actWheel = new HoldWheel();
-        int lastActivity = 1, pendingActivity = -1;
+        int lastActivity = 2, pendingActivity = -1;
 
         /// <summary>True while a wheel is open (movement and attacks are paused).</summary>
         public bool TauntWheelOpen => tauntWheel.Open || actWheel.Open;
@@ -132,7 +132,7 @@ namespace Gladiator.Combat
                     if (fighter.InActivity) fighter.StopActivity();
                     else fighter.TryActivity(lastActivity);
                 }
-                else if (a >= 0)
+                else if (a >= 0 && Gladiator.UI.TauntWheel.ActivityKinds[a] >= 0)
                 {
                     lastActivity = Gladiator.UI.TauntWheel.ActivityKinds[a];
                     if (fighter.InActivity)

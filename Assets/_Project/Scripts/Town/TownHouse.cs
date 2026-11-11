@@ -3,6 +3,18 @@ using UnityEngine;
 
 namespace Gladiator.Town
 {
+    /// <summary>A bed, a chair or an altar: the activity (Fighter.Act*), where the body goes, and where to stand up
+    /// (null: back where the player was).</summary>
+    public struct FurnitureSpot
+    {
+        public int Kind;
+        public Pose At;
+        public Vector3? Stand;
+        public FurnitureSpot(int kind, Pose at, Vector3? stand = null) { Kind = kind; At = at; Stand = stand; }
+        public string Verb => Kind == Gladiator.Combat.Fighter.ActLie ? "ACOSTARSE EN LA CAMA"
+                            : Kind == Gladiator.Combat.Fighter.ActChair ? "SENTARSE EN LA SILLA" : "REZAR ANTE EL ALTAR";
+    }
+
     /// <summary>
     /// The inside of a town house: kitchen at the entrance, then a bedroom and a bathroom at the back (openings, no
     /// inner doors). Sits at the lot's centre with the lot's rotation, so local x runs along the front and +z towards
@@ -35,6 +47,23 @@ namespace Gladiator.Town
         public bool Public;
         /// <summary>Infirmary beds: where a patient lies (root position on the mattress, facing the foot of the bed).</summary>
         public readonly List<Pose> BedSpots = new List<Pose>();
+
+        /// <summary>Furniture you can use with E: beds (lie down), chairs (sit), the altar (pray).</summary>
+        public readonly List<FurnitureSpot> Furniture = new List<FurnitureSpot>();
+
+        /// <summary>The nearest piece of furniture to <paramref name="p"/> (same floor), or null.</summary>
+        public FurnitureSpot? NearestFurniture(Vector3 p, float range)
+        {
+            FurnitureSpot? best = null; float bd = range;
+            foreach (var f in Furniture)
+            {
+                Vector3 d = f.At.position - p;
+                if (d.y < -0.4f || d.y > 0.9f) continue;
+                d.y = 0f;
+                if (d.magnitude < bd) { bd = d.magnitude; best = f; }
+            }
+            return best;
+        }
 
         public void SetLights(bool on) { foreach (var l in Lights) if (l != null) l.enabled = on; }
         /// <summary>First floor: foot and top of the outside stairs, and the way up (tests).</summary>

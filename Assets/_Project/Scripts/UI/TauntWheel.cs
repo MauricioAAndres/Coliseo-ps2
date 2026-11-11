@@ -25,8 +25,9 @@ namespace Gladiator.UI
         Font font;
 
         /// <summary>Activity wheel (hold X): fighter activity kind for each slot (up, right, down, left).</summary>
-        public static readonly int[] ActivityKinds = { 0, 1, 3, 2 };
-        public static readonly string[] ActivityLabels = { "ACOSTARSE", "SENTARSE", "COCINAR", "COMER" };
+        /// Lying down, sitting and praying are on the furniture (E by a bed, a chair, the altar); -1 = an empty slot.
+        public static readonly int[] ActivityKinds = { 2, -1, 3, -1 };
+        public static readonly string[] ActivityLabels = { "COMER", null, "COCINAR", null };
 
         string title = "BURLA";
         string[] labels = Labels;
@@ -65,6 +66,7 @@ namespace Gladiator.UI
             for (int i = 0; i < 4; i++)
             {
                 boxes[i] = Box(rrt, Offsets[i], new Vector2(200, 46), Normal);
+                if (labels[i] == null) { boxes[i].gameObject.SetActive(false); continue; }
                 Label(boxes[i].rectTransform, labels[i] + "\n<size=10>" + (i + 1) + "</size>", 15);
             }
             root.SetActive(false);
@@ -118,6 +120,7 @@ namespace Gladiator.UI
 
         public void SetSelected(int i)
         {
+            if (i >= 0 && labels[i] == null) i = -1;
             Selected = i;
             for (int k = 0; k < 4; k++) boxes[k].color = k == i ? Lit : Normal;
         }
