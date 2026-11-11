@@ -399,7 +399,11 @@ namespace Gladiator.Town
             Log($"KNIVES adults={adults} carryKnife={armed} childrenWithKnife={kidsArmed} (expected 0) oneNearby={(knifeNpc != null)}");
             if (knifeNpc != null)
             {
-                Vector3 np = knifeNpc.transform.position;
+                // away from the watch (a guard nearby ends it at once): the main street, north of the plaza
+                Vector3 np = town.Layout.ToWorld(new Vector3(0f, 0f, 48f)) + Vector3.up * 0.05f;
+                knifeNpc.Fighter.Controller.enabled = false;
+                knifeNpc.transform.position = np;
+                knifeNpc.Fighter.Controller.enabled = true;
                 Teleport(pl, np + Vector3.forward * 1.3f, -Vector3.forward);
                 pl.Health.Heal(pl.Health.Max);
                 float hpB = pl.Health.Current;
@@ -418,6 +422,30 @@ namespace Gladiator.Town
                 Log($"KNIVES after backing off: defending={CitizenDefender.Active} (expected 0) outcome={CitizenDefender.LastOutcome} harmlessAgain={knifeNpc.Fighter.Harmless}");
                 pl.Health.Heal(pl.Health.Max);
             }
+            // ---- the new spear and trident blows (both hands, then the trident in one hand)
+            Teleport(pl, town.Layout.ToWorld(new Vector3(0f, 0f, 40f)) + Vector3.up * 0.05f, Vector3.right);
+            foreach (var ws in new[] { WeaponLibrary.Spear, WeaponLibrary.Trident })
+            {
+                pl.UnequipAll();
+                pl.Equip(WeaponFactory.Create(ws));
+                yield return HoldCam(gcam, pl, 0.6f, 0.9f, 4.2f, 12f, 70f);
+                foreach (bool heavy in new[] { false, true })
+                {
+                    bool ok = pl.TryAttack(heavy ? AttackType.Heavy : AttackType.Light);
+                    float t0 = Time.time; bool shot = false; FighterState seen = pl.State;
+                    while (Time.time - t0 < 3f && (pl.IsAttacking || Time.time - t0 < 0.15f))
+                    {
+                        gcam.FocusOverride = pl.transform.position + Vector3.up * 0.9f; gcam.Distance = 4.2f; gcam.Pitch = 12f;
+                        gcam.Yaw = pl.transform.eulerAngles.y + 70f;
+                        if (!shot && pl.State == FighterState.Active) { shot = true; seen = pl.State; yield return Shot("17_" + ws.Id + (heavy ? "_fuerte" : "_rapido")); }
+                        yield return null;
+                    }
+                    Log($"POLEARM {ws.Name} twoHanded={pl.TwoHanded} {(heavy ? "heavy" : "light")} started={ok} reachedBlow={shot} took={Time.time - t0:0.00}s");
+                    yield return HoldCam(gcam, pl, 0.3f, 0.9f, 4.2f, 12f, 70f);
+                }
+            }
+            pl.UnequipAll();
+            pl.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
             sim.Hour = 10f;
             gcam.FocusOverride = null;
             if (pcR != null) pcR.enabled = true;

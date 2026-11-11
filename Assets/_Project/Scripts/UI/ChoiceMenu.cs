@@ -77,7 +77,7 @@ namespace Gladiator.UI
                 PS2UI.Text(row, options[i].Label, 20, TextAnchor.MiddleCenter, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(500, 28), PS2UI.Parchment);
                 rows.Add(row);
             }
-            panel.sizeDelta = new Vector2(600, 150 + options.Count * 52);
+            panel.sizeDelta = new Vector2(600, 190 + options.Count * 52);
             Selected = Mathf.Max(0, options.FindIndex(o => o.Enabled));
             openedFrame = Time.frameCount;
             root.SetActive(true);

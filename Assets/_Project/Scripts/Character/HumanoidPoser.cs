@@ -39,7 +39,7 @@ namespace Gladiator.Character
         MotionClip guardClip, attackLight, attackHeavy, swordLight, swordHeavy, blockClip, staggerClip, deathClip;
         float bladeAlign, leftBladeAlign;
         // ---- arsenal (milestone C5)
-        MotionClip guard2h, h2Light, h2Heavy, block2h, spearGuard2, spear2Light, spear2Heavy, spearLight, spearHeavy,
+        MotionClip guard2h, h2Light, h2Heavy, block2h, spearGuard2, spear2Light, spear2Heavy, spearLight, spearHeavy, trident2Light, trident2Heavy, tridentHeavy,
                    dualLeft, dualHeavy, bowGuard, bowShoot;
         MotionClip guardCurrent;
         GameObject nockedArrow;
@@ -120,6 +120,7 @@ namespace Gladiator.Character
             block2h = MotionLibrary.Get("block_2h"); spearGuard2 = MotionLibrary.Get("spear_guard_2h");
             spear2Light = MotionLibrary.Get("spear2_light"); spear2Heavy = MotionLibrary.Get("spear2_heavy");
             spearLight = MotionLibrary.Get("spear_light"); spearHeavy = MotionLibrary.Get("spear_heavy");
+            trident2Light = MotionLibrary.Get("trident2_light"); trident2Heavy = MotionLibrary.Get("trident2_heavy"); tridentHeavy = MotionLibrary.Get("trident_heavy");
             dualLeft = MotionLibrary.Get("dual_left"); dualHeavy = MotionLibrary.Get("dual_heavy");
             bowGuard = MotionLibrary.Get("bow_guard"); bowShoot = MotionLibrary.Get("bow_shoot");
             kickClip = MotionLibrary.Get("kick"); stunnedClip = MotionLibrary.Get("stunned");
@@ -605,6 +606,12 @@ namespace Gladiator.Character
                 case WeaponStyle.Bow: return bowShoot ?? swordLight;
                 case WeaponStyle.Heavy2H: return (heavy ? h2Heavy : h2Light) ?? (heavy ? swordHeavy : swordLight);
                 case WeaponStyle.Spear:
+                    // the trident has its own blows: two quick jabs, a plunge from above, a rip upwards with one hand
+                    if (w.Shape == WeaponShape.Trident)
+                    {
+                        var tc = Fighter.TwoHanded ? (heavy ? trident2Heavy : trident2Light) : (heavy ? tridentHeavy : null);
+                        if (tc != null) return tc;
+                    }
                     if (Fighter.TwoHanded) return (heavy ? spear2Heavy : spear2Light) ?? (heavy ? swordHeavy : swordLight);
                     return (heavy ? spearHeavy : spearLight) ?? (heavy ? swordHeavy : swordLight);
                 case WeaponStyle.Dagger:

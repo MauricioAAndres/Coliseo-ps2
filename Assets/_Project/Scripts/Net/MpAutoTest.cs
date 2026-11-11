@@ -129,6 +129,21 @@ namespace Gladiator.Net
             yield return Shot("mp_host_pueblo");
             townH.Player.StopActivity();
             yield return Wait(2.5f);
+            // the host buys a house for sale and a bed for it: the client must see whose it is, and the bed
+            var tmH = townH.GetComponent<Gladiator.Town.TownManager>();
+            var saleH = townH.Houses.Find(hh => hh.Floor == 0 && hh.Lot.ForSale && !Gladiator.Town.HouseDeeds.Owns(townH.Layout.Seed, hh.Lot.Id));
+            if (saleH != null)
+            {
+                var gmH = Gladiator.Core.GameManager.Instance;
+                int moneyH = gmH.Profile.Denarii;
+                gmH.Profile.AddDenarii(1000);
+                bool boughtH = tmH.TryBuy(saleH), bedBought = tmH.BuyFurniture("bed");
+                Log($"TOWN host bought house {saleH.Lot.Id}={boughtH} bed={bedBought}");
+                yield return Wait(4f);
+                Gladiator.Town.HouseDeeds.Remove(townH.Layout.Seed, saleH.Lot.Id);
+                Gladiator.Town.HomeFurniture.Clear(townH.Layout.Seed, saleH.Lot.Id);
+                gmH.Profile.AddDenarii(moneyH - gmH.Profile.Denarii);
+            }
 
             // ---- MP2: online arena, everyone for himself, no upgrades
             ns.StartArena(false, false);
@@ -277,6 +292,13 @@ namespace Gladiator.Net
             if (townC.Cam != null) townC.Cam.FocusOverride = null;
             yield return Until(() => hostC == null || !hostC.Fighter.InActivity, 10f);
             Log($"TOWN client: host got up={(hostC == null || !hostC.Fighter.InActivity)} ccOn={(hostC != null && hostC.Fighter.Controller.enabled)}");
+            yield return Until(() => townC.OtherOwners.Count > 0, 15f);
+            foreach (var kv in townC.OtherOwners)
+            {
+                var hC = townC.HouseOfLot(kv.Key);
+                Log($"TOWN client sees house {kv.Key} owned by '{kv.Value}' saleSignHidden={(hC != null && hC.SaleSign != null && !hC.SaleSign.activeSelf)} bedInside={(hC != null && hC.Furniture.Exists(f => f.Kind == Fighter.ActLie))} (expected True) " +
+                    $"canBuyIt={townC.GetComponent<Gladiator.Town.TownManager>().TryBuy(hC)} (expected False)");
+            }
 
             // MP2: the host starts the online arena; fight the host until the match ends
             yield return Until(() => NetArena.Instance != null && NetAvatars.Instance != null && NetAvatars.Instance.RemoteCount >= 1, 45f);
