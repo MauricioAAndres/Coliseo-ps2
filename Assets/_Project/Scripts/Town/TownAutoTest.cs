@@ -111,6 +111,77 @@ namespace Gladiator.Town
             if (pcL != null) pcL.enabled = true;
         }
 
+        /// <summary>
+        /// A three-storey home: up the first stair, along the front balcony, up the second stair to the second floor's
+        /// door, in. Also: nobody floats over a vegetable garden any more.
+        /// </summary>
+        IEnumerator ThreeStoreyTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcS = pl.GetComponent<PlayerController>();
+            if (pcS != null) pcS.enabled = false;
+            int lots3 = 0; foreach (var l in town.Layout.Lots) if (l.IsHome && l.Floors >= 3) lots3++;
+            int floor2 = town.Houses.FindAll(h => h.Floor == 2).Count;
+            HouseInterior top = town.Houses.Find(h => h.Floor == 2);
+            HouseInterior mid = top != null ? town.Houses.Find(h => h.Floor == 1 && h.Lot.Id == top.Lot.Id) : null;
+            Log($"STAIRS3 threeStoreyHomes={lots3} secondFloors={floor2} (expected equal)");
+            if (top != null && mid != null)
+            {
+                var gcam = town.Cam;
+                Vector3 balconyA = mid.StairTop + mid.StairDir * 1.9f;
+                Vector3[] route = { mid.StairTop, balconyA, top.StairBottom, top.StairTop };
+                Teleport(pl, mid.StairBottom, mid.StairDir);
+                yield return Wait(0.4f);
+                int reached = 0;
+                for (int i = 0; i < route.Length; i++)
+                {
+                    float t = 0f;
+                    while (t < 10f)
+                    {
+                        Vector3 to = route[i] - pl.transform.position; to.y = 0f;
+                        if (to.magnitude < 0.45f) break;
+                        pl.Move(to.normalized * 0.7f);
+                        pl.SetFacing(to);
+                        gcam.FocusOverride = pl.transform.position + Vector3.up * 1f; gcam.Distance = 9f; gcam.Pitch = 25f;
+                        t += Time.deltaTime;
+                        yield return null;
+                    }
+                    pl.Move(Vector3.zero);
+                    if ((route[i] - pl.transform.position).magnitude < 0.9f) reached++;
+                    Log($"STAIRS3 point {i} reached={(route[i] - pl.transform.position).magnitude < 0.9f} y={pl.transform.position.y:0.00} (want {route[i].y:0.00})");
+                    if (i == 1) yield return Shot("11a_balcon");
+                }
+                yield return Shot("11b_escalera_tercer_piso");
+                if (top.Door != null && !top.Door.IsOpen) top.Door.Toggle();
+                yield return Wait(0.6f);
+                // straight in through the side door (towards the middle of the house), then stop
+                Vector3 inDir = Vector3.Project(top.transform.position - top.StairTop, top.transform.right); inDir.y = 0f;
+                Vector3 inside = top.StairTop + inDir.normalized * 2.2f;
+                for (float t = 0f; t < 5f; t += Time.deltaTime)
+                {
+                    Vector3 to = inside - pl.transform.position; to.y = 0f;
+                    if (to.magnitude < 0.6f) break;
+                    pl.Move(to.normalized * 0.7f); pl.SetFacing(to);
+                    yield return null;
+                }
+                pl.Move(Vector3.zero);
+                yield return Wait(0.5f);
+                var tm = town.GetComponent<TownManager>();
+                Log($"STAIRS3 climbed={reached}/{route.Length} insideSecondFloor={top.Contains(pl.transform.position)} y={pl.transform.position.y:0.00} (expected ~6.2) roofHidden={!top.Upper.activeSelf} house={(tm.CurrentHouse == top)}");
+                yield return Shot("11c_dentro_tercer_piso");
+                gcam.FocusOverride = null;
+            }
+            // a vegetable garden: stand on it, nobody floats
+            var garden = town.Layout.Lots.Find(l => l.Kind == BuildingKind.Garden);
+            if (garden != null)
+            {
+                Teleport(pl, garden.Center + Vector3.up * 0.05f, garden.Front);
+                yield return Wait(1f);
+                Log($"GARDEN standY={pl.transform.position.y:0.00} (expected ~0.0, was 1.2 floating)");
+            }
+            if (pcS != null) pcS.enabled = true;
+        }
+
         /// <summary>The infirmary: ten beds, public (no trespassing), you wake up lying in a bed and get up by moving.</summary>
         IEnumerator InfirmaryTest(TownBootstrap town)
         {
@@ -416,7 +487,8 @@ namespace Gladiator.Town
                 yield return GuardsTest(town);
                 yield return InfirmaryTest(town);
                 yield return LudusTest(town);
-                town.Guards.Suspended = true; // the older tests walk into houses: no warnings there
+                town.Guards.Suspended = true;
+                yield return ThreeStoreyTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed

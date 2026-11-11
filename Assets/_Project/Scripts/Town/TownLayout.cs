@@ -311,6 +311,7 @@ namespace Gladiator.Town
             {
                 if (!lot.IsHome || lot.Floors < 2) continue;
                 lot.StairSide = rng.Next(2) == 0 ? -1 : 1;
+                if (lot.Floors >= 3) { lot.Width -= 2.6f; continue; } // stairs on both sides: up to the 1st floor, then the 2nd
                 lot.Width -= 1.3f;
                 lot.Center -= lot.Right * (lot.StairSide * 0.65f);
             }

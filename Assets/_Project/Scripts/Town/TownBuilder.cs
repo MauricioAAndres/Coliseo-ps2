@@ -264,6 +264,7 @@ namespace Gladiator.Town
             float hx = w * 0.5f, hz = d * 0.5f, h = H * lot.Floors;
             bool insula = lot.Kind == BuildingKind.Insula;
             bool stairs = lot.Floors >= 2;
+            bool third = lot.Floors >= 3;          // a second outside staircase, from the front balcony, on the other side
             float rise = insula ? 0.9f : Mathf.Min(1.8f, d * 0.22f);
             Material wall = plaster[lot.Tint % plaster.Length];
             int ss = lot.StairSide == 0 ? 1 : lot.StairSide;
@@ -283,7 +284,7 @@ namespace Gladiator.Town
                 Box(wall, LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);           // the floor between storeys
                 Collider(LP(lot, 0, H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
                 upperHouse = Storey(lot, 1, wall, true, ss);
-                if (insula)
+                if (insula && !third)
                 {   // the wooden balcony on the front of the first floor
                     Box(wood, LP(lot, 0, H, hz + 0.6f), new Vector3(w * 0.8f, 0.12f, 1.2f), q);
                     Box(darkWood, LP(lot, 0, H + 0.55f, hz + 1.15f), new Vector3(w * 0.8f, 0.08f, 0.08f), q);
@@ -296,17 +297,45 @@ namespace Gladiator.Town
                 foreach (var kv in mid) PS2Spawn.Mesh(midGo.transform, "F1_" + kv.Key.name, kv.Value.Build("HouseFloor1"), Vector3.zero, kv.Key);
                 LowPolyMesh.BakeAmbient(midGo, AmbientSky, AmbientGround);
                 upperHouse.transform.SetParent(midGo.transform, true);
-                BuildStairs(lot, ss, H, upperHouse);
+                BuildStairs(lot, ss, H, upperHouse, third);
+            }
+
+            // ---- second floor of a three-storey house: its own object, reached by the balcony and the second staircase
+            GameObject topGo = null;
+            HouseInterior topHouse = null;
+            if (third)
+            {
+                topGo = new GameObject("Floor2_" + lot.Id);
+                topGo.transform.SetParent(root, false);
+                var top2 = new Dictionary<Material, MeshBuilder>();
+                current = top2; colTarget = topGo.transform;
+                Box(wall, LP(lot, 0, 2f * H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+                Collider(LP(lot, 0, 2f * H + 0.075f, 0), new Vector3(w, 0.15f, d), q);
+                // the second stair arrives at the back: this storey is laid out turned round (kitchen and side door at
+                // the back, bedroom + bathroom towards the street), so you walk in through the kitchen. In the turned
+                // frame the real -ss side is +ss and its "front" door spot (hz - 1.3) is the real back.
+                var turned = new TownLot
+                {
+                    Id = lot.Id, Kind = lot.Kind, Center = lot.Center, Front = -lot.Front, Width = lot.Width, Depth = lot.Depth,
+                    Floors = lot.Floors, Tint = lot.Tint, RoofTint = lot.RoofTint, DoorOffset = lot.DoorOffset, StairSide = lot.StairSide,
+                    ForSale = lot.ForSale, Large = lot.Large, Price = lot.Price,
+                };
+                topHouse = Storey(turned, 2, wall, true, ss);
+                current = null; colTarget = null;
+                foreach (var kv in top2) PS2Spawn.Mesh(topGo.transform, "F2_" + kv.Key.name, kv.Value.Build("HouseFloor2"), Vector3.zero, kv.Key);
+                LowPolyMesh.BakeAmbient(topGo, AmbientSky, AmbientGround);
+                topHouse.transform.SetParent(topGo.transform, true);
+                BuildBalconyAndSecondStairs(lot, ss, H, topHouse);
             }
 
             // ---- the top: ceiling of the highest open storey, solid storeys above it, roof + a collider for the camera
-            float topBase = stairs ? 2f * H : H;
+            float topBase = third ? 3f * H : stairs ? 2f * H : H;
             var mine = new Dictionary<Material, MeshBuilder>();
             current = mine;
             Box(wall, LP(lot, 0, topBase + 0.075f, 0), new Vector3(w, 0.15f, d), q);
             if (h > topBase + 0.2f) Box(wall, LP(lot, 0, (topBase + 0.15f + h) * 0.5f, 0), new Vector3(w, h - topBase - 0.15f, d), q);
             Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, h, 0), q, w + 0.6f, d + 0.6f, rise);
-            for (int f = stairs ? 2 : 1; f < lot.Floors; f++)
+            for (int f = third ? 3 : stairs ? 2 : 1; f < lot.Floors; f++)
             {
                 int n = Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));
                 for (int i = 0; i < n; i++)
@@ -330,12 +359,20 @@ namespace Gladiator.Town
             ground.Upper = upper;
             ground.Hide.Add(upper);
             if (midGo != null) ground.Hide.Add(midGo);
+            if (topGo != null) ground.Hide.Add(topGo);
             Houses.Add(ground);
             if (upperHouse != null)
             {
                 upperHouse.Upper = upper;
                 upperHouse.Hide.Add(upper);
+                if (topGo != null) upperHouse.Hide.Add(topGo);
                 Houses.Add(upperHouse);
+            }
+            if (topHouse != null)
+            {
+                topHouse.Upper = upper;
+                topHouse.Hide.Add(upper);
+                Houses.Add(topHouse);
             }
 
             // ---- for sale: a board on a post by the door
@@ -460,6 +497,9 @@ namespace Gladiator.Town
             Houses.Add(house);
         }
 
+        /// <summary>Where the next storey's side door goes (local z); NaN = over the first stair's landing, near the front.</summary>
+        float sideDoorZ = float.NaN;
+
         // Where Collider() puts its boxes (null = the town's static colliders).
         Transform colTarget;
 
@@ -492,7 +532,7 @@ namespace Gladiator.Town
             }
             float dw = 0.6f;
             float dx = lot.DoorOffset * w;                  // front door (ground floor)
-            float dz = hz - 1.3f;                           // side door (first floor), over the stair landing
+            float dz = float.IsNaN(sideDoorZ) ? hz - 1.3f : sideDoorZ; // side door (upper floors), over the stair landing
             float sideX0 = ss > 0 ? hx - t : -hx, sideX1 = ss > 0 ? hx : -hx + t;
             float otherX0 = ss > 0 ? -hx : hx - t, otherX1 = ss > 0 ? -hx + t : hx;
             Seg(-hx, hx, -hz, -hz + t, y0, y1, true);                                   // back
@@ -847,12 +887,12 @@ namespace Gladiator.Town
         /// Outside staircase along the stair side: from the ground at the back up to a landing at the first floor, in
         /// front of the side door. A ramp collider under solid steps; a railing on the open side.
         /// </summary>
-        void BuildStairs(TownLot lot, int ss, float H, HouseInterior upper)
+        void BuildStairs(TownLot lot, int ss, float H, HouseInterior upper, bool toBalcony = false)
         {
             Quaternion q = lot.Rotation;
             float hx = lot.Width * 0.5f, hz = lot.Depth * 0.5f, sw = 1.15f;
             float x0 = ss * hx, xc = ss * (hx + sw * 0.5f), xo = ss * (hx + sw);
-            float zBottom = -hz + 0.3f, zLand = hz - 2.1f, zEnd = hz - 0.5f;
+            float zBottom = -hz + 0.3f, zLand = hz - 2.1f, zEnd = toBalcony ? hz : hz - 0.5f;
             float run = zLand - zBottom;
             int n = Mathf.Max(10, Mathf.CeilToInt(H / 0.22f));
             for (int i = 0; i < n; i++)
@@ -875,10 +915,79 @@ namespace Gladiator.Town
             Box(darkWood, LP(lot, xo - ss * 0.05f, H * 0.5f + 1f, zBottom + run * 0.5f), new Vector3(0.07f, 0.07f, len), q * Quaternion.Euler(-ang, 0f, 0f));
             Box(darkWood, LP(lot, xo - ss * 0.05f, H + 1f, (zLand + zEnd) * 0.5f), new Vector3(0.07f, 0.07f, zEnd - zLand), q);
             Collider(LP(lot, xo - ss * 0.05f, H + 0.5f, (zLand + zEnd) * 0.5f), new Vector3(0.1f, 1f, zEnd - zLand), q);
-            Collider(LP(lot, xc, H + 0.5f, zEnd - 0.05f), new Vector3(sw, 1f, 0.1f), q);                 // end of the landing
+            if (!toBalcony) Collider(LP(lot, xc, H + 0.5f, zEnd - 0.05f), new Vector3(sw, 1f, 0.1f), q); // end of the landing
             upper.StairBottom = LP(lot, xc, 0.05f, zBottom - 0.6f);
             upper.StairTop = LP(lot, xc, H + 0.05f, hz - 1.3f);
             upper.StairDir = q * Vector3.forward;
+        }
+
+        /// <summary>
+        /// Three-storey homes: from the first staircase's landing a wooden balcony runs along the front of the house to
+        /// the other side, where a second staircase climbs towards the back to a landing in front of the second floor's
+        /// side door. Balcony and stair have railings (with colliders) and posts down to the street.
+        /// </summary>
+        void BuildBalconyAndSecondStairs(TownLot lot, int ss, float H, HouseInterior top)
+        {
+            Quaternion q = lot.Rotation;
+            float hx = lot.Width * 0.5f, hz = lot.Depth * 0.5f, sw = 1.15f, bd = 1.2f;
+            float span = hx + sw;                                   // the balcony covers both stair strips
+            // balcony floor (top at H), rail along the street and at both ends, posts down to the ground
+            Box(wood, LP(lot, 0, H - 0.06f, hz + bd * 0.5f), new Vector3(span * 2f, 0.12f, bd), q);
+            Collider(LP(lot, 0, H - 0.25f, hz + bd * 0.5f), new Vector3(span * 2f, 0.5f, bd), q);
+            Box(darkWood, LP(lot, 0, H + 1f, hz + bd - 0.05f), new Vector3(span * 2f, 0.07f, 0.07f), q);
+            Collider(LP(lot, 0, H + 0.5f, hz + bd - 0.05f), new Vector3(span * 2f, 1f, 0.1f), q);
+            for (int i = 0; i <= 6; i++)
+            {
+                float x = -span + 0.05f + (span * 2f - 0.1f) * i / 6f;
+                Box(darkWood, LP(lot, x, H + 0.5f, hz + bd - 0.05f), new Vector3(0.07f, 1f, 0.07f), q);
+            }
+            foreach (int sgn in new[] { -1, 1 })
+            {
+                Box(darkWood, LP(lot, sgn * (span - 0.05f), H + 1f, hz + bd * 0.5f), new Vector3(0.07f, 0.07f, bd), q);
+                Collider(LP(lot, sgn * (span - 0.05f), H + 0.5f, hz + bd * 0.5f), new Vector3(0.1f, 1f, bd), q);
+                Box(darkWood, LP(lot, sgn * (span - 0.1f), H * 0.5f, hz + bd - 0.1f), new Vector3(0.16f, H, 0.16f), q);
+                Collider(LP(lot, sgn * (span - 0.1f), H * 0.5f, hz + bd - 0.1f), new Vector3(0.16f, H, 0.16f), q);
+            }
+
+            // second staircase: on the other side (-ss), from the balcony (height H, front) up to 2H at the back
+            int os = -ss;
+            float xc = os * (hx + sw * 0.5f), xo = os * (hx + sw);
+            float zStart = hz, zLand = -hz + 2.1f, zEnd = -hz + 0.3f;
+            float run = zStart - zLand;
+            int n = Mathf.Max(10, Mathf.CeilToInt(H / 0.22f));
+            for (int i = 0; i < n; i++)
+            {
+                float y = H + H * (i + 1) / n, za = zStart - run * i / n, zb = zStart - run * (i + 1) / n;
+                Box(stone, LP(lot, xc, y - 0.11f, (za + zb) * 0.5f), new Vector3(sw, 0.22f, za - zb), q);
+            }
+            // a sloping beam under the steps and two posts holding it up
+            float len = Mathf.Sqrt(run * run + H * H), ang = Mathf.Atan2(H, run) * Mathf.Rad2Deg;
+            Box(darkWood, LP(lot, xc, H * 1.5f - 0.3f, (zStart + zLand) * 0.5f), new Vector3(sw * 0.8f, 0.25f, len), q * Quaternion.Euler(ang, 0f, 0f));
+            foreach (float z in new[] { (zStart + zLand) * 0.5f, zLand })
+            {
+                float yTop = z == zLand ? 2f * H - 0.3f : H * 1.5f - 0.4f;
+                Box(darkWood, LP(lot, xo - os * 0.12f, yTop * 0.5f, z), new Vector3(0.16f, yTop, 0.16f), q);
+                Collider(LP(lot, xo - os * 0.12f, yTop * 0.5f, z), new Vector3(0.16f, yTop, 0.16f), q);
+            }
+            // landing at the second floor
+            Box(stone, LP(lot, xc, 2f * H - 0.15f, (zLand + zEnd) * 0.5f), new Vector3(sw, 0.3f, zLand - zEnd), q);
+            Collider(LP(lot, xc, 2f * H - 0.15f, (zLand + zEnd) * 0.5f), new Vector3(sw, 0.3f, zLand - zEnd), q);
+            // walking: a ramp over the steps
+            PS2Spawn.BoxCollider(colliders, LP(lot, xc, H * 1.5f - 0.05f, (zStart + zLand) * 0.5f), new Vector3(sw, 0.1f, len), q * Quaternion.Euler(ang, 0f, 0f));
+            // railing on the open side (slope + landing) and at the end of the landing
+            Box(darkWood, LP(lot, xo - os * 0.05f, H * 1.5f + 1f, (zStart + zLand) * 0.5f), new Vector3(0.07f, 0.07f, len), q * Quaternion.Euler(ang, 0f, 0f));
+            PS2Spawn.BoxCollider(colliders, LP(lot, xo - os * 0.05f, H * 1.5f + 0.5f, (zStart + zLand) * 0.5f), new Vector3(0.1f, 1f, len), q * Quaternion.Euler(ang, 0f, 0f));
+            for (int i = 0; i <= 4; i++)
+            {
+                float z = zStart - run * i / 4f, y = H + H * i / 4f;
+                Box(darkWood, LP(lot, xo - os * 0.05f, y + 0.5f, z), new Vector3(0.08f, 1f, 0.08f), q);
+            }
+            Box(darkWood, LP(lot, xo - os * 0.05f, 2f * H + 1f, (zLand + zEnd) * 0.5f), new Vector3(0.07f, 0.07f, zLand - zEnd), q);
+            Collider(LP(lot, xo - os * 0.05f, 2f * H + 0.5f, (zLand + zEnd) * 0.5f), new Vector3(0.1f, 1f, zLand - zEnd), q);
+            Collider(LP(lot, xc, 2f * H + 0.5f, zEnd + 0.05f), new Vector3(sw, 1f, 0.1f), q);
+            top.StairBottom = LP(lot, xc, H + 0.05f, hz + bd * 0.5f);
+            top.StairTop = LP(lot, xc, 2f * H + 0.05f, -hz + 1.3f);
+            top.StairDir = q * Vector3.back;
         }
 
         /// <summary>Open shop front: counter, striped awning.</summary>
@@ -974,7 +1083,12 @@ namespace Gladiator.Town
             for (int i = 0; i < 4; i++)
                 Box(foliage, LP(lot, -w * 0.3f + i * w * 0.2f, 0.18f, -d * 0.15f), new Vector3(0.5f, 0.36f, d * 0.5f), q, 0.5f);
             L.Trees.Add(LP(lot, w * 0.32f, 0, -d * 0.32f));
-            Collider(LP(lot, 0, 0.6f, 0), new Vector3(w, 1.2f, d), q);
+            // the low walls only: you walk in through the gap and between the rows
+            Collider(LP(lot, 0, 0.5f, -d * 0.5f), new Vector3(w, 1f, 0.3f), q);
+            Collider(LP(lot, -w * 0.5f, 0.5f, 0), new Vector3(0.3f, 1f, d), q);
+            Collider(LP(lot, w * 0.5f, 0.5f, 0), new Vector3(0.3f, 1f, d), q);
+            Collider(LP(lot, -w * 0.3f, 0.5f, d * 0.5f), new Vector3(w * 0.4f, 1f, 0.3f), q);
+            Collider(LP(lot, w * 0.3f, 0.5f, d * 0.5f), new Vector3(w * 0.4f, 1f, 0.3f), q);
         }
 
         void Temple(TownLot lot)
