@@ -398,7 +398,7 @@ namespace Gladiator.Town
             foreach (var lot in town.Layout.Lots)
             {
                 if (lot.Kind != BuildingKind.Smithy) continue;
-                Vector3 d = lot.Door - p; d.y = 0f;
+                Vector3 d = lot.ShopSpot - p; d.y = 0f;
                 if (d.magnitude < bd) { bd = d.magnitude; best = lot; }
             }
             return best;

@@ -33,8 +33,13 @@ namespace Gladiator.Town
         /// <summary>World point just outside the front door (where people go in and out).</summary>
         public Vector3 Door => Center + Front * (Depth * 0.5f + 0.9f) + Right * (DoorOffset * Width);
         public Vector3 Right => Vector3.Cross(Vector3.up, Front).normalized;
+        /// <summary>Shops: where you stand to buy (the yellow ring), beside the door so the door stays free.</summary>
+        public Vector3 ShopSpot => Door + Right * (DoorOffset >= 0f ? 2.1f : -2.1f);
         public Quaternion Rotation => Quaternion.LookRotation(Front);
         public bool IsHome => Kind == BuildingKind.Domus || Kind == BuildingKind.Insula;
+        /// <summary>Shops you walk into through a real door (built like a home inside): store, tavern, smithy, bakery, pottery.</summary>
+        public bool IsShop => Kind == BuildingKind.Shop || Kind == BuildingKind.Tavern || Kind == BuildingKind.Smithy ||
+                              Kind == BuildingKind.Bakery || Kind == BuildingKind.Pottery;
     }
 
     /// <summary>A named point for the town simulation.</summary>
@@ -385,6 +390,9 @@ namespace Gladiator.Town
                        : kind == BuildingKind.Domus || kind == BuildingKind.Garden ? 1
                        : kind == BuildingKind.Temple || kind == BuildingKind.Baths || kind == BuildingKind.Forum ? 1
                        : rng.NextDouble() < 0.5 ? 2 : 1;
+            bool shop = kind == BuildingKind.Shop || kind == BuildingKind.Tavern || kind == BuildingKind.Smithy ||
+                        kind == BuildingKind.Bakery || kind == BuildingKind.Pottery;
+            if (shop) floors = 1; // shops are one storey you can walk into (the dice above still roll: same towns)
             Lots.Add(new TownLot
             {
                 Id = Lots.Count, Kind = kind, Center = W(localCenter), Front = Wd(localFront), Width = width, Depth = depth, Floors = floors,

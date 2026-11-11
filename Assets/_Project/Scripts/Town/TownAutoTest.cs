@@ -182,6 +182,51 @@ namespace Gladiator.Town
             if (pcS != null) pcS.enabled = true;
         }
 
+        /// <summary>Shops: a real door on its hinge and a home inside; walking in is no offence for the watch.</summary>
+        IEnumerator ShopsTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var pcS = pl.GetComponent<PlayerController>();
+            if (pcS != null) pcS.enabled = false;
+            int shopLots = town.Layout.Lots.FindAll(l => l.IsShop).Count;
+            var shops = town.Houses.FindAll(h => h.Lot.IsShop);
+            Log($"SHOPS lots={shopLots} enterable={shops.Count} withDoor={shops.FindAll(h => h.Door != null).Count} public={shops.TrueForAll(h => h.Public)} (expected all)");
+            var smithy = shops.Find(h => h.Lot.Kind == BuildingKind.Smithy && (h.Lot.Center - town.Layout.Fountain).magnitude < 30f) ?? shops.Find(h => h.Lot.Kind == BuildingKind.Smithy);
+            if (smithy != null)
+            {
+                town.Guards.Suspended = false;
+                int w0 = town.Guards.Warnings;
+                var gcam = town.Cam;
+                Vector3 front = smithy.Door.Center + smithy.transform.forward * 1.4f;
+                Teleport(pl, front, -smithy.transform.forward);
+                for (float t = 0f; t < 1f; t += Time.deltaTime) { gcam.FocusOverride = pl.transform.position + Vector3.up; gcam.Distance = 8f; gcam.Pitch = 30f; yield return null; }
+                yield return Shot("12a_herreria_puerta");
+                if (!smithy.Door.IsOpen) smithy.Door.Toggle();
+                yield return Wait(0.6f);
+                // straight through the doorway first, then into the kitchen
+                Vector3 inside = smithy.Door.Center - smithy.transform.forward * 1.3f;
+                for (float t = 0f; t < 6f; t += Time.deltaTime)
+                {
+                    Vector3 to = inside - pl.transform.position; to.y = 0f;
+                    if (to.magnitude < 0.6f) break;
+                    pl.Move(to.normalized * 0.7f); pl.SetFacing(to);
+                    gcam.FocusOverride = pl.transform.position + Vector3.up; gcam.Distance = 8f; gcam.Pitch = 45f;
+                    yield return null;
+                }
+                pl.Move(Vector3.zero);
+                yield return Wait(0.8f);
+                var tm = town.GetComponent<TownManager>();
+                Log($"SHOPS walked into {smithy.Lot.Kind} inside={smithy.Contains(pl.transform.position)} room={tm.CurrentRoom} roofHidden={!smithy.Upper.activeSelf} warnings {w0}->{town.Guards.Warnings} (expected no change)");
+                yield return Shot("12b_dentro_herreria");
+                gcam.FocusOverride = null;
+                Teleport(pl, front, -smithy.transform.forward);
+                yield return Wait(0.3f);
+                if (smithy.Door.IsOpen) smithy.Door.Toggle(); // leave it as found (later tests use this door)
+                town.Guards.Suspended = true;
+            }
+            if (pcS != null) pcS.enabled = true;
+        }
+
         /// <summary>The infirmary: ten beds, public (no trespassing), you wake up lying in a bed and get up by moving.</summary>
         IEnumerator InfirmaryTest(TownBootstrap town)
         {
@@ -488,7 +533,8 @@ namespace Gladiator.Town
                 yield return InfirmaryTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;
-                yield return ThreeStoreyTest(town); // the older tests walk into houses: no warnings there
+                yield return ThreeStoreyTest(town);
+                yield return ShopsTest(town); // the older tests walk into houses: no warnings there
                 if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-quick") >= 0)
                 {
                     // the real path: losing in the arena -> next day, the town, in an infirmary bed
@@ -824,7 +870,7 @@ namespace Gladiator.Town
                 Teleport(town.Player, smithy.Door + smithy.Front * 4f, -smithy.Front);
                 yield return Wait(1f);
                 yield return Shot("24_herreria_circulo");
-                Teleport(town.Player, smithy.Door, -smithy.Front);
+                Teleport(town.Player, smithy.ShopSpot, -smithy.Front);
                 yield return Wait(0.5f);
                 bool nearSmithy = tmS.NearestSmithy(town.Player.transform.position, 2.6f) != null;
                 tmS.OpenShop();

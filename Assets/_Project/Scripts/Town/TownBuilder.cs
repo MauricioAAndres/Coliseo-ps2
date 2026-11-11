@@ -189,7 +189,8 @@ namespace Gladiator.Town
                 case BuildingKind.Infirmary: Infirmary(lot); return;
             }
             if (lot.IsHome) { HomeHouse(lot); return; }
-            House(lot);
+            // shops: a real door and the inside of a home (kitchen, bedroom, bathroom); the trade goes outside the front
+            if (lot.IsShop) HomeHouse(lot); else House(lot);
             switch (lot.Kind)
             {
                 case BuildingKind.Shop: ShopFront(lot, awningA, awningB); break;
@@ -358,6 +359,7 @@ namespace Gladiator.Town
 
             ground.Upper = upper;
             ground.Hide.Add(upper);
+            ground.Public = !lot.IsHome; // a shop: walking in is not trespassing
             if (midGo != null) ground.Hide.Add(midGo);
             if (topGo != null) ground.Hide.Add(topGo);
             Houses.Add(ground);
@@ -995,7 +997,8 @@ namespace Gladiator.Town
         {
             Quaternion q = lot.Rotation;
             float w = lot.Width, hz = lot.Depth * 0.5f;
-            float cx = -lot.DoorOffset * w * 0.6f;
+            float dx = lot.DoorOffset * w;
+            float cx = dx + (dx >= 0f ? -2.1f : 2.1f);   // beside the door, never in front of it
             Box(dark, LP(lot, cx, 1.2f, hz + 0.02f), new Vector3(2.4f, 2.2f, 0.06f), q);
             Box(wood, LP(lot, cx, 0.5f, hz + 0.45f), new Vector3(2.4f, 1.0f, 0.5f), q);
             int strips = 6;
@@ -1017,9 +1020,10 @@ namespace Gladiator.Town
         {
             var b = new MeshBuilder();
             b.AddAnnulus(0.95f, 1.15f, 0.04f, 20, Color.white, 1f);
-            var ring = PS2Spawn.Mesh(root, "ShopRing_" + lot.Id, b.Build("ShopRing"), lot.Door, PS2Materials.Flat(new Color(1f, 0.82f, 0.1f), 0.2f));
+            var ring = PS2Spawn.Mesh(root, "ShopRing_" + lot.Id, b.Build("ShopRing"), lot.ShopSpot, PS2Materials.Flat(new Color(1f, 0.82f, 0.1f), 0.2f));
             ring.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            Vector3 pole = lot.Door + lot.Right * 1.6f;
+            float side = lot.DoorOffset >= 0f ? 1f : -1f;   // the side away from the shed
+            Vector3 pole = lot.ShopSpot + lot.Right * (side * 1.2f) - lot.Front * 0.5f;
             var y = PS2Materials.Get("banner_shop", PS2Textures.Cloth, new Color(0.95f, 0.75f, 0.1f));
             Box(darkWood, pole + Vector3.up * 2f, new Vector3(0.12f, 4f, 0.12f), lot.Rotation);
             Box(y, pole + Vector3.up * 3.3f + lot.Right * 0.45f, new Vector3(0.8f, 1.2f, 0.05f), lot.Rotation, 0f);
@@ -1034,7 +1038,7 @@ namespace Gladiator.Town
             float hz = lot.Depth * 0.5f;
             for (int i = 0; i < n; i++)
             {
-                float x = lot.Width * 0.5f - 0.4f - (i % 4) * 0.55f, z = hz + 0.4f + (i / 4) * 0.5f;
+                float x = lot.Width * 0.5f + 0.35f + (i / 7) * 0.45f, z = hz - 0.5f - (i % 7) * 0.6f; // along the side wall, outside
                 Box(clay, LP(lot, x, 0.32f, z), new Vector3(0.32f, 0.64f, 0.32f), q * Quaternion.Euler(0, 45f, 0), 0f);
                 Box(clay, LP(lot, x, 0.7f, z), new Vector3(0.16f, 0.14f, 0.16f), q, 0f);
             }
@@ -1045,7 +1049,8 @@ namespace Gladiator.Town
             Quaternion q = lot.Rotation;
             float w = lot.Width, hz = lot.Depth * 0.5f;
             // open shed with an anvil and a forge glowing
-            float sx = -lot.DoorOffset * w * 0.6f;
+            float ddx = lot.DoorOffset * w;
+            float sx = ddx + (ddx >= 0f ? -2.3f : 2.3f);   // the shed stands beside the door
             foreach (float s in new[] { -1.3f, 1.3f })
                 Box(wood, LP(lot, sx + s, 1.3f, hz + 2.2f), new Vector3(0.14f, 2.6f, 0.14f), q);
             Box(roofs[lot.RoofTint % roofs.Length], LP(lot, sx, 2.7f, hz + 1.2f), new Vector3(3f, 0.12f, 2.4f), q * Quaternion.Euler(-12f, 0, 0), 0.5f);
