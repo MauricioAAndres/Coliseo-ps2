@@ -310,6 +310,8 @@ namespace Gladiator.Combat
             transform.position = new Vector3(h.x, y, h.z);
         }
 
+        Gladiator.Character.HumanoidPoser poser;
+
         void LateUpdate()
         {
             if (!Active || rig == null) return;
@@ -337,12 +339,30 @@ namespace Gladiator.Combat
             float S = rig.Metrics.S;
             if (fighter != null)
             {
-                if (fighter.CurrentWeapon != null && fighter.WeaponSocket != null)
+                if (fighter.CurrentWeapon != null && !fighter.WeaponInHand)
+                {
+                    // put away: it stays on the belt / the back
+                    if (poser == null) poser = fighter.GetComponentInChildren<Gladiator.Character.HumanoidPoser>();
+                    if (poser == null) poser = rig.GetComponentInParent<Gladiator.Character.HumanoidPoser>();
+                    if (poser != null)
+                    {
+                        var st = fighter.CurrentWeapon.Stats;
+                        poser.SheathPose(st, false, out Vector3 sp, out Quaternion sr, out _);
+                        Transform sock = st.IsBow && fighter.LeftSocket != null ? fighter.LeftSocket : fighter.WeaponSocket;
+                        if (sock != null) sock.SetPositionAndRotation(sp, sr);
+                        if (fighter.OffWeapon != null && fighter.LeftSocket != null)
+                        {
+                            poser.SheathPose(fighter.OffWeapon.Stats, true, out sp, out sr, out _);
+                            fighter.LeftSocket.SetPositionAndRotation(sp, sr);
+                        }
+                    }
+                }
+                else if (fighter.CurrentWeapon != null && fighter.WeaponSocket != null)
                 {
                     Transform hand = b[SK.RightHand];
                     fighter.WeaponSocket.SetPositionAndRotation(hand.position + hand.rotation * new Vector3(0.07f * S, -0.01f * S, 0f), hand.rotation);
                 }
-                if (fighter.OffWeapon != null && fighter.LeftSocket != null)
+                if (fighter.OffWeapon != null && fighter.LeftSocket != null && fighter.WeaponInHand)
                 {
                     Transform hand = b[SK.LeftHand];
                     fighter.LeftSocket.SetPositionAndRotation(Vector3.Lerp(hand.position, b[SK.LeftHandMiddleEnd].position, 0.45f), hand.rotation);

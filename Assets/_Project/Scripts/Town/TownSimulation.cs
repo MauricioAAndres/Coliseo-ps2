@@ -36,6 +36,9 @@ namespace Gladiator.Town
         /// <summary>Time passes at once (a fight in the arena). Midnight starts a new day.</summary>
         public void AdvanceHours(float hours) { Hour += hours; Wrap(); }
 
+        /// <summary>Time passes at once until an hour of today (nothing if it is later already).</summary>
+        public void AdvanceTo(float hour) { if (Hour < hour) Hour = hour; }
+
         void Wrap()
         {
             while (Hour >= 24f)

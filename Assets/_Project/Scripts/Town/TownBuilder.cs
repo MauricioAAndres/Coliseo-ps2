@@ -38,6 +38,17 @@ namespace Gladiator.Town
         public System.Func<int, int, (bool couple, int singles, int people)> Household;
         readonly Material waxMat = PS2Materials.Get("wax", PS2Textures.White, new Color(0.95f, 0.92f, 0.8f));
         readonly Material flameMat = PS2Materials.Flat(new Color(1f, 0.62f, 0.15f), 0.3f);
+        readonly Material glass = MakeGlass();
+
+        /// <summary>Window glass: translucent, seen from both sides.</summary>
+        static Material MakeGlass()
+        {
+            var sh = Shader.Find("Gladiator/PS2_Glass");
+            if (sh == null) return PS2Materials.Flat(new Color(0.45f, 0.6f, 0.7f), 1f);
+            var m = new Material(sh) { name = "PS2_glass" };
+            m.SetColor("_BaseColor", new Color(0.62f, 0.82f, 0.92f, 0.26f));
+            return m;
+        }
 
         public TownBuilder(TownLayout layout, Transform parent)
         {
@@ -547,6 +558,32 @@ namespace Gladiator.Town
             }
             float dw = 0.6f;
             float dx = lot.DoorOffset * w;                  // front door (ground floor)
+            // front windows: real openings in the wall with a pane of glass (you see in and out)
+            var wins = new List<float>();
+            int nwin = level == 0 ? 2 : Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));
+            float wy = y0 + (level == 0 ? 2.0f : 1.6f);
+            const float winW = 0.6f, winH = 0.75f;
+            for (int i = 0; i < nwin; i++)
+            {
+                float x = -w * 0.5f + w * (i + 0.5f) / nwin;
+                if (!sideDoor && Mathf.Abs(x - dx) < 1.4f) continue;
+                wins.Add(x);
+            }
+            // a stretch of the front wall, with the window openings left out
+            void Front(float x0, float x1, float ya, float yb, bool outside)
+            {
+                float cur = x0;
+                foreach (float wx in wins)
+                {
+                    float a = wx - winW * 0.5f, b = wx + winW * 0.5f;
+                    if (a < cur + 0.05f || b > x1 - 0.05f) continue;
+                    Seg(cur, a, hz - t, hz, ya, yb, outside);
+                    Seg(a, b, hz - t, hz, ya, wy - winH * 0.5f, outside);
+                    Seg(a, b, hz - t, hz, wy + winH * 0.5f, yb, false);
+                    cur = b;
+                }
+                Seg(cur, x1, hz - t, hz, ya, yb, outside);
+            }
             float dz = float.IsNaN(sideDoorZ) ? hz - 1.3f : sideDoorZ; // side door (upper floors), over the stair landing
             float sideX0 = ss > 0 ? hx - t : -hx, sideX1 = ss > 0 ? hx : -hx + t;
             float otherX0 = ss > 0 ? -hx : hx - t, otherX1 = ss > 0 ? -hx + t : hx;
@@ -557,13 +594,13 @@ namespace Gladiator.Town
                 Seg(sideX0, sideX1, -hz, dz - dw, y0, y1, true);                       // stair side, behind the door
                 Seg(sideX0, sideX1, dz + dw, hz, y0, y1, true);                        // stair side, in front of the door
                 Seg(sideX0, sideX1, dz - dw, dz + dw, y0 + 2.3f, y1, false);           // over the door
-                Seg(-hx, hx, hz - t, hz, y0, y1, true);                                 // front (no door)
+                Front(-hx, hx, y0, y1, true);                                           // front (no door)
             }
             else
             {
                 Seg(sideX0, sideX1, -hz, hz, y0, y1, true);
-                Seg(-hx, dx - dw, hz - t, hz, y0, y1, true);                            // front, left of the door
-                Seg(dx + dw, hx, hz - t, hz, y0, y1, true);                             // front, right of the door
+                Front(-hx, dx - dw, y0, y1, true);                                      // front, left of the door
+                Front(dx + dw, hx, y0, y1, true);                                       // front, right of the door
                 Seg(dx - dw, dx + dw, hz - t, hz, y0 + 2.3f, y1, false);                // over the door
                 Box(darkWood, LP(lot, dx, y0 + 2.36f, hz + 0.05f), new Vector3(1.5f, 0.16f, 0.12f), q);
             }
@@ -871,15 +908,18 @@ namespace Gladiator.Town
             }
 
 
-            // front windows
-            int nwin = level == 0 ? 2 : Mathf.Max(2, Mathf.FloorToInt(w / 2.4f));
-            for (int i = 0; i < nwin; i++)
+            // front windows: the glass in the opening, a wooden cross and sill, the shutters open outside
+            foreach (float x in wins)
             {
-                float x = -w * 0.5f + w * (i + 0.5f) / nwin, y = y0 + (level == 0 ? 2.0f : 1.6f);
-                if (level == 0 && Mathf.Abs(x - dx) < 1.4f) continue;
-                Box(dark, LP(lot, x, y, hz + 0.02f), new Vector3(0.6f, 0.75f, 0.06f), q);
-                Box(darkWood, LP(lot, x - 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
-                Box(darkWood, LP(lot, x + 0.42f, y, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+                float zc = hz - t * 0.5f;
+                Box(glass, LP(lot, x, wy, zc), new Vector3(winW, winH, 0.02f), q, 0f);
+                Box(darkWood, LP(lot, x, wy, zc), new Vector3(winW, 0.04f, 0.05f), q, 0f);
+                Box(darkWood, LP(lot, x, wy, zc), new Vector3(0.04f, winH, 0.05f), q, 0f);
+                Box(wood, LP(lot, x, wy - winH * 0.5f - 0.02f, zc), new Vector3(winW + 0.12f, 0.05f, t + 0.1f), q, 0f);
+                Box(darkWood, LP(lot, x - 0.42f, wy, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+                Box(darkWood, LP(lot, x + 0.42f, wy, hz + 0.05f), new Vector3(0.22f, 0.8f, 0.05f), q);
+                Collider(LP(lot, x, wy, zc), new Vector3(winW, winH, t), q); // nobody climbs in through it
+                house.Windows.Add(LP(lot, x, wy, zc));
             }
 
             // the door on its hinge (it swings inwards)

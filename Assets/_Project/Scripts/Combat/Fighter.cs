@@ -116,10 +116,59 @@ namespace Gladiator.Combat
         /// <summary>Second one-handed weapon in the left hand (dual wielding).</summary>
         public Weapon OffWeapon { get; private set; }
         public Shield EquippedShield { get; internal set; }
-        public WeaponStats ActiveStats => CurrentWeapon != null ? CurrentWeapon.Stats : WeaponLibrary.Fists;
+        /// <summary>What the fighter fights with right now: the weapon in the hand, or fists (also while it is put away).</summary>
+        public WeaponStats ActiveStats => WeaponInHand ? CurrentWeapon.Stats : WeaponLibrary.Fists;
+
+        // ---- putting the weapon away
+        /// <summary>The weapons are put away: on the belt, or across the back (two-handers, spears, the bow).</summary>
+        public bool Sheathed { get; private set; }
+        /// <summary>The main weapon is in the hand (false while put away, and until the hand has fetched it).</summary>
+        public bool WeaponInHand => CurrentWeapon != null && inHand;
+        /// <summary>0..1 through the movement of drawing / putting away; -1 when there is none.</summary>
+        public float SheathPhase => sheathT >= 0f ? Mathf.Clamp01(sheathT / sheathDur) : -1f;
+        public const float SheathSeconds = 0.7f, QuickDrawSeconds = 0.36f;
+        bool inHand = true;
+        float sheathT = -1f, sheathDur = SheathSeconds;
+
+        /// <summary>R: puts the weapon away, or draws it.</summary>
+        public bool ToggleSheath() => SetSheathed(!Sheathed);
+
+        /// <summary>
+        /// Puts the weapons away or draws them (a short movement: the hand goes to the belt or over the shoulder; the
+        /// weapon changes place half way). <paramref name="instant"/>: no movement (spawning).
+        /// </summary>
+        public bool SetSheathed(bool sheathe, bool instant = false, float seconds = SheathSeconds)
+        {
+            if (CurrentWeapon == null) { ResetSheath(); return false; }
+            if (instant)
+            {
+                Sheathed = sheathe; inHand = !sheathe; sheathT = -1f;
+                RecomputeEquipment();
+                return true;
+            }
+            if (!IsAlive || sheathe == Sheathed || sheathT >= 0f) return false;
+            if (state != FighterState.Idle && state != FighterState.Blocking) return false;
+            Sheathed = sheathe;
+            sheathT = 0f;
+            sheathDur = Mathf.Max(0.1f, seconds);
+            AnyMove?.Invoke(this, sheathe ? "sheathe" : "draw");
+            return true;
+        }
+
+        void ResetSheath() { Sheathed = false; inHand = true; sheathT = -1f; }
+
+        void UpdateSheath(float dt)
+        {
+            if (sheathT < 0f) return;
+            if (CurrentWeapon == null) { ResetSheath(); return; }
+            float before = sheathT;
+            sheathT += dt;
+            if (before < sheathDur * 0.5f && sheathT >= sheathDur * 0.5f) { inHand = !Sheathed; RecomputeEquipment(); }
+            if (sheathT >= sheathDur) { sheathT = -1f; if (inHand == Sheathed) { inHand = !Sheathed; RecomputeEquipment(); } }
+        }
         /// <summary>Stats of the weapon doing the current attack (the left one in a dual combo).</summary>
         public WeaponStats AttackStats => AttackHand == 1 && OffWeapon != null ? OffWeapon.Stats : ActiveStats;
-        public bool DualWielding => OffWeapon != null && CurrentWeapon != null;
+        public bool DualWielding => OffWeapon != null && WeaponInHand;
         /// <summary>Both hands on the main weapon: two-handers, the bow, and spears with the left hand free.</summary>
         public bool TwoHanded { get; private set; }
         public bool ShieldInArm => EquippedShield != null && !EquippedShield.OnBack;
@@ -530,6 +579,18 @@ namespace Gladiator.Combat
         public bool TryAttack(AttackType type)
         {
             if (!IsAlive) return false;
+            // the weapon is put away: the blow draws it first (quickly) and then lands
+            if (type != AttackType.Kick && CurrentWeapon != null && (state == FighterState.Idle || state == FighterState.Blocking) && !InAir)
+            {
+                if (Sheathed && sheathT < 0f) SetSheathed(false, false, QuickDrawSeconds);
+                if (sheathT >= 0f)
+                {
+                    if (Sheathed) return false; // still putting it away
+                    bufferedAttack = type;
+                    bufferExpire = Time.time + (sheathDur - sheathT) + 0.3f;
+                    return true;
+                }
+            }
             if (state == FighterState.Airborne || ((state == FighterState.Idle || state == FighterState.Blocking) && InAir)) return TryAirAttack(type);
             if (state == FighterState.Idle || state == FighterState.Blocking)
             {
@@ -586,6 +647,7 @@ namespace Gladiator.Combat
             if (CurrentWeapon != null && CurrentWeapon != w) DropWeapon(Vector3.up * 2f, false);
             if (OffWeapon != null && (w.Stats.Grip == Grip.TwoHand || w.Stats.IsBow)) DropOff(Vector3.up * 2f + transform.right);
             CurrentWeapon = w;
+            ResetSheath(); // a weapon just taken is in the hand
             // The bow is held in the left hand (the right one draws the string).
             Transform socket = w.Stats.IsBow && LeftSocket != null ? LeftSocket : WeaponSocket;
             w.AttachTo(this, socket != null ? socket : transform);
@@ -617,7 +679,7 @@ namespace Gladiator.Combat
         /// <summary>G held: throw the main weapon forward (a short swing, then it flies, spinning, and hurts whoever it hits).</summary>
         public bool TryThrow()
         {
-            if (!IsAlive || CurrentWeapon == null || (state != FighterState.Idle && state != FighterState.Blocking)) return false;
+            if (!IsAlive || !WeaponInHand || sheathT >= 0f || (state != FighterState.Idle && state != FighterState.Blocking)) return false;
             throwing = true;
             StartAttack(AttackType.Light);
             return true;
@@ -671,6 +733,7 @@ namespace Gladiator.Combat
                 CurrentWeapon = o;
                 o.AttachTo(this, WeaponSocket != null ? WeaponSocket : transform);
             }
+            if (CurrentWeapon == null) ResetSheath();
             RecomputeEquipment();
             AnyWeaponChanged?.Invoke(this, CurrentWeapon);
         }
@@ -681,6 +744,7 @@ namespace Gladiator.Combat
             if (OffWeapon != null) { var o = OffWeapon; OffWeapon = null; Destroy(o.gameObject); }
             if (CurrentWeapon != null) { var w = CurrentWeapon; CurrentWeapon = null; Destroy(w.gameObject); }
             if (EquippedShield != null) EquippedShield.Remove();
+            ResetSheath();
             RecomputeEquipment();
         }
 
@@ -702,13 +766,14 @@ namespace Gladiator.Combat
         /// </summary>
         public void RecomputeEquipment()
         {
-            WeaponStats main = CurrentWeapon != null ? CurrentWeapon.Stats : null;
+            WeaponStats main = WeaponInHand ? CurrentWeapon.Stats : null; // put away: empty hands
             bool needsBothHands = main != null && (main.Grip == Grip.TwoHand || main.IsBow);
             if (EquippedShield != null) EquippedShield.OnBack = needsBothHands;
             bool shieldArm = ShieldInArm;
             TwoHanded = main != null && (main.Grip == Grip.TwoHand || main.IsBow ||
                                          (main.Grip == Grip.Versatile && OffWeapon == null && !shieldArm));
-            EquipMoveMul = (main != null ? main.MoveMul : 1f) * (OffWeapon != null ? OffWeapon.Stats.MoveMul : 1f)
+            if (main == null) TwoHanded = false;
+            EquipMoveMul = (CurrentWeapon != null ? CurrentWeapon.Stats.MoveMul : 1f) * (OffWeapon != null ? OffWeapon.Stats.MoveMul : 1f)
                            * (EquippedShield != null ? EquippedShield.Stats.MoveMul : 1f);
             if (shieldArm)
             {
@@ -722,7 +787,7 @@ namespace Gladiator.Combat
             {
                 if (main != null && main.IsBow) { BlockReductionLight = 0.6f; BlockReductionHeavy = 0.3f; }
                 else if (TwoHanded) { BlockReductionLight = 0.92f; BlockReductionHeavy = 0.68f; }
-                else if (OffWeapon != null) { BlockReductionLight = 0.88f; BlockReductionHeavy = 0.55f; }
+                else if (OffWeapon != null && main != null) { BlockReductionLight = 0.88f; BlockReductionHeavy = 0.55f; }
                 else { BlockReductionLight = 0.9f; BlockReductionHeavy = 0.6f; }
                 GuardBreakStagger = 0.6f;
                 DisarmResistance = TwoHanded && main != null && !main.IsBow ? 0.35f : 0f;
@@ -852,7 +917,8 @@ namespace Gladiator.Combat
             if (state == FighterState.Idle && blockHeld) SetState(FighterState.Blocking, 0f);
             else if (state == FighterState.Blocking && !blockHeld) SetState(FighterState.Idle, 0f);
 
-            if ((state == FighterState.Idle || state == FighterState.Blocking) && bufferedAttack.HasValue)
+            UpdateSheath(dt);
+            if ((state == FighterState.Idle || state == FighterState.Blocking) && bufferedAttack.HasValue && sheathT < 0f)
             {
                 var b = bufferedAttack.Value;
                 bufferedAttack = null;
@@ -1218,7 +1284,7 @@ namespace Gladiator.Combat
             lastHitPoint = r.Point;
             r.Damage = damage;
 
-            if (!Harmless && CurrentWeapon != null && disarmChance > 0f && UnityEngine.Random.value < disarmChance)
+            if (!Harmless && WeaponInHand && disarmChance > 0f && UnityEngine.Random.value < disarmChance)
             {
                 r.Disarmed = true;
                 DropWeapon(dir * 2.5f + Vector3.up * 4.5f + transform.right * UnityEngine.Random.Range(-1.5f, 1.5f));

@@ -425,7 +425,7 @@ namespace Gladiator.Character
                 if (st != lastState) { stateTime = 0f; lastState = st; }
                 stateTime += dt;
                 dead = st == FighterState.Dead || st == FighterState.KnockedOut;
-                armed = Fighter.CurrentWeapon != null && !dead;
+                armed = Fighter.WeaponInHand && !dead;
                 switch (st)
                 {
                     case FighterState.Windup:
@@ -597,7 +597,7 @@ namespace Gladiator.Character
             float target = clip != null ? 1f : 0f;
             actionWeight = Mathf.MoveTowards(actionWeight, target, dt * (target > actionWeight ? 14f : 6f));
             bool swinging = armed && clip != null && (clip == swordLight || clip == swordHeavy || clip == dualHeavy);
-            bool spear1h = Fighter != null && Fighter.CurrentWeapon != null && Fighter.ActiveStats.Style == WeaponStyle.Spear && !Fighter.TwoHanded;
+            bool spear1h = Fighter != null && Fighter.WeaponInHand && Fighter.ActiveStats.Style == WeaponStyle.Spear && !Fighter.TwoHanded;
             bladeAlign = Mathf.MoveTowards(bladeAlign, spear1h ? 1f : swinging ? 0.6f : 0f, dt * 5f);
             leftBladeAlign = Mathf.MoveTowards(leftBladeAlign, armed && clip != null && (clip == dualLeft || clip == dualHeavy) ? 0.6f : 0f, dt * 5f);
             if (actionWeight <= 1e-3f || lastAction == null) return;
@@ -620,7 +620,7 @@ namespace Gladiator.Character
         /// <summary>Guard stance for what the fighter holds.</summary>
         MotionClip GuardClipFor()
         {
-            if (Fighter == null || Fighter.CurrentWeapon == null) return guardClip;
+            if (Fighter == null || !Fighter.WeaponInHand) return guardClip;
             var w = Fighter.ActiveStats;
             if (w.IsBow) return bowGuard ?? guardClip;
             if (Fighter.TwoHanded) return w.Style == WeaponStyle.Spear ? (spearGuard2 ?? guardClip) : (guard2h ?? guardClip);
@@ -630,7 +630,7 @@ namespace Gladiator.Character
         /// <summary>Attack clip for the weapon style, the grip and (two weapons) the hand.</summary>
         MotionClip AttackClipFor(bool heavy)
         {
-            if (Fighter.CurrentWeapon == null) return heavy ? attackHeavy : attackLight;
+            if (!Fighter.WeaponInHand) return heavy ? attackHeavy : attackLight;
             var w = Fighter.ActiveStats;
             switch (w.Style)
             {
@@ -705,7 +705,28 @@ namespace Gladiator.Character
             // 0..1 while the fighter holds a guard up (smoothed): the blade stands up, the shield comes in front
             bool guarding = Fighter != null && Fighter.State == FighterState.Blocking;
             guardBlend = Mathf.MoveTowards(guardBlend, guarding ? 1f : 0f, Time.deltaTime * 9f);
-            WeaponStats main = Fighter != null && Fighter.CurrentWeapon != null ? Fighter.ActiveStats : null;
+            // putting the weapon away / drawing it: the hand goes to the belt (or over the shoulder) and comes back
+            Weapon carried = Fighter != null ? Fighter.CurrentWeapon : null;
+            Vector3 sheathPos = default, offPos = default;
+            Quaternion sheathRot = Quaternion.identity, offRot = Quaternion.identity;
+            if (carried != null)
+            {
+                SheathPose(carried.Stats, false, out sheathPos, out sheathRot, out bool onBack);
+                bool second = Fighter.OffWeapon != null;
+                if (second) SheathPose(Fighter.OffWeapon.Stats, true, out offPos, out offRot, out _);
+                float ph = Fighter.SheathPhase;
+                var fst = Fighter.State;
+                if (ph >= 0f && (fst == FighterState.Idle || fst == FighterState.Blocking))
+                {
+                    float rw = Mathf.Clamp01(Mathf.Sin(ph * Mathf.PI) * 1.4f);
+                    rw = rw * rw * (3f - 2f * rw);
+                    Vector3 pole = onBack ? body.right * 0.8f + body.up * 0.6f - body.forward * 0.2f
+                                          : body.right * 0.8f - body.up * 0.45f - body.forward * 0.35f;
+                    ReachArm(true, sheathPos, pole, rw);
+                    if (second) ReachArm(false, offPos, -body.right * 0.8f - body.up * 0.45f - body.forward * 0.35f, rw);
+                }
+            }
+            WeaponStats main = Fighter != null && Fighter.WeaponInHand ? Fighter.ActiveStats : null;
             bool bow = main != null && main.IsBow;
             Vector3 rGrip = GripPoint(SK.RightHand, SK.RightHandMiddleEnd), lGrip = GripPoint(SK.LeftHand, SK.LeftHandMiddleEnd);
             bool twoHandGrip = main != null && !bow && Fighter.TwoHanded && (rGrip - lGrip).magnitude < 0.8f * S;
@@ -779,7 +800,7 @@ namespace Gladiator.Character
             else
             {
                 if (nockedArrow != null) nockedArrow.SetActive(false);
-                if (LeftSocket != null && Fighter != null && Fighter.OffWeapon != null)
+                if (LeftSocket != null && Fighter != null && Fighter.OffWeapon != null && Fighter.WeaponInHand)
                 {
                     Transform hand = b[SK.LeftHand];
                     Quaternion grip = hand.rotation;
@@ -817,6 +838,80 @@ namespace Gladiator.Character
                 // the forearm goes behind the shield while guarding
                 shield.SetPositionAndRotation(Vector3.Lerp(restPos, guardPos, guardBlend), Quaternion.Slerp(restRot, guardRot, guardBlend));
             }
+
+            // put away: the weapons hang where they are carried
+            if (carried != null && !Fighter.WeaponInHand)
+            {
+                Transform sock = carried.Stats.IsBow && LeftSocket != null ? LeftSocket : WeaponSocket;
+                if (sock != null)
+                {
+                    if (sock == WeaponSocket && !socketSaved) { socketLocalPos = WeaponSocket.localPosition; socketLocalRot = WeaponSocket.localRotation; socketSaved = true; }
+                    sock.SetPositionAndRotation(sheathPos, sheathRot);
+                }
+                if (Fighter.OffWeapon != null && LeftSocket != null) LeftSocket.SetPositionAndRotation(offPos, offRot);
+            }
+        }
+
+        /// <summary>
+        /// Where a weapon that is put away sits (its grip, and where it points): one-handers hang from the belt at the
+        /// left hip (a second one at the right hip); two-handers, spears, tridents and the bow go across the back.
+        /// </summary>
+        public void SheathPose(WeaponStats s, bool second, out Vector3 pos, out Quaternion rot, out bool back)
+        {
+            var b = Rig.Bones;
+            float S = Rig.Metrics.S;
+            back = s.Grip != Grip.OneHand || s.IsBow;
+            if (!back)
+            {
+                Transform h = b[SK.Hips];
+                Vector3 r = h.rotation * Vector3.right, u = h.rotation * Vector3.up, f = h.rotation * Vector3.forward;
+                float side = second ? 1f : -1f; // the main weapon on the left: the right hand crosses to draw it
+                pos = h.position + (r * side * 0.2f + u * 0.07f + f * 0.03f) * S;
+                Vector3 dir = (-u * 0.9f - f * 0.42f + r * side * 0.1f).normalized;
+                rot = Quaternion.LookRotation(dir, r * side);
+                return;
+            }
+            Transform c = b[SK.Chest];
+            Vector3 cr = c.rotation * Vector3.right, cu = c.rotation * Vector3.up, cf = c.rotation * Vector3.forward;
+            bool shieldBack = Fighter != null && Fighter.EquippedShield != null && Fighter.EquippedShield.OnBack;
+            Vector3 mid = c.position - cf * (shieldBack ? 0.29f : 0.19f) * S + cu * 0.02f * S;
+            Vector3 slant = (cu * 0.85f + cr * 0.52f).normalized; // from the left hip up to the right shoulder
+            if (s.IsBow)
+            {
+                // limbs along the slant, flat against the back
+                pos = mid;
+                rot = Quaternion.LookRotation(Vector3.Cross(-cf, slant).normalized, slant);
+            }
+            else if (s.Style == WeaponStyle.Spear)
+            {
+                // held a third of the way up the haft: the point up over the right shoulder
+                pos = mid - slant * (s.Length * 0.17f);
+                rot = Quaternion.LookRotation(slant, -cf);
+            }
+            else
+            {
+                // the grip over the right shoulder, the blade (or the head) down to the left hip
+                pos = mid + slant * 0.4f * S;
+                rot = Quaternion.LookRotation(-slant, -cf);
+            }
+        }
+
+        /// <summary>Moves a hand towards a point (weight 0..1) with the arm's two-bone IK, blending from the pose it had.</summary>
+        void ReachArm(bool right, Vector3 target, Vector3 pole, float w)
+        {
+            if (w <= 1e-3f) return;
+            var b = Rig.Bones;
+            var M = Rig.Metrics;
+            int iu = right ? SK.RightArm : SK.LeftArm, il = right ? SK.RightForeArm : SK.LeftForeArm, ih = right ? SK.RightHand : SK.LeftHand;
+            Quaternion ru = b[iu].rotation, rl = b[il].rotation;
+            Vector3 goal = Vector3.Lerp(b[ih].position, target, w);
+            Vector3 bendNow = b[il].position - b[iu].position;
+            Vector3 p = Vector3.Slerp(bendNow.normalized, pole.normalized, w);
+            TwoBone(b[iu], b[il], b[ih], M.Joints[iu], M.Joints[il], M.Joints[ih], goal, p, right ? Vector3.right : Vector3.left, Vector3.back);
+            float k = Mathf.Clamp01(w * 4f);
+            Quaternion nu = b[iu].rotation, nl = b[il].rotation;
+            b[iu].rotation = Quaternion.Slerp(ru, nu, k);
+            b[il].rotation = Quaternion.Slerp(rl, nl, k);
         }
 
         void OnDestroy()

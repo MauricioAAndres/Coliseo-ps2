@@ -39,6 +39,8 @@ namespace Gladiator.Town
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
         public TownGuards Guards { get; private set; }
+        /// <summary>The people who find you asleep in their house.</summary>
+        public HomeOwners Owners { get; private set; }
         /// <summary>The governor, in his domus on the plaza (null if the town has none).</summary>
         public GovernorNPC Governor { get; private set; }
         /// <summary>The prisoner in the jail (null if the town has none).</summary>
@@ -280,7 +282,11 @@ namespace Gladiator.Town
                 nav.SceneCode = 1;
                 nav.Init(Player, cam, slot => Gladiator.Training.LudusInTown.Spawn(Ludus, slot), msg => Hud.ShowMessage(msg, 3f));
             }
-            gameObject.AddComponent<TownManager>().Init(this, pc);
+            Player.SetSheathed(true, true); // in town the weapon hangs from the belt (R, or a blow, draws it)
+            var tmgr = gameObject.AddComponent<TownManager>();
+            tmgr.Init(this, pc);
+            Owners = gameObject.AddComponent<HomeOwners>();
+            Owners.Init(this, tmgr);
             if (Gladiator.Progression.DayCycleManager.WakeInInfirmary)
             {
                 // lost in the arena: wake up in an infirmary bed (move to get up)
@@ -412,8 +418,11 @@ namespace Gladiator.Town
         public bool Sleeping => sleepLeft > 0f;
         public const float SleepHealPerHour = 0.1f;
 
-        /// <summary>Beds you may sleep in: the infirmary's, the jail's pallets and the ones in your own houses.</summary>
-        public bool CanSleepIn(HouseInterior h) => h != null && (h.BedSpots.Count > 0 || h.CellSpots.Count > 0 || Mine(h));
+        /// <summary>Beds you may sleep in: any. In a house that is not yours the owner wakes you up when he finds you
+        /// (see <see cref="HomeOwners"/>).</summary>
+        public bool CanSleepIn(HouseInterior h) => h != null;
+        /// <summary>Somebody else's home: sleeping there is at your own risk.</summary>
+        public bool SleepIsTrespass(HouseInterior h) => town.Owners != null && town.Owners.Foreign(h);
 
         static string Clock(float hour) { int m = Mathf.FloorToInt(Mathf.Repeat(hour, 24f) * 60f); return (m / 60).ToString("00") + ":" + (m % 60).ToString("00"); }
 
@@ -752,7 +761,8 @@ namespace Gladiator.Town
             {
                 // in a bed you may sleep in: E picks the hours; moving gets you up
                 bool bed = pl.ActivityKind == Fighter.ActLie && CanSleepIn(house ?? town.HouseAt(p));
-                town.Hud.SetPrompt(pl.ActivityLeaving ? "" : bed ? key + "DORMIR (ELEGIR HORAS)      MOVERSE: LEVANTARSE" : key + "LEVANTARSE");
+                bool notMine = bed && SleepIsTrespass(house ?? town.HouseAt(p));
+                town.Hud.SetPrompt(pl.ActivityLeaving ? "" : bed ? key + (notMine ? "DORMIR EN CAMA AJENA (ELEGIR HORAS)" : "DORMIR (ELEGIR HORAS)") + "      MOVERSE: LEVANTARSE" : key + "LEVANTARSE");
                 if (GameInput.InteractPressed && !pl.ActivityLeaving) { if (bed) OpenSleepMenu(); else pl.StopActivity(); }
                 return;
             }
@@ -839,6 +849,11 @@ namespace Gladiator.Town
                     town.Hud.SetPrompt("YA COMBATISTE HOY: DUERME EN UNA CAMA PARA PASAR EL DIA");
                     return;
                 }
+                if (!Gladiator.Progression.DayCycleManager.ArenaOpenNow)
+                {
+                    town.Hud.SetPrompt("LA ARENA ABRE DE 8:00 A 20:00");
+                    return;
+                }
                 town.Hud.SetPrompt(key + "PUERTA DE LA ARENA: ELEGIR COMBATE");
                 if (GameInput.InteractPressed) OpenArenaGate();
                 return;
@@ -889,7 +904,7 @@ namespace Gladiator.Town
         public void OpenArenaGate()
         {
             var gm = GameManager.Instance;
-            if (gm == null || gm.DayCycle.FoughtToday) return;
+            if (gm == null || gm.DayCycle.FoughtToday || !Gladiator.Progression.DayCycleManager.ArenaOpenNow) return;
             ArenaGateMenu.Ensure().Open(gm.DayCycle.Day, mode => { leaving = true; gm.DayCycle.GoToArena(mode); });
         }
 

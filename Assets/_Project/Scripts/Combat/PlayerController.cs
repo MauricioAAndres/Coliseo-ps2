@@ -207,6 +207,7 @@ namespace Gladiator.Combat
             face.y = 0f;
             if (face.sqrMagnitude > 0.04f) fighter.SetFacing(face);
 
+            if (GameInput.SheathPressed) fighter.ToggleSheath(); // R: put the weapon away / draw it
             if (GameInput.LightAttackPressed) fighter.TryAttack(AttackType.Light);
             if (GameInput.HeavyAttackPressed) fighter.TryAttack(AttackType.Heavy);
             if (GameInput.KickPressed) fighter.TryAttack(AttackType.Kick);

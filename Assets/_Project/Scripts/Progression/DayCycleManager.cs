@@ -60,6 +60,14 @@ namespace Gladiator.Progression
         public bool FoughtToday { get; private set; }
         /// <summary>Game hours a fight in the arena takes.</summary>
         public const float ArenaHours = 2f;
+        /// <summary>The arena takes fighters from 8:00 to 20:00; whatever the hour of the fight, you come out at 20:00.</summary>
+        public const float ArenaOpens = 8f, ArenaCloses = 20f;
+        public static bool ArenaOpenAt(float hour) => hour >= ArenaOpens && hour < ArenaCloses;
+        /// <summary>Is the arena open right now (the town's clock; no town, no hours).</summary>
+        public static bool ArenaOpenNow
+        {
+            get { var sim = Gladiator.Town.TownSimulation.Instance; return sim == null || ArenaOpenAt(sim.Hour); }
+        }
 
         readonly HashSet<string> stationsUsedToday = new HashSet<string>();
 
@@ -125,9 +133,9 @@ namespace Gladiator.Progression
             FoughtToday = true;
             Phase = DayPhase.Training;
             Changed?.Invoke();
-            // the fight took a couple of hours (the town's clock; past midnight it is a new day)
+            // the games fill the day: you walk out of the arena at 20:00
             var sim = Gladiator.Town.TownSimulation.Instance;
-            if (sim != null) sim.AdvanceHours(ArenaHours);
+            if (sim != null) sim.AdvanceTo(ArenaCloses);
             if (!won) { WakeInInfirmary = true; Load(TownScene); return; }
             Load(TrainingScene);
         }

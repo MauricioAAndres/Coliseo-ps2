@@ -118,7 +118,13 @@ namespace Gladiator.Net
                 if (ghosts[i].w == null || Time.time > ghosts[i].until) { if (ghosts[i].w != null) Destroy(ghosts[i].w.gameObject); ghosts.RemoveAt(i); }
 
             string eq = EquipString(local);
-            if (eq != lastEquip) { lastEquip = eq; s.Send("EQ", eq); }
+            if (eq != lastEquip) { lastEquip = eq; s.Send("EQ", eq); sheathSend = 0.3f; }
+            // whether our weapon is put away (whoever came late, or missed the movement, catches up)
+            if ((sheathSend -= Time.unscaledDeltaTime) <= 0f)
+            {
+                sheathSend = 2f;
+                if (local.CurrentWeapon != null && local.SheathPhase < 0f) s.Send("MV", "sheath_state|" + (local.Sheathed ? 1 : 0) + "|" + PosYaw());
+            }
 
             profileTimer -= Time.unscaledDeltaTime;
             if (profileTimer <= 0f)
@@ -210,12 +216,14 @@ namespace Gladiator.Net
             NetSession.Instance.Send("AT", (int)type + "|" + PosYaw());
         }
 
+        float sheathSend = 1f;
+
         void OnMove(Fighter f, string kind)
         {
             if (f != local || NetSession.Instance == null || !NetSession.Instance.InGame) return;
             switch (kind)
             {
-                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture": case "knockdown":
+                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture": case "knockdown": case "sheathe": case "draw":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
                 case "activity" when local.OnFurniture:
@@ -408,6 +416,12 @@ namespace Gladiator.Net
 
         public void OnMove(string kind, int tauntKind, Vector3 pos, float yaw)
         {
+            if (kind == "sheath_state")
+            {
+                bool want = tauntKind == 1;
+                if (Fighter.CurrentWeapon != null && Fighter.Sheathed != want && Fighter.SheathPhase < 0f && !Fighter.IsAttacking) Fighter.SetSheathed(want, true);
+                return;
+            }
             if (kind == "activity_end") pendingFurniture = null;
             SnapIfFar(pos, yaw, 0.35f);
             Vector3 fwd = Quaternion.Euler(0, yaw, 0) * Vector3.forward;
@@ -421,6 +435,8 @@ namespace Gladiator.Net
                 case "activity": Fighter.TryActivity(tauntKind); break;
                 case "activity_end": Fighter.StopActivity(); break;
                 case "knockdown": Fighter.KnockDown(-fwd, 2.8f); Knockdowns++; break;
+                case "sheathe": if (!Fighter.SetSheathed(true)) Fighter.SetSheathed(true, true); break;
+                case "draw": if (!Fighter.SetSheathed(false, false, Fighter.QuickDrawSeconds)) Fighter.SetSheathed(false, true); break;
             }
         }
 

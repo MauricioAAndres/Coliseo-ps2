@@ -62,6 +62,20 @@ namespace Gladiator.Town
             gameObject.name = "Citizen_" + c.Name;
         }
 
+        /// <summary>Puts the body somewhere at once (summoned by somebody else).</summary>
+        public void Place(Vector3 at, Quaternion rot)
+        {
+            Fighter.Controller.enabled = false;
+            transform.SetPositionAndRotation(at + Vector3.up * 0.05f, rot);
+            Fighter.Controller.enabled = true;
+            Fighter.SetFacing(rot * Vector3.forward);
+            Fighter.Move(Vector3.zero);
+            lastPos = transform.position;
+            corners.Clear();
+            goalPlace = null;
+            repath = 0f;
+        }
+
         public void Clear() { Citizen = null; Controlled = false; corners.Clear(); Fighter.Move(Vector3.zero); }
 
         public void Flee(Vector3 from, float seconds)

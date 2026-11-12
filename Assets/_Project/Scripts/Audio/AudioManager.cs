@@ -244,6 +244,8 @@ namespace Gladiator.Audio
                 case "power_combo": Play("power_ready", At(f), 0.45f, 0.02f, 1.3f); break;
                 case "throw": Play("swing_heavy", At(f), 0.9f, 0.05f, 0.85f); break;
                 case "drop": Play("pickup", f.transform.position, 0.6f, 0.1f, 0.7f); break;
+                case "draw": Play("pickup", At(f), 0.55f, 0.06f, 1.3f); break;
+                case "sheathe": Play("pickup", At(f), 0.45f, 0.06f, 0.85f); break;
                 case "taunt":
                 case "cheer":
                     Play("taunt_shout", At(f) + Vector3.up * 0.5f, 0.8f, 0.12f, what == "cheer" ? 1.15f : 1f);

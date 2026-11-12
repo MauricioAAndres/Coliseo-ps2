@@ -519,6 +519,9 @@ namespace Gladiator.Net
                 gm.DayCycle.LastReward = Share;
                 gm.DayCycle.MarkFought();
             }
+            // the games fill the day: back in town it is 20:00 (the host's clock is everybody's)
+            var simT = Gladiator.Town.TownSimulation.Instance;
+            if (simT != null && session.IsHost) simT.AdvanceTo(Gladiator.Progression.DayCycleManager.ArenaCloses);
             Debug.Log($"[NETARENA] purse={purse} players={players} share={Share} paid={paid} won={iWon}");
             string money = paid ? "+" + Share + " DENARIOS (bolsa de " + purse + " entre " + players + ")   " : "AMISTOSO: HOY YA COBRASTE   ";
             hud?.ShowBanner(text, money + (session.IsHost ? "VOLVEIS AL LUDUS EN UNOS SEGUNDOS" : "EL ANFITRION OS LLEVARA AL LUDUS"),

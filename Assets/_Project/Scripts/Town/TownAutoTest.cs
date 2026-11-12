@@ -277,7 +277,7 @@ namespace Gladiator.Town
                 yield return Wait(0.5f);
                 var next = sglHouse.NearestFurniture(bed.At.position, 1.25f, null);
                 Log($"BEDS single: lay={ok} aSecondPersonFinds={(next.HasValue && HouseInterior.Occupied(next.Value, null) ? "CAMA OCUPADA" : "a free bed")} (expected CAMA OCUPADA) " +
-                    $"sleepAllowedInSomebodyElsesHouse={tm.CanSleepIn(sglHouse)} (expected False)");
+                    $"sleepAllowedInSomebodyElsesHouse={tm.CanSleepIn(sglHouse)} (expected True: at your own risk)");
                 yield return GetUp();
             }
 
@@ -713,6 +713,269 @@ namespace Gladiator.Town
         }
 
         /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
+        /// <summary>R puts the weapon away and draws it; a blow draws it; where it hangs (belt, back); the house windows.</summary>
+        IEnumerator SheathWindowsTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var pc = pl.GetComponent<PlayerController>();
+            if (pc != null) pc.enabled = false;
+            Vector3 p0 = pl.transform.position;
+            Quaternion r0 = pl.transform.rotation;
+            WeaponStats w0 = pl.CurrentWeapon != null ? pl.CurrentWeapon.Stats : WeaponLibrary.Rudis;
+            // out in the ludus yard, where the camera has room
+            Teleport(pl, town.Ludus.TransformPoint(new Vector3(0f, 0.05f, -5f)), town.Ludus.forward);
+            yield return Wait(0.4f);
+            void CleanGround() { foreach (var gw in new System.Collections.Generic.List<Weapon>(Weapon.GroundWeapons)) if (gw != null) Destroy(gw.gameObject); }
+            Log($"SHEATH start in town: sheathed={pl.Sheathed} inHand={pl.WeaponInHand} weapon={(pl.CurrentWeapon != null ? pl.CurrentWeapon.Stats.Name : "-")} fights with={pl.ActiveStats.Name}");
+            pl.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
+            pl.SetSheathed(true, true);
+            yield return HoldCam(cam, pl, 0.6f, 0.95f, 2.4f, 32f, -50f);
+            Vector3 hip = pl.CurrentWeapon.transform.position - pl.transform.position;
+            Log($"SHEATH gladius put away: sheathed={pl.Sheathed} inHand={pl.WeaponInHand} fights with={pl.ActiveStats.Name} (expected Puños) " +
+                $"hangs at height {hip.y:0.00} m, {Vector3.Dot(hip, pl.transform.right):0.00} m to the right (expected about 1.0 and -0.2: the left hip) " +
+                $"points down={Vector3.Dot(pl.CurrentWeapon.transform.forward, Vector3.down):0.00} (expected about 0.9)");
+            yield return Shot("04a_enfundada_cintura");
+            // R: draw
+            bool drew = pl.ToggleSheath();
+            yield return HoldCam(cam, pl, Fighter.SheathSeconds * 0.42f, 0.95f, 2.4f, 32f, -50f);
+            float midPhase = pl.SheathPhase;
+            float handToHip = (pl.GetComponentInChildren<Gladiator.Character.HumanoidRig>().Bones[Gladiator.Character.SomaSkeleton.RightHand].position - pl.CurrentWeapon.transform.position).magnitude;
+            yield return Shot("04b_desenfundando");
+            yield return HoldCam(cam, pl, Fighter.SheathSeconds * 0.75f, 0.95f, 2.4f, 32f, -50f);
+            Log($"SHEATH R draws: started={drew} mid phase={midPhase:0.00} hand to the grip then={handToHip:0.00} m (expected under 0.2) -> sheathed={pl.Sheathed} inHand={pl.WeaponInHand} fights with={pl.ActiveStats.Name} (expected Gladius)");
+            yield return Shot("04c_en_la_mano");
+            // R: put away again, then a blow draws it by itself
+            bool put = pl.ToggleSheath();
+            yield return HoldCam(cam, pl, Fighter.SheathSeconds + 0.2f, 0.95f, 2.4f, 32f, -50f);
+            bool away = pl.Sheathed && !pl.WeaponInHand;
+            int swings = 0;
+            System.Action<Fighter, AttackType> onSwing = (f, a) => { if (f == pl) swings++; };
+            Fighter.AnyAttackStarted += onSwing;
+            bool asked = pl.TryAttack(AttackType.Light);
+            yield return HoldCam(cam, pl, 0.12f, 0.95f, 2.4f, 32f, -50f);
+            bool drawing = pl.SheathPhase >= 0f && pl.State == FighterState.Idle;
+            float tA = Time.time;
+            while (swings == 0 && Time.time - tA < 2f) yield return null;
+            float delay = Time.time - tA + 0.12f;
+            Log($"SHEATH put away with R={put} away={away}; attack: accepted={asked} drawing first={drawing} swing started after {delay:0.00} s (expected about {Fighter.QuickDrawSeconds:0.00}) " +
+                $"with={pl.AttackStats.Name} (expected Gladius) inHand={pl.WeaponInHand} swings={swings}");
+            Fighter.AnyAttackStarted -= onSwing;
+            yield return HoldCam(cam, pl, 1.2f, 0.95f, 2.4f, 32f, -50f);
+            // two-handers, spears and the bow go across the back
+            foreach (var ws in new[] { WeaponLibrary.Greatsword, WeaponLibrary.Spear, WeaponLibrary.Bow })
+            {
+                pl.Equip(WeaponFactory.Create(ws));
+                CleanGround();
+                yield return HoldCam(cam, pl, 0.4f, 1.1f, 3.2f, 10f, 150f);
+                pl.ToggleSheath();
+                yield return HoldCam(cam, pl, Fighter.SheathSeconds * 0.45f, 1.1f, 3.2f, 10f, 150f);
+                if (ws == WeaponLibrary.Greatsword) yield return Shot("04d_guardando_mandoble");
+                yield return HoldCam(cam, pl, Fighter.SheathSeconds * 0.8f, 1.1f, 3.2f, 10f, 150f);
+                Vector3 off = pl.CurrentWeapon.transform.position - pl.transform.position;
+                Log($"SHEATH {ws.Name}: sheathed={pl.Sheathed} inHand={pl.WeaponInHand} twoHanded={pl.TwoHanded} (expected False) grip at height {off.y:0.00} m, " +
+                    $"{Vector3.Dot(off, pl.transform.forward):0.00} m forward (expected negative: on the back)");
+                yield return Shot(ws == WeaponLibrary.Greatsword ? "04e_mandoble_espalda" : ws == WeaponLibrary.Spear ? "04f_lanza_espalda" : "04g_arco_espalda");
+            }
+            pl.Equip(WeaponFactory.Create(w0));
+            CleanGround();
+            pl.SetSheathed(true, true);
+
+            // the townsfolk: guards and whoever carries a knife have it put away
+            int armedNpc = 0, awayNpc = 0;
+            CitizenNPC aGuard = null;
+            foreach (var n in town.Spawner.Active)
+            {
+                if (n.Fighter.CurrentWeapon == null) continue;
+                armedNpc++;
+                if (n.Fighter.Sheathed && !n.Fighter.WeaponInHand) awayNpc++;
+                if (n.Citizen != null && n.Citizen.Job == Job.Guardia) aGuard = n;
+            }
+            Log($"SHEATH townsfolk carrying a weapon={armedNpc} put away={awayNpc} (expected all)");
+            if (aGuard != null)
+            {
+                yield return HoldCam(cam, aGuard.Fighter, 0.5f, 0.95f, 2.6f, 32f, -50f);
+                yield return Shot("04h_guardia_enfundado");
+            }
+
+            // ---- windows: an opening with glass in the front wall of every home you can walk into
+            int homes = 0, withWindows = 0, panes = 0;
+            HouseInterior show = null;
+            foreach (var h in town.Houses)
+            {
+                if (h.Rooms.Count == 0 || h.Lot == null) continue;
+                homes++;
+                if (h.Windows.Count > 0) { withWindows++; panes += h.Windows.Count; if (show == null && h.Floor == 0 && !h.Lot.ForSale) show = h; }
+            }
+            Log($"WINDOWS homes={homes} with windows={withWindows} panes={panes}");
+            if (show != null)
+            {
+                Vector3 wc = show.Windows[0], fwd = show.transform.forward;
+                // a ray through the middle of the window: nothing but the glass in the way, and the room behind it
+                bool hitGlass = Physics.Raycast(wc + fwd * 1.5f, -fwd, out RaycastHit hg, 1.6f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
+                bool wallBeside = Physics.Raycast(wc + fwd * 1.5f + show.transform.right * 0.6f, -fwd, out RaycastHit hw, 1.6f, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
+                bool seeThrough = false;
+                foreach (var mr in FindObjectsByType<MeshRenderer>(FindObjectsSortMode.None))
+                    if (mr.sharedMaterial != null && mr.sharedMaterial.shader != null && mr.sharedMaterial.shader.name == "Gladiator/PS2_Glass") { seeThrough = mr.sharedMaterial.color.a < 0.5f || mr.sharedMaterial.GetColor("_BaseColor").a < 0.5f; break; }
+                Log($"WINDOWS house {show.Lot.Id}: pane at height {wc.y - show.transform.position.y:0.00} m, blocks the way={hitGlass} (expected True: nobody climbs in) " +
+                    $"wall next to it={wallBeside} glass material translucent={seeThrough} (expected True)");
+                // from the street
+                Teleport(pl, wc + fwd * 3.2f - Vector3.up * (wc.y - show.transform.position.y) + Vector3.up * 0.1f, fwd);
+                yield return HoldCam(cam, pl, 0.8f, 1.5f, 3.2f, 4f, 12f);
+                yield return Shot("05a_ventana_desde_fuera");
+                // from the kitchen, looking at the front wall
+                Vector3 inside = show.RoomCenter("COCINA");
+                Teleport(pl, inside, -fwd);
+                yield return Wait(0.6f);
+                yield return HoldCam(cam, pl, 0.8f, 1.5f, 2.6f, 2f, 0f);
+                yield return Shot("05b_ventana_desde_dentro");
+            }
+            Teleport(pl, p0, r0 * Vector3.forward);
+            cam.FocusOverride = null;
+            if (pc != null) pc.enabled = true;
+            yield return Wait(0.3f);
+        }
+
+        /// <summary>Asleep in somebody else's bed: the owner comes home, wakes you, gives you 15 seconds, then attacks and the
+        /// watch comes in; knocked out you wake in the infirmary a day later. Leaving in time ends it. Arena hours.</summary>
+        IEnumerator HomeOwnerTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sim = TownSimulation.Instance;
+            var tm = town.GetComponent<TownManager>();
+            var owners = town.Owners;
+            var guards = town.Guards;
+            var gm = GameManager.Instance;
+            var pc = pl.GetComponent<PlayerController>();
+            Vector3 p0 = pl.transform.position;
+            float hour0 = sim.Hour;
+            bool susp0 = guards.Suspended;
+
+            // a home that is empty at some hour and gets somebody back a little later
+            HouseInterior home = null; float arrives = -1f; CitizenData who = null;
+            foreach (var h in town.Houses)
+            {
+                if (h.Floor != 0 || !owners.Foreign(h) || !h.Furniture.Exists(f => f.Kind == Fighter.ActLie)) continue;
+                var res = HomeOwners.Residents(h);
+                if (res.Count == 0) continue;
+                for (float t = 9f; t < 21f && home == null; t += 0.25f)
+                {
+                    bool emptyBefore = true; CitizenData back = null;
+                    foreach (var c in res)
+                    {
+                        if (HomeOwners.AtHome(c, t - 0.25f) || HomeOwners.AtHome(c, t - 1.25f) || HomeOwners.AtHome(c, t - 0.75f)) emptyBefore = false;
+                        else if (HomeOwners.AtHome(c, t)) back = c;
+                    }
+                    if (emptyBefore && back != null) { home = h; arrives = t; who = back; }
+                }
+                if (home != null) break;
+            }
+            if (home == null) { Log("OWNER no home found that empties and fills again"); yield break; }
+            guards.Suspended = false;
+            sim.Hour = arrives - 1.2f;
+            var bed = home.Furniture.Find(f => f.Kind == Fighter.ActLie);
+            Teleport(pl, bed.At.position + Vector3.up * 0.1f, home.transform.forward);
+            yield return Wait(0.3f);
+            bool lay = tm.UseFurniture(bed);
+            yield return Wait(3.2f);
+            float hSleep = sim.Hour;
+            bool slept = tm.StartSleep(6);
+            float t0 = Time.time;
+            while (owners.Owner == null && Time.time - t0 < 8f)
+            {
+                cam.FocusOverride = pl.transform.position + Vector3.up * 0.6f; cam.Distance = 4.5f; cam.Pitch = 38f;
+                yield return null;
+            }
+            yield return Wait(0.4f);
+            var own = owners.Owner;
+            Log($"OWNER house {home.Lot.Id} of {who.Name} (back at {TownSimulation.Clock(arrives)}): lay={lay} canSleep={tm.CanSleepIn(home)} sleepStarted={slept} at {TownSimulation.Clock(hSleep)}; " +
+                $"woken at {TownSimulation.Clock(sim.Hour)} by={(own != null && own.Citizen != null ? own.Citizen.Name : "nobody")} stillSleeping={tm.Sleeping} (expected False) clockRate={sim.ClockRate} " +
+                $"seconds to leave={owners.TimeLeft:0.0} (expected about {HomeOwners.Grace:0})" +
+                (own != null ? $" owner {(own.transform.position - pl.transform.position).magnitude:0.0} m away, same room={(home.RoomAt(own.transform.position) == home.RoomAt(pl.transform.position))} weapon put away={(own.Fighter.CurrentWeapon == null || own.Fighter.Sheathed)}" : ""));
+            for (float t = 0f; t < 1.2f; t += Time.unscaledDeltaTime) { cam.FocusOverride = pl.transform.position + Vector3.up * 0.6f; cam.Distance = 4.5f; cam.Pitch = 38f; yield return null; }
+            yield return Shot("06a_dueno_te_despierta");
+            if (own == null) { guards.Suspended = susp0; sim.Hour = hour0; if (pl.InActivity) pl.StopActivity(); Teleport(pl, p0); cam.FocusOverride = null; yield break; }
+
+            // stay: after the 15 seconds the owner attacks and the watch is in the house
+            float tStay = Time.time;
+            while (!owners.Attacking && Time.time - tStay < HomeOwners.Grace + 6f)
+            {
+                cam.FocusOverride = pl.transform.position + Vector3.up * 0.6f; cam.Distance = 4.5f; cam.Pitch = 38f;
+                yield return null;
+            }
+            float waited = Time.time - tStay + 1.6f;
+            for (float t = 0f; t < 1.2f; t += Time.unscaledDeltaTime) { cam.FocusOverride = pl.transform.position + Vector3.up * 0.9f; cam.Distance = 5f; cam.Pitch = 42f; yield return null; }
+            int inHouse = 0;
+            foreach (var n in town.Spawner.Active)
+                if (n.Citizen != null && n.Citizen.Job == Job.Guardia && n.Controlled && home.Contains(n.transform.position)) inHouse++;
+            Log($"OWNER stayed: attacking={owners.Attacking} after {waited:0.0} s (expected about {HomeOwners.Grace:0}) outcome={owners.LastOutcome} owner's knife out={(own.Fighter.WeaponInHand)} harmless={own.Fighter.Harmless} " +
+                $"guards called={owners.GuardsCalled} fighting={guards.Fighting} (expected 2) inside the house={inHouse} hostile={(guards.Hostile != null)} playerUp={!pl.InActivity}");
+            yield return Shot("06b_dueno_ataca_y_guardias");
+            // let them at it for a moment, then the knockout: a day goes by
+            float hpA = pl.Health.Current;
+            for (float t = 0f; t < 4f; t += Time.unscaledDeltaTime) { cam.FocusOverride = pl.transform.position + Vector3.up * 0.9f; cam.Distance = 5f; cam.Pitch = 42f; yield return null; }
+            yield return Shot("06c_pelea_en_la_casa");
+            float hpB = pl.Health.Current;
+            int dayA = sim.Day; float hourA = sim.Hour;
+            pl.Health.TakeDamage(Mathf.Max(0f, pl.Health.Current - pl.Health.Max * 0.2f));
+            float tK = Time.time;
+            while ((guards.LastOutcome != "knockout" || guards.OutCold || guards.Hostile != null) && Time.time - tK < 12f) yield return null;
+            yield return Wait(1.0f);
+            var inf = town.Infirmary;
+            float passed = (sim.Day - dayA) * 24f + sim.Hour - hourA;
+            Log($"OWNER fight: player hp {hpA:0}->{hpB:0} in 4 s; knocked out: outcome={guards.LastOutcome} day {dayA}->{sim.Day} hour {TownSimulation.Clock(hourA)}->{TownSimulation.Clock(sim.Hour)} " +
+                $"hours passed={passed:0.0} (expected about {TownGuards.HoursOut:0}) inInfirmary={(inf != null && inf.Contains(pl.transform.position))} hp={pl.Health.Current:0}/{pl.Health.Max:0} guardsFighting={guards.Fighting} (expected 0)");
+            cam.FocusOverride = null;
+            yield return Shot("06d_enfermeria_un_dia_despues");
+            float tD = Time.time;
+            while (owners.Owner != null && Time.time - tD < 10f) yield return null;
+            Log($"OWNER afterwards: owner's body gone={owners.Owner == null}");
+            if (pl.InActivity) pl.StopActivity();
+            yield return Wait(2.2f);
+
+            // leaving in time: nothing happens
+            Vector3 kitchen = home.RoomCenter("COCINA");
+            Teleport(pl, kitchen, -home.transform.forward);
+            yield return Wait(0.3f);
+            bool again = owners.Confront(home, who);
+            yield return Wait(2f);
+            float left0 = owners.TimeLeft;
+            Teleport(pl, home.Door.Center + home.transform.forward * 3.5f + Vector3.up * 0.1f, home.transform.forward);
+            yield return Wait(1.5f);
+            Log($"OWNER second time: confronted={again} time left after 2 s={left0:0.0} then out of the door: outcome={owners.LastOutcome} (expected left) attacking={owners.Attacking} (expected False) guardsFighting={guards.Fighting} (expected 0)");
+            Teleport(pl, home.Door.Center + home.transform.forward * 14f + Vector3.up * 0.1f, home.transform.forward);
+            yield return Wait(1.0f);
+            Log($"OWNER walked away: owner's body gone={owners.Owner == null} (expected True)");
+
+            // ---- the arena: 8:00 to 20:00
+            bool Gate(float hour)
+            {
+                sim.Hour = hour;
+                tm.OpenArenaGate();
+                var m = Gladiator.UI.ArenaGateMenu.Instance;
+                bool open = m != null && m.IsOpen;
+                if (open) m.Close();
+                return open;
+            }
+            bool fought = gm.DayCycle.FoughtToday;
+            Log($"ARENA HOURS foughtToday={fought} gate opens at 07:30={Gate(7.5f)} (expected False) 08:00={Gate(8f)} (expected {!fought}) 13:00={Gate(13f)} (expected {!fought}) " +
+                $"19:59={Gate(19.98f)} (expected {!fought}) 20:00={Gate(20f)} (expected False) 23:00={Gate(23f)} (expected False)");
+            sim.Hour = 10f;
+            sim.AdvanceTo(Gladiator.Progression.DayCycleManager.ArenaCloses);
+            float afterFight = sim.Hour;
+            sim.Hour = 21f; sim.AdvanceTo(Gladiator.Progression.DayCycleManager.ArenaCloses);
+            Log($"ARENA HOURS a fight at 10:00 ends at {TownSimulation.Clock(afterFight)} (expected 20:00); the clock never goes back: 21:00 stays {TownSimulation.Clock(sim.Hour)}");
+
+            guards.Suspended = susp0;
+            sim.Hour = hour0;
+            pl.Health.Heal(pl.Health.Max);
+            Teleport(pl, p0);
+            if (pc != null) pc.enabled = true;
+            cam.FocusOverride = null;
+            yield return Wait(0.3f);
+        }
+
         /// <summary>Rag doll: a dummy is killed with a blow and falls with physics; the player is knocked out and comes round.</summary>
         IEnumerator RagdollTest(TownBootstrap town)
         {
@@ -1052,6 +1315,8 @@ namespace Gladiator.Town
                 yield return RagdollTest(town);
                 yield return GuardsTest(town);
                 yield return InfirmaryTest(town);
+                yield return SheathWindowsTest(town);
+                yield return HomeOwnerTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;
                 yield return ThreeStoreyTest(town);
@@ -1071,6 +1336,7 @@ namespace Gladiator.Town
                     while ((TownBootstrap.Instance == null || TownBootstrap.Instance == town) && Time.realtimeSinceStartup - tl < 30f) yield return null;
                     var t2 = TownBootstrap.Instance;
                     yield return Wait(2.5f);
+                    Log($"ARENA END the clock after the fight={TownSimulation.Clock(TownSimulation.Instance.Hour)} (expected 20:00 and a little)");
                     if (t2 != null)
                     {
                         var inf2 = t2.Infirmary;

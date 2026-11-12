@@ -199,6 +199,7 @@ namespace Gladiator.UI
                         arenaTeams = arenaKind == 1;
                         if (!coop && ns.Players.Count < 2) { note.text = "Hace falta al menos otro jugador en la sala\n(contra bots se puede jugar desde uno)."; return; }
                         if (arenaTeams && ns.ColorsInUse < 2) { note.text = "Por equipos hacen falta al menos dos colores distintos\n(cada uno elige TU COLOR en la sala)."; return; }
+                        if (!Gladiator.Progression.DayCycleManager.ArenaOpenNow) { note.text = "La arena abre de 8:00 a 20:00.\nDormid hasta la mañana (el reloj es del anfitrion)."; return; }
                         Close();
                         ns.StartArena(arenaTeams, arenaUpgrades, coop ? arenaKind - 1 : NetSession.ModePvP);
                     });

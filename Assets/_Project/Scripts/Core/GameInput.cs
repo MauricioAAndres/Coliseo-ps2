@@ -85,6 +85,9 @@ namespace Gladiator.Core
         /// <summary>Toggle walk / run: Caps Lock / gamepad L3.</summary>
         public static bool WalkTogglePressed => Bound(GameAction.Walk);
 
+        /// <summary>Put the weapon away / draw it: R / gamepad d-pad right.</summary>
+        public static bool SheathPressed => Bound(GameAction.Sheath);
+
         /// <summary>Taunt button held: after a moment it opens the taunt wheel.</summary>
         public static bool TauntHeld => BoundHeld(GameAction.Taunt);
 

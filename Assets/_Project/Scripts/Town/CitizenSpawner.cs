@@ -151,6 +151,42 @@ namespace Gladiator.Town
 
         void Give(CitizenNPC n) { n.gameObject.SetActive(false); }
 
+        /// <summary>
+        /// Gives a citizen a body at a place right now, wherever the simulation has them (the owner of a house who
+        /// finds you inside, the watch called to it). Whoever asks drives it (Controlled) until <see cref="Dismiss"/>.
+        /// </summary>
+        public CitizenNPC Summon(CitizenData c, Vector3 at, Quaternion rot)
+        {
+            if (c == null || sim == null) return null;
+            if (!active.TryGetValue(c.Id, out var body))
+            {
+                body = Take(c);
+                if (body == null)
+                {
+                    // the pool is full: the farthest body nobody is driving goes back to data
+                    int far = -1; float farD = -1f;
+                    foreach (var kv in active)
+                    {
+                        if (kv.Value.Controlled) continue;
+                        float d = Flat(kv.Value.transform.position - at);
+                        if (d > farD) { farD = d; far = kv.Key; }
+                    }
+                    if (far < 0) return null;
+                    Release(far);
+                    body = Take(c);
+                    if (body == null) return null;
+                }
+                body.Assign(c, at, sim);
+                active[c.Id] = body;
+            }
+            body.Controlled = true;
+            body.Place(at, rot);
+            return body;
+        }
+
+        /// <summary>The body goes back to the pool (its owner is data again).</summary>
+        public void Dismiss(CitizenNPC n) { if (n != null && n.Citizen != null) Release(n.Citizen.Id); }
+
         void Release(int id)
         {
             if (!active.TryGetValue(id, out var n)) return;
@@ -170,11 +206,13 @@ namespace Gladiator.Town
         {
             f.UnequipAll();
             // some grown men and women carry a knife (pugio) at the belt hand: they defend themselves with it
-            if (CitizenDefender.CarriesKnife(c)) { f.Equip(WeaponFactory.Create(WeaponLibrary.Dagger)); return; }
+            // (nobody walks the streets with a blade in the hand: it hangs from the belt)
+            if (CitizenDefender.CarriesKnife(c)) { f.Equip(WeaponFactory.Create(WeaponLibrary.Dagger)); f.SetSheathed(true, true); return; }
             if (c.Job != Job.Guardia) return;
             f.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
             var sc = ShieldLibrary.ById("scutum");
             if (sc != null) Shield.Attach(f, sc, GuardRed);
+            f.SetSheathed(true, true);
         }
 
         /// <summary>A citizen's body from their data: deterministic (same person, same face), dressed as a townsperson.</summary>

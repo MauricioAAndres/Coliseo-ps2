@@ -74,6 +74,7 @@ namespace Gladiator.Town
                 guard.Equip(WeaponFactory.Create(WeaponLibrary.Gladius));
                 var sc = ShieldLibrary.ById("scutum");
                 if (sc != null) Shield.Attach(guard, sc, CitizenSpawner.GuardRed);
+                guard.SetSheathed(true, true);
                 guard.Harmless = true;
                 guard.DisarmResistance = 1f;
                 guard.Health.SetMax(1000000f, true);

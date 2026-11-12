@@ -15,6 +15,10 @@ namespace Gladiator.Town
         public static int Active { get; private set; }
         public static string LastOutcome { get; private set; } = "";
 
+        /// <summary>Defending his own house from an intruder: he does not stop because the watch arrived.</summary>
+        [System.NonSerialized] public bool HomeDefence;
+        public bool Running => running;
+
         CitizenNPC npc;
         Fighter player;
         EnemyAI ai;
@@ -34,13 +38,15 @@ namespace Gladiator.Town
             if (d == null) d = n.gameObject.AddComponent<CitizenDefender>();
             if (d.running) { d.until = Time.time + MaxSeconds; return d; }
             d.npc = n; d.player = attacker;
+            d.HomeDefence = false;
             d.running = true;
             d.until = Time.time + MaxSeconds;
             Active++;
             n.Controlled = true;
             var f = n.Fighter;
             if (f.InActivity) f.StopActivity();
-            if (f.CurrentWeapon == null) f.Equip(WeaponFactory.Create(WeaponLibrary.Dagger));
+            if (f.CurrentWeapon == null) { f.Equip(WeaponFactory.Create(WeaponLibrary.Dagger)); f.SetSheathed(true, true); }
+            if (!f.SetSheathed(false, false, Fighter.QuickDrawSeconds) && f.Sheathed) f.SetSheathed(false, true); // knife out
             f.Harmless = false;
             f.DamageMultiplier = 0.45f;
             d.ai = n.GetComponent<EnemyAI>();
@@ -60,14 +66,15 @@ namespace Gladiator.Town
             if (npc == null || npc.Citizen == null || player == null || !npc.Fighter.IsAlive) { End("gone", ""); return; }
             var guards = TownGuards.Instance;
             // the watch is here: it is their business now
-            if (guards != null && guards.Hostile != null) { End("guard", "¡LA GUARDIA SE OCUPA!"); return; }
+            if (!HomeDefence && guards != null && guards.Hostile != null) { End("guard", "¡LA GUARDIA SE OCUPA!"); return; }
             var sp = CitizenSpawner.Instance;
-            if (sp != null)
+            if (sp != null && !HomeDefence)
                 foreach (var g in sp.Active)
                     if (g != npc && g.Citizen != null && g.Citizen.Job == Job.Guardia && g.gameObject.activeInHierarchy &&
                         (Flat(g.transform.position - transform.position) < GuardNear || Flat(g.transform.position - player.transform.position) < GuardNear))
                     { End("guard", "LLEGA LA GUARDIA: " + npc.Citizen.Name.ToUpperInvariant() + " GUARDA EL CUCHILLO"); return; }
             if (Flat(player.transform.position - transform.position) > GiveUpDistance) { End("away", ""); return; }
+            if (player.KnockedOut) { End("away", ""); return; }
             if (player.Health.Normalized <= 0.3f) { End("lesson", npc.Citizen.Name.ToUpperInvariant() + ": ¡QUE TE SIRVA DE LECCION!"); return; }
             if (Time.time > until) { End("time", ""); return; }
         }
@@ -88,6 +95,7 @@ namespace Gladiator.Town
                 f.SetBlock(false);
                 f.Move(Vector3.zero);
                 f.Health.SetMax(1000000f, true);
+                if (!f.SetSheathed(true) && !f.Sheathed) f.SetSheathed(true, true); // the knife back in the belt
                 npc.Controlled = false;
                 if (npc.Citizen != null && player != null && outcome != "guard") npc.Flee(player.transform.position, 4f);
             }

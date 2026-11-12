@@ -38,6 +38,8 @@ namespace Gladiator.Town
         public GameObject SaleSign;
         /// <summary>The hearth's light: on only while the player is in this storey.</summary>
         public readonly List<Light> Lights = new List<Light>();
+        /// <summary>The middle of each front window (world): an opening in the wall with glass.</summary>
+        public readonly List<Vector3> Windows = new List<Vector3>();
         /// <summary>One entry per bed placed (tests: never two in one bedroom).</summary>
         public readonly List<string> Beds = new List<string>();
 

@@ -67,7 +67,7 @@ namespace Gladiator.Town
             }
             var npc = r.Target.GetComponent<CitizenNPC>();
             if (npc == null || npc.Citizen == null) return;
-            if (npc == Hostile) { guardDamage += r.Damage; return; }
+            if (npc == Hostile || backups.Contains(npc)) { guardDamage += r.Damage; return; }
             bool guard = npc.Citizen.Job == Job.Guardia;
             Offence(guard ? "¡NO SE GOLPEA A UN GUARDIA!" : "¡NO GOLPEES A LA GENTE!");
         }
@@ -116,23 +116,89 @@ namespace Gladiator.Town
             return best;
         }
 
-        void StartFight(CitizenNPC g, string shout)
+        /// <summary>More guards fighting next to <see cref="Hostile"/> (called to a house).</summary>
+        readonly System.Collections.Generic.List<CitizenNPC> backups = new System.Collections.Generic.List<CitizenNPC>();
+        public int Fighting => (Hostile != null ? 1 : 0) + backups.Count;
+
+        // a guard goes for the player: gladius out, no longer harmless
+        static void Rouse(CitizenNPC g)
         {
-            ReleaseWarner();
-            Hostile = g;
             g.Controlled = true;
             var f = g.Fighter;
             f.Harmless = false;
             f.DamageMultiplier = 0.6f;
             f.Health.SetMax(1000000f, true);
             if (f.InActivity) f.StopActivity();
+            if (!f.SetSheathed(false, false, Fighter.QuickDrawSeconds) && f.Sheathed) f.SetSheathed(false, true);
             var ai = g.GetComponent<EnemyAI>();
             if (ai == null) ai = g.gameObject.AddComponent<EnemyAI>();
             ai.TauntChance = 0.1f;
             ai.enabled = true;
+        }
+
+        // ...and stands down: the gladius back in the belt
+        static void Calm(CitizenNPC g)
+        {
+            if (g == null) return;
+            var ai = g.GetComponent<EnemyAI>();
+            if (ai != null) Destroy(ai);
+            var f = g.Fighter;
+            f.Harmless = true;
+            f.DamageMultiplier = 1f;
+            f.SetBlock(false);
+            f.Move(Vector3.zero);
+            f.Health.SetMax(1000000f, true);
+            if (!f.SetSheathed(true) && !f.Sheathed) f.SetSheathed(true, true);
+            g.Controlled = false;
+        }
+
+        void StartFight(CitizenNPC g, string shout)
+        {
+            ReleaseWarner();
+            Hostile = g;
+            Rouse(g);
             guardDamage = 0f;
             lostTimer = 0f;
             Say(shout, 3.5f);
+        }
+
+        /// <summary>
+        /// The watch is called into a house (its owner found the player inside and the player would not leave): up to
+        /// two guards turn up at the given places, swords drawn, no warnings. Returns how many came.
+        /// </summary>
+        public int CallToHouse(HouseInterior h, System.Collections.Generic.List<Vector3> spots)
+        {
+            var sp = CitizenSpawner.Instance;
+            var sim = TownSimulation.Instance;
+            if (sp == null || sim == null || h == null || player == null) return 0;
+            if (spots == null) spots = new System.Collections.Generic.List<Vector3>();
+            Vector3 door = HomeOwners.DoorSpot(h);
+            if (spots.Count == 0) spots.Add(door);
+            if (spots.Count == 1) spots.Add(Vector3.Lerp(spots[0], door, 0.5f) + h.transform.right * 0.6f);
+            // the guards with a body nearest the house first, then the rest of the watch
+            var watch = sim.Citizens.FindAll(c => c.Job == Job.Guardia);
+            float Dist(CitizenData c)
+            {
+                foreach (var n in sp.Active) if (n.Citizen == c) return Flat(n.transform.position - door);
+                return 1000f + c.Id;
+            }
+            watch.Sort((a, b) => Dist(a).CompareTo(Dist(b)));
+            int came = 0;
+            foreach (var c in watch)
+            {
+                if (came >= 2) break;
+                if (Hostile != null && Hostile.Citizen == c) continue;
+                Vector3 at = spots[came];
+                Vector3 look = player.transform.position - at; look.y = 0f;
+                var g = sp.Summon(c, at, look.sqrMagnitude > 0.01f ? Quaternion.LookRotation(look) : h.transform.rotation);
+                if (g == null) continue;
+                if (Hostile == null) StartFight(g, GuardName(g) + ": ¡ALTO, LADRON! ¡EN GUARDIA!");
+                else { Rouse(g); backups.Add(g); }
+                came++;
+            }
+            Warnings = MaxWarnings;
+            Debug.Log("[GUARDS] called to house " + h.Lot.Id + ": " + came + " came");
+            return came;
         }
 
         void EndFight(string outcome, string message)
@@ -142,17 +208,16 @@ namespace Gladiator.Town
             LastOutcome = outcome;
             if (g != null)
             {
-                var ai = g.GetComponent<EnemyAI>();
-                if (ai != null) Destroy(ai);
-                var f = g.Fighter;
-                f.Harmless = true;
-                f.DamageMultiplier = 1f;
-                f.SetBlock(false);
-                f.Move(Vector3.zero);
-                f.Health.SetMax(1000000f, true);
-                g.Controlled = false;
+                Calm(g);
                 if (outcome == "yield") g.Flee(player.transform.position, 6f);
             }
+            foreach (var b in backups)
+            {
+                if (b == null) continue;
+                Calm(b);
+                if (outcome == "yield") b.Flee(player.transform.position, 6f);
+            }
+            backups.Clear();
             Say(message, 5f);
         }
 
@@ -229,6 +294,8 @@ namespace Gladiator.Town
             else Wake();
         }
 
+        /// <summary>Game hours that go by before you wake up in the infirmary.</summary>
+        public const float HoursOut = 24f;
         /// <summary>How long you lie on the street before waking up elsewhere.</summary>
         public const float OutSeconds = 2.8f;
         /// <summary>Lying knocked out right now (tests).</summary>
@@ -247,7 +314,13 @@ namespace Gladiator.Town
             player.WakeUp(0f);
             Vector3 at;
             string where = town.WakeUpAfterBeating(out at);
-            Say("TE DEJARON INCONSCIENTE... despiertas " + where, 6f);
+            // a whole day goes by before you come round (online the clock is the host's)
+            var sim = TownSimulation.Instance;
+            var net = Gladiator.Net.NetSession.Instance;
+            bool guest = net != null && net.InGame && !net.IsHost;
+            bool dayLost = sim != null && !guest;
+            if (dayLost) sim.AdvanceHours(HoursOut);
+            Say("TE DEJARON INCONSCIENTE... despiertas " + where + (dayLost ? ", UN DIA DESPUES" : ""), 6f);
         }
 
         static float Flat(Vector3 v) { v.y = 0f; return v.magnitude; }
