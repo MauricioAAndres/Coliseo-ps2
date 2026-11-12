@@ -300,6 +300,7 @@ namespace Gladiator.Town
             Carpenter = CarpenterNPC.Spawn(this);
             SpawnArmorers();
             Services = gameObject.AddComponent<TownServices>();
+            TownProps.Spawn(this);
             Hud.TrackHealth(Player);
             // the furniture bought for the houses you own
             foreach (var h in Houses)
@@ -701,6 +702,7 @@ namespace Gladiator.Town
         public void Init(TownBootstrap t, PlayerController controller)
         {
             town = t; pc = controller;
+            TownProp.OnBroken = PropBroken;
             if (TownSimulation.Instance != null) TownSimulation.Instance.HourChanged += OnHour;
             town.Hud.Shop.Closed += () => { if (pc != null) pc.enabled = true; };
         }
@@ -734,6 +736,12 @@ namespace Gladiator.Town
         void OnNet(int from, string type, string payload)
         {
             if (type == "HB" && town != null && town.Houses != null) { OnHouseNet(payload); return; }
+            if (type == "PB")
+            {
+                // another player smashed that crate or jar
+                if (int.TryParse(payload, out int pid)) { var bp = TownProp.Find(pid); if (bp != null) bp.Break(null, true); }
+                return;
+            }
             if (type == "SL" || type == "SLE")
             {
                 // the host put everybody to sleep / woke everybody up
@@ -768,6 +776,20 @@ namespace Gladiator.Town
                 if (d.magnitude < bd) { bd = d.magnitude; best = lot; }
             }
             return best;
+        }
+
+        /// <summary>A crate or a jar was smashed: now and then there were a few coins in it; online the others see it break.</summary>
+        void PropBroken(TownProp prop, Fighter by, bool fromNet)
+        {
+            if (fromNet) return;
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net != null && net.InGame) net.Send("PB", prop.Id.ToString());
+            if (town == null || by == null || by != town.Player) return;
+            var gm = GameManager.Instance;
+            if (gm == null || Random.value > 0.3f) return;
+            int coins = Random.Range(1, 6);
+            gm.Profile.AddDenarii(coins);
+            town.Hud.ShowMessage("HABIA " + coins + (coins == 1 ? " DENARIO" : " DENARIOS") + " DENTRO", 2.5f);
         }
 
         public void OpenShop()
@@ -847,6 +869,13 @@ namespace Gladiator.Town
             // on a bed, a chair, at the altar: E gets up
             var pl = town.Player;
             if (pl.KnockedOut) { town.Hud.SetPrompt(""); return; } // out cold: nothing to do
+            if (pl.Carried != null)
+            {
+                // arms full: put it down or throw it
+                town.Hud.SetPrompt(key + "SOLTAR " + pl.Carried.Noun + "      ATACAR: LANZAR");
+                if (GameInput.InteractPressed) pl.Carried.Drop();
+                return;
+            }
             // the baths and the basilica (bathing, the scribe's counter)
             if (town.Services != null && town.Services.Handle(p, key)) return;
             if (pl.InActivity && pl.OnFurniture)
@@ -944,6 +973,14 @@ namespace Gladiator.Town
             {
                 town.Hud.SetPrompt(key + "HABLAR CON EL PRESO");
                 if (GameInput.InteractPressed) town.Hud.ShowMessage(pr.Talk(), 4.5f);
+                return;
+            }
+            // a crate or a jar right in front: pick it up
+            var nearProp = TownProp.Nearest(p + pl.transform.forward * 0.45f, 0.75f);
+            if (nearProp != null && (pl.State == FighterState.Idle || pl.State == FighterState.Blocking))
+            {
+                town.Hud.SetPrompt(key + "LEVANTAR " + nearProp.Noun + "      GOLPEAR: ROMPER");
+                if (GameInput.InteractPressed) nearProp.PickUp(pl);
                 return;
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;

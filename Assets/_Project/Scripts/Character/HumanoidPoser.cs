@@ -698,6 +698,7 @@ namespace Gladiator.Character
         /// </summary>
         float guardBlend;
 
+        float carryBlend;
         void AttachProps(Transform body)
         {
             var b = Rig.Bones;
@@ -705,6 +706,14 @@ namespace Gladiator.Character
             // 0..1 while the fighter holds a guard up (smoothed): the blade stands up, the shield comes in front
             bool guarding = Fighter != null && Fighter.State == FighterState.Blocking;
             guardBlend = Mathf.MoveTowards(guardBlend, guarding ? 1f : 0f, Time.deltaTime * 9f);
+            // arms full: both hands hold the crate or jar carried in front of the chest
+            var load = Fighter != null ? Fighter.Carried : null;
+            carryBlend = Mathf.MoveTowards(carryBlend, load != null ? 1f : 0f, Time.deltaTime * 6f);
+            if (load != null && carryBlend > 0.01f)
+            {
+                ReachArm(true, load.GripPoint(true), body.right * 0.8f - body.up * 0.5f - body.forward * 0.2f, carryBlend);
+                ReachArm(false, load.GripPoint(false), -body.right * 0.8f - body.up * 0.5f - body.forward * 0.2f, carryBlend);
+            }
             // putting the weapon away / drawing it: the hand goes to the belt (or over the shoulder) and comes back
             Weapon carried = Fighter != null ? Fighter.CurrentWeapon : null;
             Vector3 sheathPos = default, offPos = default;

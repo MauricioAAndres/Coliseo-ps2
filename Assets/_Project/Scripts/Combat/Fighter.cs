@@ -131,7 +131,10 @@ namespace Gladiator.Combat
         float sheathT = -1f, sheathDur = SheathSeconds;
 
         /// <summary>R: puts the weapon away, or draws it.</summary>
-        public bool ToggleSheath() => SetSheathed(!Sheathed);
+        public bool ToggleSheath() => Carried == null && SetSheathed(!Sheathed);
+
+        /// <summary>The crate or jar carried in both arms (attacking throws it).</summary>
+        public TownProp Carried;
 
         /// <summary>
         /// Puts the weapons away or draws them (a short movement: the hand goes to the belt or over the shoulder; the
@@ -579,6 +582,7 @@ namespace Gladiator.Combat
         public bool TryAttack(AttackType type)
         {
             if (!IsAlive) return false;
+            if (Carried != null) { Carried.Throw(); return false; } // arms full: the blow hurls what you carry
             // the weapon is put away: the blow draws it first (quickly) and then lands
             if (type != AttackType.Kick && CurrentWeapon != null && (state == FighterState.Idle || state == FighterState.Blocking) && !InAir)
             {
@@ -1163,6 +1167,19 @@ namespace Gladiator.Combat
             Collider[] cols = Physics.OverlapSphere(origin, searchRadius, Ragdoll.WorldMask, QueryTriggerInteraction.Ignore);
             foreach (var c in cols)
             {
+                var prop = c.GetComponent<TownProp>();
+                if (prop != null)
+                {
+                    // crates and jars take the blow too
+                    Vector3 tp = prop.transform.position - transform.position;
+                    if (Mathf.Abs(tp.y) > vertical + 0.4f) continue;
+                    tp.y = 0f;
+                    if (tp.magnitude - Radius - prop.Size.x * 0.5f > reach) continue;
+                    if (tp.sqrMagnitude > 0.0001f && Vector3.Angle(transform.forward, tp) > arc * 0.5f) continue;
+                    float pd = (attackType == AttackType.Light ? s.LightDamage : attackType == AttackType.Kick ? KickDamage : s.HeavyDamage) * DamageMultiplier;
+                    prop.Hit(this, pd, tp.sqrMagnitude > 0.0001f ? tp.normalized : transform.forward);
+                    continue;
+                }
                 var f = c.GetComponentInParent<Fighter>();
                 if (f == null || f == this || !f.IsAlive || hitThisSwing.Contains(f)) continue;
                 if (f.TeamId == TeamId) continue;

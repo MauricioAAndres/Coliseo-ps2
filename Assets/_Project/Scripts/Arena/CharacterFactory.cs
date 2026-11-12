@@ -82,6 +82,7 @@ namespace Gladiator.Arena
             cc.height = Mathf.Max(1.5f, m.H + 0.05f);
             cc.radius = 0.4f;
             cc.center = new Vector3(0, cc.height * 0.5f, 0);
+            root.AddComponent<PropPusher>(); // walking into crates and jars shoves them
             cc.stepOffset = 0.3f;
             cc.skinWidth = 0.04f;
             cc.slopeLimit = 50f;

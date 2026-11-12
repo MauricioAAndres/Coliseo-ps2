@@ -715,6 +715,96 @@ namespace Gladiator.Town
 
         /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
         /// <summary>The baths (a paid bath: health back, a bonus for the arena) and the basilica (fines, wagers, the day's errands).</summary>
+        /// <summary>Crates and jars: scattered about, shoved by walking, picked up, thrown, smashed.</summary>
+        IEnumerator PropsTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var pc = pl.GetComponent<PlayerController>();
+            Vector3 p0 = pl.transform.position;
+            int crates = 0, jars = 0, sunk = 0;
+            yield return Wait(1.5f);
+            foreach (var o in TownProp.All) { if (o.Type == TownProp.Kind.Crate) crates++; else jars++; if (o.transform.position.y < -0.5f || o.transform.position.y > 1.2f) sunk++; }
+            Log($"PROPS scattered: indoors={TownProps.Indoors} outdoors={TownProps.Outdoors} crates={crates} jars={jars} odd height={sunk} (expected 0)");
+            // one outdoors and one indoors, as the town has them
+            TownProp outP = null, inP = null;
+            foreach (var o in TownProp.All) { bool ins = town.HouseAt(o.transform.position) != null; if (ins && inP == null) inP = o; if (!ins && outP == null) outP = o; }
+            if (outP != null)
+            {
+                var lot = town.Layout.Lots[0]; float bd = 1e9f;
+                foreach (var l in town.Layout.Lots) { float d = (l.Center - outP.transform.position).sqrMagnitude; if (d < bd) { bd = d; lot = l; } }
+                Vector3 away = outP.transform.position - lot.Center; away.y = 0f; away.Normalize();
+                Teleport(pl, outP.transform.position + away * 2.4f + Vector3.up * 0.1f, -away);
+                yield return Wait(1.2f);
+                yield return Shot("05a_cajas_fuera");
+            }
+            if (inP != null)
+            {
+                var h = town.HouseAt(inP.transform.position);
+                Teleport(pl, h.transform.position + Vector3.up * 0.2f, inP.transform.position - h.transform.position);
+                yield return Wait(1.5f);
+                yield return Shot("05b_cajas_dentro");
+            }
+            // an open stretch of the plaza
+            Vector3 at = town.Layout.Fountain + new Vector3(5f, 0.1f, 5f), fwd = Vector3.right;
+            Teleport(pl, at, fwd);
+            pc.enabled = false;
+            var root = new GameObject("TestProps").transform;
+            var crate = TownProp.Create(root, TownProp.Kind.Crate, 9001, at + fwd * 1.3f, 0f, 1f);
+            yield return Wait(0.8f);
+            Vector3 c0 = crate.transform.position;
+            for (float t = 0f; t < 1.4f; t += Time.deltaTime) { pl.SetFacing(fwd); pl.Move(fwd); yield return null; }
+            pl.Move(Vector3.zero);
+            yield return Wait(0.4f);
+            float pushed = Vector3.Dot(crate.transform.position - c0, fwd);
+            Log($"PROPS push: the crate moved {pushed:0.00} m walking into it (expected over 0.5)");
+            string prompt0 = "";
+            pc.enabled = true;
+            yield return Wait(0.3f);
+            bool picked = crate.PickUp(pl);
+            yield return Wait(0.7f);
+            bool carried = pl.Carried == crate;
+            float hold = crate.transform.position.y - pl.transform.position.y;
+            cam.Yaw = Quaternion.LookRotation(-fwd + Vector3.forward * 0.8f).eulerAngles.y;
+            yield return Wait(0.3f);
+            yield return Shot("05c_caja_en_brazos");
+            Vector3 t0 = crate.transform.position;
+            pl.TryAttack(AttackType.Light);
+            yield return Wait(1.6f);
+            bool crateAlive = crate != null && !crate.Broken;
+            float flew = crateAlive ? Vector3.Dot(crate.transform.position - t0, fwd) : -1f;
+            Log($"PROPS carry: picked={picked} carried={carried} held {hold:0.00} m up (expected about 1); thrown: carried after={(pl.Carried != null)} (expected False) flew {flew:0.0} m intact={crateAlive}");
+            if (!crateAlive) { crate = TownProp.Create(root, TownProp.Kind.Crate, 9002, pl.transform.position + fwd * 1.2f, 0f, 1f); yield return Wait(0.6f); }
+            // smash it
+            Teleport(pl, crate.transform.position - fwd * 1.0f - Vector3.up * crate.transform.position.y + Vector3.up * 0.1f, fwd);
+            yield return Wait(0.4f);
+            int money = GameManager.Instance.Profile.Denarii;
+            float tb = Time.time; int swings = 0;
+            while (crate != null && !crate.Broken && Time.time - tb < 12f)
+            {
+                pl.SetFacing(crate.transform.position - pl.transform.position);
+                if (pl.State == FighterState.Idle && pl.TryAttack(AttackType.Light)) swings++;
+                yield return null;
+                if (swings == 2 && crate != null) { /* mid-way picture */ }
+            }
+            yield return Wait(0.25f);
+            yield return Shot("05d_caja_rota");
+            Log($"PROPS smash: crate broken={(crate == null || crate.Broken)} (expected True) after {swings} swings in {Time.time - tb:0.0} s; coins {money}->{GameManager.Instance.Profile.Denarii}");
+            // a jar thrown shatters where it lands
+            yield return Wait(0.8f);
+            var jar = TownProp.Create(root, TownProp.Kind.Jar, 9003, pl.transform.position + fwd * 1.0f, 0f, 1f);
+            yield return Wait(0.6f);
+            bool jp = jar.PickUp(pl);
+            yield return Wait(0.5f);
+            yield return Shot("05e_jarron_en_brazos");
+            pl.TryAttack(AttackType.Light);
+            yield return Wait(1.8f);
+            Log($"PROPS jar: picked={jp} shattered on landing={(jar == null || jar.Broken)} (expected True) player armed again can attack={(pl.Carried == null)}");
+            Destroy(root.gameObject);
+            Teleport(pl, p0);
+            yield return Wait(0.3f);
+        }
+
         IEnumerator ServicesTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -1497,6 +1587,7 @@ namespace Gladiator.Town
                 yield return InfirmaryTest(town);
                 yield return SheathWindowsTest(town);
                 yield return HomeOwnerTest(town);
+                yield return PropsTest(town);
                 yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;

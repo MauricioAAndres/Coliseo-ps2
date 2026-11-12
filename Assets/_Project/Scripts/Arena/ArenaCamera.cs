@@ -149,7 +149,7 @@ namespace Gladiator.Arena
             {
                 var c = occHits[i].collider;
                 if (c == null || occHits[i].distance <= 0f) continue;
-                if (c.GetComponentInParent<Fighter>() != null || c.GetComponentInParent<Weapon>() != null) continue;
+                if (c.attachedRigidbody != null || c.GetComponentInParent<Fighter>() != null || c.GetComponentInParent<Weapon>() != null) continue;
                 return true;
             }
             return false;
@@ -257,7 +257,7 @@ namespace Gladiator.Arena
                 float nearest = len;
                 foreach (var h in hits)
                 {
-                    if (h.collider.GetComponentInParent<Fighter>() != null) continue;
+                    if (h.collider.attachedRigidbody != null || h.collider.GetComponentInParent<Fighter>() != null) continue;
                     if (h.distance > 0f && h.distance < nearest) nearest = h.distance;
                 }
                 boom = ShoulderDistance * Mathf.Clamp01(nearest / len);
