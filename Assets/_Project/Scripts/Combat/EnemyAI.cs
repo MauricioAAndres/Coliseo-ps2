@@ -201,8 +201,12 @@ namespace Gladiator.Combat
                 self.TryTraverse(d);
         }
 
+        /// <summary>Goes for this fighter and nobody else (a brawler picking on the player in town).</summary>
+        [System.NonSerialized] public Fighter OnlyTarget;
+
         Fighter FindTarget()
         {
+            if (OnlyTarget != null) return OnlyTarget.IsAlive ? OnlyTarget : null;
             Fighter best = null;
             float bestD = float.MaxValue;
             foreach (var f in Fighter.All)

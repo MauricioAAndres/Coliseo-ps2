@@ -2,6 +2,7 @@ using System.Collections;
 using System.IO;
 using Gladiator.Combat;
 using Gladiator.Core;
+using Gladiator.Progression;
 using Gladiator.Training;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -713,6 +714,185 @@ namespace Gladiator.Town
         }
 
         /// <summary>Town watch: two warnings (a blow to a townsperson, walking into a house), the third offence = a fight, then the knockout.</summary>
+        /// <summary>The baths (a paid bath: health back, a bonus for the arena) and the basilica (fines, wagers, the day's errands).</summary>
+        IEnumerator ServicesTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sim = TownSimulation.Instance;
+            var sv = town.Services;
+            var guards = town.Guards;
+            var prof = GameManager.Instance.Profile;
+            var pc = pl.GetComponent<PlayerController>();
+            Vector3 p0 = pl.transform.position;
+            float hour0 = sim.Hour;
+            bool susp0 = guards.Suspended;
+            int money0 = prof.Denarii;
+            guards.Suspended = true;
+            if (sv == null || sv.Baths == null || sv.Forum == null) { Log($"SERVICES missing: services={(sv != null)} baths={(sv != null && sv.Baths != null)} forum={(sv != null && sv.Forum != null)}"); yield break; }
+            prof.AddDenarii(500);
+            int money = prof.Denarii;
+            Vector3 lookAlong = Vector3.zero;
+            void Look(float h, float dist, float pitch) { cam.FocusOverride = pl.transform.position + Vector3.up * h; cam.Distance = dist; cam.Pitch = pitch; if (lookAlong.sqrMagnitude > 0.01f) cam.Yaw = Quaternion.LookRotation(lookAlong).eulerAngles.y; }
+            IEnumerator Hold(float s, float h, float dist, float pitch) { for (float t = 0f; t < s; t += Time.unscaledDeltaTime) { Look(h, dist, pitch); yield return null; } }
+
+            // ---- the baths
+            var b = sv.Baths;
+            Log($"SERVICES baths lot {b.Lot.Id} {b.Lot.Width:0.0} x {b.Lot.Depth:0.0} m public={b.Public} poolSeats={b.PoolSpots.Count} keeper={(sv.BathKeeper != null ? sv.BathKeeper.Name : "-")} " +
+                $"keeperInside={(sv.BathKeeper != null && b.Contains(sv.BathKeeper.transform.position))} roofHidesInside={(b.Upper != null)}");
+            sim.Hour = 15f;
+            lookAlong = -b.transform.forward;
+            Teleport(pl, b.PoolStand + Vector3.up * 0.1f, -b.transform.forward);
+            yield return Hold(0.8f, 1.0f, 6f, 40f);
+            yield return Shot("07a_termas_interior");
+            pl.Health.TakeDamage(pl.Health.Current - pl.Health.Max * 0.4f);
+            float hp0 = pl.Health.Normalized, h0 = sim.Hour;
+            bool inBaths = b.Contains(pl.transform.position);
+            bool started = sv.TryBath();
+            yield return Hold(2.6f, 0.6f, 4.5f, 35f);
+            bool sitting = pl.InActivity && pl.OnFurniture;
+            float inWater = (pl.transform.position - b.PoolCenter).magnitude;
+            yield return Shot("07b_en_la_piscina");
+            float tB = Time.time;
+            while (sv.Bathing && Time.time - tB < 6f) { Look(0.6f, 4.5f, 35f); yield return null; }
+            yield return Hold(1.2f, 0.8f, 4.5f, 35f);
+            Log($"BATH inBaths={inBaths} started={started} sitting in the pool={sitting} ({inWater:0.0} m from its middle) paid={money - prof.Denarii} (expected {Boons.BathPrice}) " +
+                $"hp {hp0:0.00}->{pl.Health.Normalized:0.00} (expected about +{Boons.BathHeal:0.00}) hours {h0:0.0}->{sim.Hour:0.0} (expected about +1) clockRate={sim.ClockRate} " +
+                $"bonus waiting={Boons.Bathed} (expected True) out of the water={!pl.InActivity} controller={(pc == null || pc.enabled)}");
+            // the bonus in the arena: a dummy with the player's numbers
+            {
+                var d = Gladiator.Arena.CharacterFactory.Create("Prueba", new Gladiator.Arena.GladiatorLook { Tunic = Color.gray, Skin = new Color(0.8f, 0.6f, 0.45f) }, pl.transform.position + Vector3.up * 30f, Quaternion.identity, 7);
+                d.Health.SetMax(100f, true); d.MoveSpeed = 4.6f;
+                Boons.ApplyArena(d);
+                Log($"BATH bonus in the arena: health 100->{d.Health.Max:0} (expected {100f * Boons.BathHealth:0}) speed 4,60->{d.MoveSpeed:0.00} (expected {4.6f * Boons.BathSpeed:0.00})");
+                Destroy(d.gameObject);
+            }
+            money = prof.Denarii;
+
+            // ---- the basilica
+            var fo = sv.Forum;
+            Log($"SERVICES basilica lot {fo.Lot.Id} {fo.Lot.Width:0.0} x {fo.Lot.Depth:0.0} m public={fo.Public} scribe={(sv.Scribe != null ? sv.Scribe.Name : "-")} " +
+                $"scribeInside={(sv.Scribe != null && fo.Contains(sv.Scribe.transform.position))} counterInside={fo.Contains(fo.CounterFront)}");
+            lookAlong = -fo.transform.forward;
+            Teleport(pl, fo.CounterFront + Vector3.up * 0.1f, -fo.transform.forward);
+            yield return Hold(1.0f, 1.3f, 2.8f, 38f);
+            bool handled = sv.Handle(pl.transform.position, "[E] ");
+            yield return Shot("07c_basilica_interior");
+            sv.OpenScribe();
+            yield return Wait(0.4f);
+            bool menu = Gladiator.UI.ChoiceMenu.Instance != null && Gladiator.UI.ChoiceMenu.Instance.IsOpen;
+            yield return Shot("07d_menu_del_escriba");
+            if (menu) Gladiator.UI.ChoiceMenu.Instance.Close();
+            yield return Wait(0.3f);
+            Log($"SCRIBE at the counter: prompt={handled} menu opens={menu} offers={TownServices.Offers.Count}");
+            // fines
+            lookAlong = Vector3.zero;
+            guards.Suspended = false;
+            Teleport(pl, town.Layout.Fountain + new Vector3(3f, 0.1f, 3f));
+            yield return Wait(1.0f);
+            guards.Offence("PRUEBA");
+            int warned = guards.Warnings;
+            int mF = prof.Denarii;
+            bool paidFine = sv.PayFine();
+            Log($"FINE warnings={warned} paid={paidFine} cost={mF - prof.Denarii} (expected {warned * TownServices.FinePerWarning}) warnings now={guards.Warnings} (expected 0) nothing owed pays={sv.PayFine()} (expected False)");
+            guards.Suspended = true;
+            // wagers
+            int mW = prof.Denarii;
+            bool bet = sv.PlaceWager(50), twice = sv.PlaceWager(25);
+            int afterBet = prof.Denarii;
+            Boons.SettleArena(prof, true);
+            int afterWin = prof.Denarii;
+            sv.PlaceWager(100);
+            Boons.SettleArena(prof, false);
+            Log($"WAGER placed={bet} a second one={twice} (expected False) staked={mW - afterBet} (expected 50) won: +{afterWin - afterBet} (expected 100) lost 100: {prof.Denarii - afterWin} (expected -100) " +
+                $"result kept for the town={Boons.LastWagerResult} (expected -100) bath bonus spent={!Boons.Bathed} (expected True)");
+            Boons.LastWagerResult = 0;
+
+            // ---- errands
+            sim.Hour = 10f;
+            sv.EnsureOffers();
+            string list = "";
+            foreach (var e in TownServices.Offers) list += " [" + e.Kind + " " + e.Reward + ": " + e.Title + "]";
+            Log("ERRANDS today:" + list);
+            foreach (var e in new System.Collections.Generic.List<Errand>(TownServices.Offers))
+            {
+                int mE = prof.Denarii;
+                bool took = sv.Accept(e);
+                yield return Wait(0.3f);
+                var target = sv.ErrandTarget();
+                Errand other = null;
+                foreach (var x in TownServices.Offers) if (x != e && !x.Done) other = x;
+                bool second = other != null && sv.Accept(other);
+                if (!took || !target.HasValue) { Log($"ERRAND {e.Kind}: taken={took} target={target.HasValue}"); continue; }
+                if (e.Kind == ErrandKind.Parcel)
+                {
+                    Teleport(pl, target.Value + Vector3.up * 0.1f + town.HouseOfLot(e.LotId).transform.forward * 6f);
+                    yield return Hold(0.8f, 1.6f, 7f, 14f);
+                    yield return Shot("07e_encargo_paquete_luz");
+                    bool early = TownServices.Active == null;
+                    Teleport(pl, target.Value + Vector3.up * 0.1f);
+                    yield return Wait(0.6f);
+                    Log($"ERRAND parcel: {e.Title} taken={took} another at once={second} (expected False) done before arriving={early} (expected False) at the door: outcome={sv.LastErrandOutcome} (expected done) paid={prof.Denarii - mE} (expected {e.Reward})");
+                }
+                else if (e.Kind == ErrandKind.Message)
+                {
+                    Teleport(pl, target.Value + Vector3.up * 0.1f + new Vector3(1.2f, 0f, 0.8f));
+                    float tM = Time.time; bool body = false;
+                    while (Time.time - tM < 8f && !body)
+                    {
+                        foreach (var n in town.Spawner.Active) if (n.Citizen != null && n.Citizen.Id == e.CitizenId) body = true;
+                        yield return null;
+                    }
+                    var tgt = sv.ErrandTarget();
+                    bool farTry = false;
+                    string prompt = sv.IdlePrompt;
+                    if (tgt.HasValue)
+                    {
+                        Teleport(pl, tgt.Value + Vector3.up * 0.1f + new Vector3(6f, 0f, 0f));
+                        yield return Wait(0.2f);
+                        farTry = sv.TryDeliver();
+                        tgt = sv.ErrandTarget();
+                        Teleport(pl, tgt.Value + Vector3.up * 0.1f + new Vector3(1.3f, 0f, 0.4f));
+                        yield return Hold(0.5f, 1.2f, 5f, 16f);
+                        yield return Shot("07f_encargo_recado");
+                    }
+                    bool gave = sv.TryDeliver();
+                    Log($"ERRAND message: {e.Title} taken={took} recipient has a body={body} from 6 m={farTry} (expected False) next to them={gave} outcome={sv.LastErrandOutcome} (expected done) paid={prof.Denarii - mE} (expected {e.Reward}) prompt='{prompt}'");
+                }
+                else if (e.Kind == ErrandKind.Drunk)
+                {
+                    var dr = sv.Drunk;
+                    if (dr == null) { Log("ERRAND drunk: no drunk"); continue; }
+                    pl.Health.Heal(pl.Health.Max);
+                    Teleport(pl, dr.transform.position + Vector3.up * 0.1f + new Vector3(2.4f, 0f, 0f));
+                    float hpP = pl.Health.Current;
+                    lookAlong = Vector3.zero;
+                    yield return Hold(1.2f, 1.0f, 6f, 40f);
+                    yield return Shot("07g2_borracho_llega");
+                    yield return Hold(5.0f, 1.0f, 6f, 40f);
+                    var ai = dr.GetComponent<EnemyAI>();
+                    yield return Shot("07g_encargo_borracho");
+                    Log($"ERRAND drunk: {e.Title} taken={took} at the tavern door, picks a fight={(ai != null && ai.enabled)} target is the player={(ai != null && ai.Target == pl)} player hp {hpP:0}->{pl.Health.Current:0} in 6 s");
+                    Vector3 dir = dr.transform.position - pl.transform.position; dir.y = 0f;
+                    dr.ReceiveHit(pl, 999f, AttackType.Heavy, dir.normalized);
+                    yield return Hold(1.5f, 0.6f, 5.5f, 30f);
+                    Log($"ERRAND drunk beaten: alive={dr.IsAlive} knockedOut={dr.KnockedOut} ragdolled={dr.Ragdolled} outcome={sv.LastErrandOutcome} (expected done) paid={prof.Denarii - mE} (expected {e.Reward}) guards' warnings={guards.Warnings} (expected 0)");
+                    yield return Shot("07h_borracho_tumbado");
+                }
+            }
+            int done = 0; foreach (var e in TownServices.Offers) if (e.Done) done++;
+            Log($"ERRANDS done today={done}/{TownServices.Offers.Count} active={(TownServices.Active != null)} (expected False) taking a done one again={sv.Accept(TownServices.Offers[0])} (expected False)");
+
+            prof.AddDenarii(money0 - prof.Denarii);
+            guards.Suspended = susp0;
+            sim.Hour = hour0;
+            pl.Health.Heal(pl.Health.Max);
+            Teleport(pl, p0);
+            if (pc != null) pc.enabled = true;
+            cam.FocusOverride = null;
+            yield return Wait(0.3f);
+        }
+
         /// <summary>R puts the weapon away and draws it; a blow draws it; where it hangs (belt, back); the house windows.</summary>
         IEnumerator SheathWindowsTest(TownBootstrap town)
         {
@@ -1317,6 +1497,7 @@ namespace Gladiator.Town
                 yield return InfirmaryTest(town);
                 yield return SheathWindowsTest(town);
                 yield return HomeOwnerTest(town);
+                yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;
                 yield return ThreeStoreyTest(town);

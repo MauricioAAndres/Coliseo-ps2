@@ -38,15 +38,16 @@ namespace Gladiator.Town
         public System.Func<int, int, (bool couple, int singles, int people)> Household;
         readonly Material waxMat = PS2Materials.Get("wax", PS2Textures.White, new Color(0.95f, 0.92f, 0.8f));
         readonly Material flameMat = PS2Materials.Flat(new Color(1f, 0.62f, 0.15f), 0.3f);
-        readonly Material glass = MakeGlass();
+        readonly Material glass = MakeGlass("glass", new Color(0.62f, 0.82f, 0.92f, 0.26f));
+        readonly Material poolWater = MakeGlass("pool_water", new Color(0.2f, 0.55f, 0.7f, 0.6f));
 
-        /// <summary>Window glass: translucent, seen from both sides.</summary>
-        static Material MakeGlass()
+        /// <summary>Window glass, the water of the baths: translucent, seen from both sides.</summary>
+        static Material MakeGlass(string name, Color c)
         {
             var sh = Shader.Find("Gladiator/PS2_Glass");
-            if (sh == null) return PS2Materials.Flat(new Color(0.45f, 0.6f, 0.7f), 1f);
-            var m = new Material(sh) { name = "PS2_glass" };
-            m.SetColor("_BaseColor", new Color(0.62f, 0.82f, 0.92f, 0.26f));
+            if (sh == null) return PS2Materials.Flat(new Color(c.r, c.g, c.b), 1f);
+            var m = new Material(sh) { name = "PS2_" + name };
+            m.SetColor("_BaseColor", c);
             return m;
         }
 
@@ -1564,32 +1565,209 @@ namespace Gladiator.Town
             Houses.Add(house);
         }
 
+        /// <summary>
+        /// A public hall you can walk into: four walls with a doorway in the middle of the front, a floor and two lamps
+        /// (on while you are inside). <paramref name="zc"/> is the hall's middle along the lot's depth. The roof comes
+        /// with <see cref="HallTop"/>, once the hall is furnished.
+        /// </summary>
+        HouseInterior Hall(TownLot lot, string name, string room, string service, float zc, float depth, float H, float dw, float doorH, Material wall, Material floor)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, t = 0.25f, hx = w * 0.5f, hz = depth * 0.5f;
+            var go = new GameObject(name + "_" + lot.Id);
+            go.transform.SetParent(root, false);
+            go.transform.SetPositionAndRotation(LP(lot, 0, 0, zc), q);
+            var house = go.AddComponent<HouseInterior>();
+            house.Lot = lot; house.HalfX = hx; house.HalfZ = hz; house.Floor = 0; house.Public = true; house.Service = service;
+            house.Rooms.Add(new HouseInterior.Room { Name = room, X0 = -hx, X1 = hx, Z0 = -hz, Z1 = hz });
+            void Seg(float x0, float x1, float z0, float z1, float ya, float yb)
+            {
+                if (x1 - x0 < 0.05f || z1 - z0 < 0.02f || yb - ya < 0.02f) return;
+                var size = new Vector3(x1 - x0, yb - ya, z1 - z0);
+                Vector3 c = LP(lot, (x0 + x1) * 0.5f, (ya + yb) * 0.5f, zc + (z0 + z1) * 0.5f);
+                Box(wall, c, size, q);
+                Collider(c, size, q);
+                if (ya <= 0.01f) Box(stoneDark, LP(lot, (x0 + x1) * 0.5f, 0.35f, zc + (z0 + z1) * 0.5f), new Vector3(size.x + 0.1f, 0.7f, size.z + 0.1f), q);
+            }
+            Seg(-hx, hx, -hz, -hz + t, 0, H);
+            Seg(-hx, -hx + t, -hz, hz, 0, H);
+            Seg(hx - t, hx, -hz, hz, 0, H);
+            Seg(-hx, -dw, hz - t, hz, 0, H);
+            Seg(dw, hx, hz - t, hz, 0, H);
+            Seg(-dw, dw, hz - t, hz, doorH, H);
+            Box(darkWood, LP(lot, 0, doorH + 0.06f, zc + hz + 0.05f), new Vector3(dw * 2f + 0.3f, 0.18f, 0.14f), q);
+            Box(floor, LP(lot, 0, 0.03f, zc), new Vector3(w - 2f * t, 0.06f, depth - 2f * t), q, 0.5f);
+            foreach (float lx in new[] { -hx * 0.5f, hx * 0.5f })
+            {
+                var lamp = new GameObject(name + "Lamp").AddComponent<Light>();
+                lamp.transform.SetParent(go.transform, false);
+                lamp.transform.position = LP(lot, lx, H - 1f, zc);
+                lamp.type = LightType.Point; lamp.range = 8f; lamp.intensity = 1.2f; lamp.color = new Color(1f, 0.78f, 0.5f);
+                lamp.shadows = LightShadows.None;
+                lamp.enabled = false;
+                house.Lights.Add(lamp);
+                Box(ember, LP(lot, lx, H - 0.7f, zc), new Vector3(0.12f, 0.12f, 0.12f), q);
+            }
+            return house;
+        }
+
+        /// <summary>The hall's ceiling and roof: their own object, hidden while you are inside.</summary>
+        void HallTop(TownLot lot, HouseInterior house, float zc, float depth, float H, Material wall, float rise, System.Action roof)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width;
+            var mine = new Dictionary<Material, MeshBuilder>();
+            current = mine;
+            Box(wall, LP(lot, 0, H + 0.075f, zc), new Vector3(w, 0.15f, depth), q);
+            roof();
+            current = null;
+            var upper = new GameObject("Upper_" + lot.Id);
+            upper.transform.SetParent(root, false);
+            foreach (var kv in mine) PS2Spawn.Mesh(upper.transform, "Top_" + kv.Key.name, kv.Value.Build("HallTop"), Vector3.zero, kv.Key);
+            LowPolyMesh.BakeAmbient(upper, AmbientSky, AmbientGround);
+            PS2Spawn.BoxCollider(upper.transform, LP(lot, 0, H + 0.2f + rise * 0.5f, zc), new Vector3(w + 0.6f, rise, depth + 0.6f), q);
+            house.Upper = upper;
+            house.Hide.Add(upper);
+            Houses.Add(house);
+        }
+
+        /// <summary>
+        /// The baths (thermae): one hall with a big pool of warm water in the middle (stone rim, a step, the water you
+        /// can see through), benches with towels along the walls, a brazier and oil jars. The attendant waits by the
+        /// door. Under its dome, which hides while you are inside.
+        /// </summary>
         void Baths(TownLot lot)
         {
             Quaternion q = lot.Rotation;
-            float w = lot.Width, d = lot.Depth;
-            Box(stone, LP(lot, 0, 2.2f, 0), new Vector3(w, 4.4f, d), q);
-            Box(stoneDark, LP(lot, 0, 0.35f, 0), new Vector3(w + 0.1f, 0.7f, d + 0.1f), q);
-            AddMesh(roofs[2], LowPolyMesh.Sphere(Mathf.Min(w, d) * 0.38f, 10, 5, false, 0f), LP(lot, 0, 4.4f, 0), q);
-            Box(dark, LP(lot, 0, 1.4f, d * 0.5f + 0.02f), new Vector3(1.8f, 2.8f, 0.06f), q);
-            foreach (float s in new[] { -1.4f, 1.4f })
-                AddMesh(stone, LowPolyMesh.Cylinder(0.22f, 3.6f, 8, true, false, 1f, 1f / 3f), LP(lot, s, 0, d * 0.5f + 0.4f), q);
-            Box(stone, LP(lot, 0, 3.7f, d * 0.5f + 0.4f), new Vector3(3.6f, 0.3f, 0.6f), q);
-            Collider(LP(lot, 0, 3.2f, 0), new Vector3(w, 6.4f, d), q);
+            float w = lot.Width, d = lot.Depth, H = 4.4f, t = 0.25f, hx = w * 0.5f, hz = d * 0.5f;
+            var tiles = PS2Materials.Get("baths_floor", PS2Textures.Stone, new Color(0.8f, 0.8f, 0.76f));
+            var house = Hall(lot, "Baths", "TERMAS", "baths", 0f, d, H, 0.9f, 2.8f, stone, tiles);
+            // the porch: two columns and a lintel
+            foreach (float sx in new[] { -1.4f, 1.4f })
+                AddMesh(stone, LowPolyMesh.Cylinder(0.22f, 3.6f, 8, true, false, 1f, 1f / 3f), LP(lot, sx, 0, hz + 0.4f), q);
+            Box(stone, LP(lot, 0, 3.7f, hz + 0.4f), new Vector3(3.6f, 0.3f, 0.6f), q);
+            Box(darkWood, LP(lot, 0, 3.3f, hz + 0.75f), new Vector3(0.08f, 0.08f, 0.5f), q);
+            Box(PS2Materials.Get("sign_baths", PS2Textures.Cloth, new Color(0.2f, 0.45f, 0.7f)), LP(lot, 0, 3.0f, hz + 0.95f), new Vector3(1.4f, 0.5f, 0.06f), q);
+
+            // the pool
+            float pw = Mathf.Clamp(w - 3.6f, 2.4f, 6.5f), pd = Mathf.Clamp(d - 5f, 2.2f, 5f), pz = -0.6f, rim = 0.3f, rh = 0.5f;
+            float px0 = -pw * 0.5f, px1 = pw * 0.5f, pz0 = pz - pd * 0.5f, pz1 = pz + pd * 0.5f;
+            void Rim(float x, float z, float sx, float sz)
+            {
+                Box(stone, LP(lot, x, rh * 0.5f, z), new Vector3(sx, rh, sz), q);
+                Collider(LP(lot, x, 0.6f, z), new Vector3(sx, 1.2f, sz), q);
+            }
+            Rim(0, pz0 - rim * 0.5f, pw + rim * 2f, rim);
+            Rim(0, pz1 + rim * 0.5f, pw + rim * 2f, rim);
+            Rim(px0 - rim * 0.5f, pz, rim, pd);
+            Rim(px1 + rim * 0.5f, pz, rim, pd);
+            Box(PS2Materials.Get("pool_floor", PS2Textures.Stone, new Color(0.45f, 0.7f, 0.78f)), LP(lot, 0, 0.07f, pz), new Vector3(pw, 0.02f, pd), q, 0.5f);
+            Box(poolWater, LP(lot, 0, 0.4f, pz), new Vector3(pw, 0.02f, pd), q, 0f);
+            Box(stoneDark, LP(lot, 0, 0.12f, pz1 + rim + 0.25f), new Vector3(1.6f, 0.24f, 0.5f), q); // the step in
+            // where bathers sit (backs to the far rim, looking at the door) and where they step out
+            int seats = Mathf.Max(2, Mathf.FloorToInt(pw / 1.1f));
+            for (int i = 0; i < seats; i++)
+            {
+                float x = px0 + pw * (i + 0.5f) / seats;
+                house.PoolSpots.Add(new Pose(LP(lot, x, 0.09f, pz0 + 0.55f), q));
+            }
+            house.PoolStand = LP(lot, 0, 0.08f, pz1 + rim + 1.0f);
+            house.PoolCenter = LP(lot, 0, 0.05f, pz);
+            house.PoolRadius = Mathf.Max(pw, pd) * 0.5f + 1.6f;
+            // benches with folded towels along the side walls
+            var towel = PS2Materials.Get("towel", PS2Textures.Cloth, new Color(0.93f, 0.9f, 0.82f));
+            foreach (float sx in new[] { -1f, 1f })
+            {
+                float bx = sx * (hx - t - 0.3f);
+                Box(wood, LP(lot, bx, 0.45f, pz), new Vector3(0.5f, 0.08f, Mathf.Min(pd, 3.2f)), q);
+                Box(darkWood, LP(lot, bx, 0.22f, pz - 1f), new Vector3(0.44f, 0.44f, 0.1f), q);
+                Box(darkWood, LP(lot, bx, 0.22f, pz + 1f), new Vector3(0.44f, 0.44f, 0.1f), q);
+                Collider(LP(lot, bx, 0.3f, pz), new Vector3(0.5f, 0.6f, Mathf.Min(pd, 3.2f)), q);
+                for (int k = 0; k < 3; k++) Box(towel, LP(lot, bx, 0.53f, pz - 0.9f + k * 0.9f), new Vector3(0.34f, 0.08f, 0.26f), q, 0f);
+            }
+            // a brazier at the back corners (the hot room), oil jars by the door
+            foreach (float sx in new[] { -1f, 1f })
+            {
+                Vector3 bp = LP(lot, sx * (hx - 0.9f), 0, -hz + 0.9f);
+                AddMesh(iron, LowPolyMesh.Cylinder(0.3f, 0.7f, 8, true, false, 1f, 1f / 3f), bp, q);
+                Box(ember, bp + Vector3.up * 0.72f, new Vector3(0.4f, 0.06f, 0.4f), q, 0f);
+                Collider(bp + Vector3.up * 0.4f, new Vector3(0.6f, 0.8f, 0.6f), q);
+                Box(clay, LP(lot, sx * (hx - 0.7f), 0.25f, hz - 0.8f), new Vector3(0.3f, 0.5f, 0.3f), q * Quaternion.Euler(0, 45f, 0));
+            }
+            // the attendant, just inside the door to the right, looking at who comes in
+            house.KeeperSpot = new Pose(LP(lot, Mathf.Min(2.2f, hx - 1.2f), 0.05f, hz - 1.5f), q * Quaternion.LookRotation(new Vector3(-0.6f, 0, 0.5f)));
+            HallTop(lot, house, 0f, d, H, stone, 2.6f, () =>
+                AddMesh(roofs[2], LowPolyMesh.Sphere(Mathf.Min(w, d) * 0.38f, 10, 5, false, 0f), LP(lot, 0, H, 0), q));
         }
 
+        /// <summary>
+        /// The basilica of the forum: the scribes' hall. A colonnade outside; inside, two rows of columns, the scribes'
+        /// counter at the back with scrolls and ink, shelves of scrolls behind it, the board with the day's errands on a
+        /// side wall and benches for those who wait. Its roof hides while you are inside.
+        /// </summary>
         void Basilica(TownLot lot)
         {
             Quaternion q = lot.Rotation;
-            float w = lot.Width, d = lot.Depth;
-            Box(plaster[0], LP(lot, 0, 2.6f, -0.6f), new Vector3(w, 5.2f, d - 1.6f), q);
-            Gable(roofs[1], plaster[0], LP(lot, 0, 5.2f, -0.6f), q, w + 0.5f, d - 1.0f, 1.4f);
+            float w = lot.Width, d = lot.Depth, H = 5.2f, t = 0.25f, hx = w * 0.5f;
+            float depth = d - 1.6f, zc = -0.6f, hz = depth * 0.5f;
+            var marble = PS2Materials.Get("basilica_floor", PS2Textures.Stone, new Color(0.82f, 0.78f, 0.7f));
+            var house = Hall(lot, "Basilica", "BASILICA", "forum", zc, depth, H, 0.8f, 2.6f, plaster[0], marble);
+            // the colonnade and its little roof
             for (int i = 0; i < 5; i++)
-                AddMesh(stone, LowPolyMesh.Cylinder(0.24f, 3.8f, 8, true, false, 1f, 1f / 3f), LP(lot, -w * 0.5f + 0.5f + i * (w - 1f) / 4f, 0, d * 0.5f - 0.3f), q);
+                AddMesh(stone, LowPolyMesh.Cylinder(0.24f, 3.8f, 8, true, false, 1f, 1f / 3f), LP(lot, -hx + 0.5f + i * (w - 1f) / 4f, 0, d * 0.5f - 0.3f), q);
             Box(stone, LP(lot, 0, 3.9f, d * 0.5f - 0.3f), new Vector3(w, 0.3f, 0.8f), q);
             Box(roofs[1], LP(lot, 0, 4.15f, d * 0.5f - 0.8f), new Vector3(w, 0.15f, 1.8f), q * Quaternion.Euler(-10f, 0, 0), 0.5f);
-            Box(dark, LP(lot, 0, 1.3f, d * 0.5f - 1.38f), new Vector3(1.6f, 2.6f, 0.06f), q);
-            Collider(LP(lot, 0, 3.3f, -0.6f), new Vector3(w, 6.6f, d - 1.6f), q);
+            Vector3 P(float x, float y, float z) => LP(lot, x, y, zc + z);
+
+            // two rows of columns down the hall
+            int cols = Mathf.Max(2, Mathf.FloorToInt(depth / 3.2f));
+            float cxr = Mathf.Max(1.8f, hx - 1.7f);
+            for (int i = 0; i < cols; i++)
+                foreach (float sx in new[] { -1f, 1f })
+                {
+                    Vector3 cp = P(sx * cxr, 0, -hz + 2.6f + i * (depth - 4.4f) / Mathf.Max(1, cols - 1));
+                    AddMesh(stone, LowPolyMesh.Cylinder(0.22f, H, 8, true, false, 1f, 1f / 3f), cp, q);
+                    Collider(cp + Vector3.up * 1.2f, new Vector3(0.44f, 2.4f, 0.44f), q);
+                }
+            // the counter at the back; the scribe stands behind it
+            float cz = -hz + 2.0f, cw = Mathf.Min(3.4f, w - 3.2f);
+            Box(wood, P(0, 0.5f, cz), new Vector3(cw, 1.0f, 0.7f), q);
+            Box(darkWood, P(0, 1.02f, cz), new Vector3(cw + 0.1f, 0.05f, 0.8f), q, 0f);
+            Collider(P(0, 0.55f, cz), new Vector3(cw, 1.1f, 0.7f), q);
+            var parchment = PS2Materials.Get("parchment", PS2Textures.Cloth, new Color(0.92f, 0.86f, 0.68f));
+            for (int k = 0; k < 4; k++)
+                Box(parchment, P(-cw * 0.35f + k * cw * 0.22f, 1.08f, cz + (k % 2) * 0.12f), new Vector3(0.3f, 0.06f, 0.08f), q * Quaternion.Euler(0, k * 25f, 0), 0f);
+            Box(iron, P(cw * 0.4f, 1.1f, cz - 0.15f), new Vector3(0.1f, 0.1f, 0.1f), q, 0f);
+            Box(parchment, P(-cw * 0.1f, 1.055f, cz - 0.1f), new Vector3(0.42f, 0.01f, 0.3f), q * Quaternion.Euler(0, 8f, 0), 0f);
+            // shelves of scrolls on the back wall
+            foreach (float sx in new[] { -1f, 1f })
+            {
+                float sxp = sx * Mathf.Min(hx - 1.4f, cw * 0.5f + 0.9f);
+                Box(darkWood, P(sxp, 1.1f, -hz + t + 0.2f), new Vector3(1.4f, 2.2f, 0.4f), q);
+                Collider(P(sxp, 1.1f, -hz + t + 0.2f), new Vector3(1.4f, 2.2f, 0.4f), q);
+                for (int r = 0; r < 4; r++)
+                    for (int c = 0; c < 4; c++)
+                        if ((r * 3 + c + lot.Id) % 5 != 0)
+                            Box(parchment, P(sxp - 0.5f + c * 0.33f, 0.35f + r * 0.5f, -hz + t + 0.42f), new Vector3(0.12f, 0.12f, 0.06f), q, 0f);
+            }
+            // the errands board on the left wall, benches on the right
+            float bz = Mathf.Min(hz - 2.2f, 1.0f);
+            Box(darkWood, P(-hx + t + 0.04f, 1.6f, bz), new Vector3(0.08f, 1.3f, 2.0f), q);
+            for (int k = 0; k < 5; k++)
+                Box(parchment, P(-hx + t + 0.09f, 1.25f + (k % 2) * 0.55f, bz - 0.7f + k * 0.35f), new Vector3(0.02f, 0.36f, 0.26f), q * Quaternion.Euler((k * 37) % 9 - 4, 0, 0), 0f);
+            house.BoardSpot = P(-hx + t + 1.0f, 0.05f, bz);
+            for (int k = 0; k < 2; k++)
+            {
+                float zz = bz - 0.9f + k * 1.9f;
+                Box(wood, P(hx - t - 0.3f, 0.45f, zz), new Vector3(0.45f, 0.08f, 1.5f), q);
+                Box(darkWood, P(hx - t - 0.3f, 0.22f, zz - 0.6f), new Vector3(0.4f, 0.44f, 0.08f), q);
+                Box(darkWood, P(hx - t - 0.3f, 0.22f, zz + 0.6f), new Vector3(0.4f, 0.44f, 0.08f), q);
+                Collider(P(hx - t - 0.3f, 0.3f, zz), new Vector3(0.45f, 0.6f, 1.5f), q);
+            }
+            house.KeeperSpot = new Pose(P(0, 0.05f, cz - 0.95f), q);
+            house.CounterFront = P(0, 0.05f, cz + 1.25f);
+            HallTop(lot, house, zc, depth, H, plaster[0], 1.4f, () =>
+                Gable(roofs[1], plaster[0], LP(lot, 0, H, zc), q, w + 0.5f, depth + 0.6f, 1.4f));
         }
 
         /// <summary>Adds an existing low-poly mesh (cylinder, dome) into a material batch, placed in the world.</summary>

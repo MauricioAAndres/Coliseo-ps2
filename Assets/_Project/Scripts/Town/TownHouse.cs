@@ -49,6 +49,16 @@ namespace Gladiator.Town
         public Pose? ThroneSpot;
         /// <summary>A public building (the infirmary): walking in is not trespassing.</summary>
         public bool Public;
+        /// <summary>What the building is for: "baths", "forum" or null.</summary>
+        public string Service;
+        /// <summary>Where its keeper stands (the bath attendant, the scribe behind his counter).</summary>
+        public Pose? KeeperSpot;
+        /// <summary>The baths: where bathers sit in the pool, where they step out, the pool's middle and reach.</summary>
+        public readonly List<Pose> PoolSpots = new List<Pose>();
+        public Vector3 PoolStand, PoolCenter;
+        public float PoolRadius;
+        /// <summary>The basilica: in front of the scribes' counter, and by the board with the day's errands.</summary>
+        public Vector3 CounterFront, BoardSpot;
         /// <summary>Infirmary beds: where a patient lies (root position on the mattress, facing the foot of the bed).</summary>
         public readonly List<Pose> BedSpots = new List<Pose>();
 

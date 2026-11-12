@@ -39,6 +39,8 @@ namespace Gladiator.Town
         public TownInfoPanel Info { get; private set; }
         public CitizenSpawner Spawner { get; private set; }
         public TownGuards Guards { get; private set; }
+        /// <summary>The baths and the basilica: bathing, errands, wagers, fines.</summary>
+        public TownServices Services { get; private set; }
         /// <summary>The people who find you asleep in their house.</summary>
         public HomeOwners Owners { get; private set; }
         /// <summary>The governor, in his domus on the plaza (null if the town has none).</summary>
@@ -268,6 +270,7 @@ namespace Gladiator.Town
             Governor = GovernorNPC.Spawn(this);
             Prisoner = JailNPC.Spawn(this);
             Carpenter = CarpenterNPC.Spawn(this);
+            Services = gameObject.AddComponent<TownServices>();
             Hud.TrackHealth(Player);
             // the furniture bought for the houses you own
             foreach (var h in Houses)
@@ -287,6 +290,7 @@ namespace Gladiator.Town
             tmgr.Init(this, pc);
             Owners = gameObject.AddComponent<HomeOwners>();
             Owners.Init(this, tmgr);
+            Services.Init(this, tmgr, pc);
             if (Gladiator.Progression.DayCycleManager.WakeInInfirmary)
             {
                 // lost in the arena: wake up in an infirmary bed (move to get up)
@@ -388,6 +392,8 @@ namespace Gladiator.Town
         // ---------------------------------------------------------------- menus opened here: the player stands still
         bool myMenu;
         static bool AnyMenu => (ChoiceMenu.Instance != null && ChoiceMenu.Instance.IsOpen) || (InventoryPanel.Instance != null && InventoryPanel.Instance.IsOpen);
+        /// <summary>A menu opened by somebody else (the scribe): same rules.</summary>
+        public void MenuOpenedByService() { MenuOpened(); }
         void MenuOpened() { myMenu = true; if (pc != null) pc.enabled = false; town.Player.Move(Vector3.zero); }
 
         // ---------------------------------------------------------------- night: houses lock their doors
@@ -757,6 +763,8 @@ namespace Gladiator.Town
             // on a bed, a chair, at the altar: E gets up
             var pl = town.Player;
             if (pl.KnockedOut) { town.Hud.SetPrompt(""); return; } // out cold: nothing to do
+            // the baths and the basilica (bathing, the scribe's counter)
+            if (town.Services != null && town.Services.Handle(p, key)) return;
             if (pl.InActivity && pl.OnFurniture)
             {
                 // in a bed you may sleep in: E picks the hours; moving gets you up
@@ -858,7 +866,7 @@ namespace Gladiator.Town
                 if (GameInput.InteractPressed) OpenArenaGate();
                 return;
             }
-            town.Hud.SetPrompt("");
+            town.Hud.SetPrompt(town.Services != null ? town.Services.IdlePrompt : "");
         }
 
         /// <summary>Buy a house for sale: pay its price, it is yours (saved), its door opens.</summary>

@@ -130,6 +130,8 @@ namespace Gladiator.Progression
         public void CompleteArena(bool won)
         {
             LastFightWon = won;
+            var gmB = Gladiator.Core.GameManager.Instance;
+            if (gmB != null) Boons.SettleArena(gmB.Profile, won); // the wager at the basilica; the bath's bonus is spent
             FoughtToday = true;
             Phase = DayPhase.Training;
             Changed?.Invoke();

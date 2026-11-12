@@ -519,6 +519,7 @@ namespace Gladiator.Net
                 gm.DayCycle.LastReward = Share;
                 gm.DayCycle.MarkFought();
             }
+            if (gm != null) Gladiator.Progression.Boons.SettleArena(gm.Profile, iWon);
             // the games fill the day: back in town it is 20:00 (the host's clock is everybody's)
             var simT = Gladiator.Town.TownSimulation.Instance;
             if (simT != null && session.IsHost) simT.AdvanceTo(Gladiator.Progression.DayCycleManager.ArenaCloses);

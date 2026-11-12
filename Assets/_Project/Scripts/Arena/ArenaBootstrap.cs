@@ -116,6 +116,7 @@ namespace Gladiator.Arena
                 var off = WeaponLibrary.ByName(profile.OffHand);
                 if (off != null) Player.EquipOff(WeaponFactory.Create(off));
                 StatEffects.ApplyToPlayer(Player, profile);
+                Boons.ApplyArena(Player); // fresh from the baths
                 var playerShield = ShieldLibrary.ById(profile.ShieldId);
                 if (playerShield != null) Shield.Attach(Player, playerShield, profile.Appearance.ShieldTint);
             }

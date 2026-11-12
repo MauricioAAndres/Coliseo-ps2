@@ -21,6 +21,8 @@ namespace Gladiator.Town
 
         public static TownGuards Instance { get; private set; }
         public int Warnings { get; private set; }
+        /// <summary>The fine was paid at the basilica: a clean slate.</summary>
+        public void ClearWarnings() { Warnings = 0; ReleaseWarner(); }
         /// <summary>The guard fighting the player, or null.</summary>
         public CitizenNPC Hostile { get; private set; }
         /// <summary>The guard walking over to warn the player, or null.</summary>
