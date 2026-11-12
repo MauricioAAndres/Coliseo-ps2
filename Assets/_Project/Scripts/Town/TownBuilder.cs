@@ -1052,19 +1052,16 @@ namespace Gladiator.Town
             top.StairDir = q * Vector3.back;
         }
 
-        /// <summary>Open shop front: counter, striped awning.</summary>
+        /// <summary>Shop front: a striped awning over the wall beside the door.</summary>
         void ShopFront(TownLot lot, Material a, Material b)
         {
             Quaternion q = lot.Rotation;
             float w = lot.Width, hz = lot.Depth * 0.5f;
             float dx = lot.DoorOffset * w;
             float cx = dx + (dx >= 0f ? -2.1f : 2.1f);   // beside the door, never in front of it
-            Box(dark, LP(lot, cx, 1.2f, hz + 0.02f), new Vector3(2.4f, 2.2f, 0.06f), q);
-            Box(wood, LP(lot, cx, 0.5f, hz + 0.45f), new Vector3(2.4f, 1.0f, 0.5f), q);
             int strips = 6;
             for (int i = 0; i < strips; i++)
                 Box(i % 2 == 0 ? a : b, LP(lot, cx - 1.5f + 3f * (i + 0.5f) / strips, 2.75f, hz + 0.8f), new Vector3(3f / strips, 0.06f, 1.7f), q * Quaternion.Euler(14f, 0, 0), 0f);
-            Collider(LP(lot, cx, 0.5f, hz + 0.45f), new Vector3(2.4f, 1f, 0.5f), q);
         }
 
         void Sign(TownLot lot, Color c)
@@ -1075,13 +1072,9 @@ namespace Gladiator.Town
             Box(PS2Materials.Get("sign_" + ColorUtility.ToHtmlStringRGB(c), PS2Textures.Cloth, c), LP(lot, x, 2.55f, hz + 0.75f), new Vector3(0.06f, 0.55f, 0.55f), q);
         }
 
-        /// <summary>Where you can buy: a yellow ring on the ground at the door and a tall yellow banner on a pole.</summary>
+        /// <summary>Where you can buy: a tall yellow banner on a pole (the armourer stands at the anvil under the shed).</summary>
         void ShopMarker(TownLot lot)
         {
-            var b = new MeshBuilder();
-            b.AddAnnulus(0.95f, 1.15f, 0.04f, 20, Color.white, 1f);
-            var ring = PS2Spawn.Mesh(root, "ShopRing_" + lot.Id, b.Build("ShopRing"), lot.ShopSpot, PS2Materials.Flat(new Color(1f, 0.82f, 0.1f), 0.2f));
-            ring.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             float side = lot.DoorOffset >= 0f ? 1f : -1f;   // the side away from the shed
             Vector3 pole = lot.ShopSpot + lot.Right * (side * 1.2f) - lot.Front * 0.5f;
             var y = PS2Materials.Get("banner_shop", PS2Textures.Cloth, new Color(0.95f, 0.75f, 0.1f));

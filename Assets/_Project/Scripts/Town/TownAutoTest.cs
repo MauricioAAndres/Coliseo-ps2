@@ -1841,10 +1841,13 @@ namespace Gladiator.Town
                 var smithy = town.Layout.Lots.Find(l => l.Kind == BuildingKind.Smithy);
                 Teleport(town.Player, smithy.Door + smithy.Front * 4f, -smithy.Front);
                 yield return Wait(1f);
-                yield return Shot("24_herreria_circulo");
-                Teleport(town.Player, smithy.ShopSpot, -smithy.Front);
-                yield return Wait(0.5f);
-                bool nearSmithy = tmS.NearestSmithy(town.Player.transform.position, 2.6f) != null;
+                yield return Shot("24_herreria_armero");
+                Teleport(town.Player, smithy.ArmorerSpot + smithy.Front * 1.9f + smithy.Right * 1.1f, -smithy.Front);
+                yield return Wait(1.2f);
+                yield return Shot("24b_armero_cerca");
+                bool nearSmithy = tmS.NearestSmithy(town.Player.transform.position, 2.5f) != null;
+                var arm = town.Armorers.Count > 0 ? town.Armorers[0] : null;
+                Log($"ARMORER count={town.Armorers.Count} hammer={(arm != null && arm.Fighter.WeaponSocket.Find("Hammer") != null)}");
                 tmS.OpenShop();
                 yield return Wait(0.6f);
                 Log($"SMITHY near={nearSmithy} shopOpen={town.Hud.Shop.IsOpen} (expected True)");

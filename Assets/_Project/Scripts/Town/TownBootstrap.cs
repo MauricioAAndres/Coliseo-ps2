@@ -48,7 +48,35 @@ namespace Gladiator.Town
         /// <summary>The prisoner in the jail (null if the town has none).</summary>
         public JailNPC Prisoner { get; private set; }
         /// <summary>The carpenter on the plaza (furniture for your houses).</summary>
+        void SpawnArmorers()
+        {
+            string[] names = { "Vulcanus", "Marcus Ferrarius", "Brutus", "Titus Faber" };
+            int k = 0;
+            foreach (var lot in Layout.Lots)
+            {
+                if (lot.Kind != BuildingKind.Smithy || lot.Hidden) continue;
+                string name = names[k % names.Length] + " el armero";
+                var n = ServiceNPC.Spawn(name, new Pose(lot.ArmorerSpot + Vector3.up * 0.05f, lot.Rotation), Layout.Seed * 23 + lot.Id, 1, 2, 0.3f);
+                var f = n.Fighter;
+                // a small hammer in his right hand (the weapon socket follows the hand)
+                if (f != null && f.WeaponSocket != null)
+                {
+                    var h = new GameObject("Hammer").transform;
+                    h.SetParent(f.WeaponSocket, false);
+                    var dark = Gladiator.PS2Style.PS2Materials.Get("furn_dark", Gladiator.PS2Style.PS2Textures.Wood, new Color(0.36f, 0.24f, 0.14f));
+                    var iron = Gladiator.PS2Style.PS2Materials.Get("furn_iron", Gladiator.PS2Style.PS2Textures.Metal, new Color(0.3f, 0.3f, 0.32f));
+                    Gladiator.PS2Style.PS2Spawn.Box(h, "Handle", new Vector3(0.03f, 0.03f, 0.3f), new Vector3(0f, 0f, 0.09f), dark);
+                    Gladiator.PS2Style.PS2Spawn.Box(h, "Head", new Vector3(0.07f, 0.15f, 0.07f), new Vector3(0f, 0f, 0.25f), iron);
+                }
+                Armorers.Add(n);
+                k++;
+                Debug.Log($"[TOWN] armorer {name} at {lot.ArmorerSpot} (lot {lot.Id})");
+            }
+        }
+
         public CarpenterNPC Carpenter { get; private set; }
+        /// <summary>The armourer of each smithy, at his anvil with a hammer: he sells weapons, armour and shields.</summary>
+        public readonly System.Collections.Generic.List<ServiceNPC> Armorers = new System.Collections.Generic.List<ServiceNPC>();
         /// <summary>Online: houses bought by the other players (lot id -> owner's name).</summary>
         public readonly System.Collections.Generic.Dictionary<int, string> OtherOwners = new System.Collections.Generic.Dictionary<int, string>();
         /// <summary>The ground floor of a house (by lot id).</summary>
@@ -270,6 +298,7 @@ namespace Gladiator.Town
             Governor = GovernorNPC.Spawn(this);
             Prisoner = JailNPC.Spawn(this);
             Carpenter = CarpenterNPC.Spawn(this);
+            SpawnArmorers();
             Services = gameObject.AddComponent<TownServices>();
             Hud.TrackHealth(Player);
             // the furniture bought for the houses you own
@@ -728,14 +757,14 @@ namespace Gladiator.Town
                 }
         }
 
-        /// <summary>The front of the nearest smithy (where the smith sells), within a range.</summary>
+        /// <summary>The nearest smithy whose armourer (at his anvil) is within a range.</summary>
         public TownLot NearestSmithy(Vector3 p, float range)
         {
             TownLot best = null; float bd = range;
             foreach (var lot in town.Layout.Lots)
             {
                 if (lot.Kind != BuildingKind.Smithy) continue;
-                Vector3 d = lot.ShopSpot - p; d.y = 0f;
+                Vector3 d = lot.ArmorerSpot - p; d.y = 0f;
                 if (d.magnitude < bd) { bd = d.magnitude; best = lot; }
             }
             return best;
@@ -868,11 +897,11 @@ namespace Gladiator.Town
                 return;
             }
             // the smithies: weapons, armour and shields
-            var smithy = NearestSmithy(p, 1.6f); // standing on the yellow ring
+            var smithy = NearestSmithy(p, 2.5f); // in front of the armourer at his anvil
             if (smithy != null)
             {
                 var gmS = GameManager.Instance;
-                town.Hud.SetPrompt(key + "HERRERIA: ARMAS, ARMADURAS Y ESCUDOS   (" + (gmS != null ? gmS.Profile.Denarii : 0) + " denarios)");
+                town.Hud.SetPrompt(key + "ARMERO: ARMAS, ARMADURAS Y ESCUDOS   (" + (gmS != null ? gmS.Profile.Denarii : 0) + " denarios)");
                 if (GameInput.InteractPressed) OpenShop();
                 return;
             }
