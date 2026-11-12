@@ -124,9 +124,31 @@ namespace Gladiator.Net
             var bedHouseH = townH.Houses.Find(hh => !hh.Public && hh.Floor == 0 && hh.Furniture.Exists(f => f.Kind == Fighter.ActLie));
             var bedH = bedHouseH.Furniture.Find(f => f.Kind == Fighter.ActLie);
             bool lay = townH.GetComponent<Gladiator.Town.TownManager>().UseFurniture(bedH);
-            yield return Wait(6f);
+            yield return Wait(3.3f);
+            {
+                // in bed before the other player: the host cannot start the sleep yet
+                var tm0 = townH.GetComponent<Gladiator.Town.TownManager>();
+                tm0.BedCount(out int ly0, out int tot0);
+                bool early = ly0 < tot0 && tm0.StartSleep(2);
+                Log($"SLEEP host first in bed: lying={ly0}/{tot0} sleepStarts={early} (expected 1/2 and False) sleeping={tm0.Sleeping}");
+            }
+            yield return Wait(2.7f);
             Log($"TOWN host on the bed of house {bedHouseH.Lot.Id}: ok={lay} onFurniture={townH.Player.OnFurniture} offSpot={(townH.Player.transform.position - bedH.At.position).magnitude:0.00}m cellGateOpen={(jailH != null && jailH.ExtraDoors[1].IsOpen)}");
             yield return Shot("mp_host_pueblo");
+            // sleeping online: not while the other player is up; once both are in bed the host picks the hours
+            {
+                var tmS = townH.GetComponent<Gladiator.Town.TownManager>();
+                tmS.BedCount(out int ly, out int tot);
+                bool alone = tmS.StartSleep(2);
+                Log($"SLEEP host alone in bed: lying={ly}/{tot} sleepStarts={alone} (expected False)");
+                yield return Until(() => { tmS.BedCount(out ly, out tot); return ly >= tot; }, 20f);
+                float hS = simH.Hour; int dS = simH.Day;
+                bool all = tmS.StartSleep(2);
+                yield return Wait(0.5f);
+                bool asleep = tmS.Sleeping;
+                yield return Until(() => !tmS.Sleeping, 6f);
+                Log($"SLEEP host with everybody in bed: lying={ly}/{tot} sleepStarts={all} (expected True) asleep={asleep} hours {hS:0.0}->{(simH.Day - dS) * 24f + simH.Hour:0.0} (expected +2) stillSleeping={tmS.Sleeping}");
+            }
             townH.Player.StopActivity();
             yield return Wait(2.5f);
             // the host buys a house for sale and a bed for it: the client must see whose it is, and the bed
@@ -290,6 +312,26 @@ namespace Gladiator.Net
             }
             yield return Shot("mp_client_pueblo");
             if (townC.Cam != null) townC.Cam.FocusOverride = null;
+            // sleeping online: the guest gets into a bed and waits; the host decides, both sleep and wake together
+            {
+                var tmS = townC.GetComponent<Gladiator.Town.TownManager>();
+                townC.PutInInfirmaryBed(out _);
+                yield return Until(() => Gladiator.Town.TownManager.InBed(townC.Player), 6f);
+                yield return Wait(0.3f);
+                tmS.BedCount(out int lyC, out int totC);
+                bool ownChoice = tmS.StartSleep(5);
+                float hC = simC.Hour; int dC = simC.Day; float hpC = townC.Player.Health.Current;
+                townC.Player.Health.TakeDamage(townC.Player.Health.Current - townC.Player.Health.Max * 0.5f);
+                yield return Until(() => tmS.Sleeping, 20f);
+                bool put = tmS.Sleeping;
+                float tSl = Time.time;
+                yield return Until(() => !tmS.Sleeping, 8f);
+                yield return Wait(0.6f);
+                Log($"SLEEP guest in bed: lying={lyC}/{totC} own choice starts it={ownChoice} (expected False); put to sleep by the host={put} (expected True) for {Time.time - tSl - 0.6f:0.0} s " +
+                    $"hours {hC:0.0}->{(simC.Day - dC) * 24f + simC.Hour:0.0} (expected about +2) health {townC.Player.Health.Normalized:0.00} (expected about 0.70) awake={!tmS.Sleeping}");
+                townC.Player.Health.Heal(townC.Player.Health.Max);
+                if (townC.Player.InActivity) townC.Player.StopActivity();
+            }
             yield return Until(() => hostC == null || !hostC.Fighter.InActivity, 10f);
             Log($"TOWN client: host got up={(hostC == null || !hostC.Fighter.InActivity)} ccOn={(hostC != null && hostC.Fighter.Controller.enabled)}");
             yield return Until(() => townC.OtherOwners.Count > 0, 15f);

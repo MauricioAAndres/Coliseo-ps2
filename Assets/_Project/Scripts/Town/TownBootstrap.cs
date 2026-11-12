@@ -457,17 +457,53 @@ namespace Gladiator.Town
             var pl = town.Player;
             if (!pl.InActivity || pl.ActivityKind != Fighter.ActLie || !pl.OnFurniture) return false;
             var net = Gladiator.Net.NetSession.Instance;
-            if (net != null && net.InGame && !net.IsHost)
+            bool online = net != null && net.InGame;
+            if (online && !net.IsHost)
             {
-                town.Hud.ShowMessage("EN LINEA EL RELOJ ES DEL ANFITRION: SOLO EL PUEDE PASAR LAS HORAS DURMIENDO", 5f);
+                town.Hud.ShowMessage("EL ANFITRION ELIGE CUANTO SE DUERME: ESPERA ACOSTADO", 4f);
                 return false;
             }
-            sleepHours = Mathf.Clamp(hours, 1, 12);
+            if (online)
+            {
+                // everybody in bed, or nobody sleeps
+                BedCount(out int lying, out int total);
+                if (lying < total)
+                {
+                    town.Hud.ShowMessage("PARA DORMIR TIENEN QUE ESTAR TODOS ACOSTADOS  (" + lying + " DE " + total + ")", 4f);
+                    return false;
+                }
+            }
+            BeginSleep(Mathf.Clamp(hours, 1, 12), true);
+            if (online) net.Send("SL", sleepHours.ToString());
+            return true;
+        }
+
+        // asleep from now: the host's (or the only player's) sleep runs the clock, a guest's just follows it
+        void BeginSleep(int hours, bool runClock)
+        {
+            sleepHours = hours;
             sleepLeft = sleepHours;
-            if (TownSimulation.Instance != null) TownSimulation.Instance.ClockRate = 60f; // an hour a second
+            if (runClock && TownSimulation.Instance != null) TownSimulation.Instance.ClockRate = 60f; // an hour a second
             if (pc != null) pc.enabled = false;
             Debug.Log("[TOWN] sleeping " + sleepHours + "h");
-            return true;
+        }
+
+        static bool Online { get { var n = Gladiator.Net.NetSession.Instance; return n != null && n.InGame; } }
+        static bool OnlineGuest { get { var n = Gladiator.Net.NetSession.Instance; return n != null && n.InGame && !n.IsHost; } }
+
+        /// <summary>Lying on a bed (not getting up).</summary>
+        public static bool InBed(Fighter f) => f != null && f.InActivity && f.ActivityKind == Fighter.ActLie && f.OnFurniture && !f.ActivityLeaving;
+
+        /// <summary>Online: how many players are lying in a bed, and how many players there are (offline: you).</summary>
+        public void BedCount(out int lying, out int total)
+        {
+            lying = InBed(town.Player) ? 1 : 0;
+            total = 1;
+            var net = Gladiator.Net.NetSession.Instance;
+            if (net == null || !net.InGame) return;
+            total = Mathf.Max(1, net.Players.Count);
+            var av = Gladiator.Net.NetAvatars.Instance;
+            if (av != null) foreach (var r in av.Remotes) if (r != null && r.Present && InBed(r.Fighter)) lying++;
         }
 
         void UpdateSleep()
@@ -479,16 +515,25 @@ namespace Gladiator.Town
             pl.Health.Heal(pl.Health.Max * SleepHealPerHour * dt);
             string key = GameInput.UsingGamepad ? "(A)" : "[" + InputBindings.Short(GameAction.Interact) + "]";
             town.Hud.SetPrompt("");
-            town.Hud.SetSleep(true, "DURMIENDO...   " + (sim != null ? Clock(sim.Hour) + "   DIA " + sim.Day : "") + "\n<size=15>" + key + " despertar</size>");
-            if (sleepLeft <= 0f || GameInput.InteractPressed || !pl.InActivity) EndSleep();
+            town.Hud.SetSleep(true, "DURMIENDO...   " + (sim != null ? Clock(sim.Hour) + "   DIA " + sim.Day : "") + "\n<size=15>" + key + (Online ? " despertar a todos" : " despertar") + "</size>");
+            bool wake = GameInput.InteractPressed;
+            // online: one who gets up wakes everybody (a guest does it by getting out of bed)
+            if (wake && OnlineGuest && pl.InActivity) pl.StopActivity();
+            bool someoneUp = false;
+            if (Online && !OnlineGuest) { BedCount(out int lying, out int total); someoneUp = lying < total; }
+            if (sleepLeft <= 0f || wake || !pl.InActivity || someoneUp) EndSleep();
         }
 
         public void EndSleep()
         {
+            if (sleepLeft <= 0f && sleepHours == 0) return;
             float slept = sleepHours - Mathf.Max(0f, sleepLeft);
             sleepLeft = 0f;
+            sleepHours = 0;
             var sim = TownSimulation.Instance;
             if (sim != null) sim.ClockRate = 1f;
+            var netE = Gladiator.Net.NetSession.Instance;
+            if (netE != null && netE.InGame && netE.IsHost) netE.Send("SLE", "1"); // everybody wakes up
             town.Hud.SetSleep(false);
             if (pc != null) pc.enabled = true;
             town.Hud.ShowMessage("DESCANSASTE " + Mathf.RoundToInt(slept) + (Mathf.RoundToInt(slept) == 1 ? " HORA" : " HORAS") + (sim != null ? ":  SON LAS " + Clock(sim.Hour) + " DEL DIA " + sim.Day : ""), 5f);
@@ -660,6 +705,16 @@ namespace Gladiator.Town
         void OnNet(int from, string type, string payload)
         {
             if (type == "HB" && town != null && town.Houses != null) { OnHouseNet(payload); return; }
+            if (type == "SL" || type == "SLE")
+            {
+                // the host put everybody to sleep / woke everybody up
+                var ns = Gladiator.Net.NetSession.Instance;
+                var sender = ns != null ? ns.Get(from) : null;
+                if (town == null || ns == null || ns.IsHost || sender == null || !sender.Host) return;
+                if (type == "SLE") { if (Sleeping) EndSleep(); return; }
+                if (int.TryParse(payload, out int hrs) && InBed(town.Player) && !Sleeping) BeginSleep(Mathf.Clamp(hrs, 1, 12), false);
+                return;
+            }
             if (type != "DR" || town == null || town.Houses == null) return;
             var a = payload.Split('|');
             if (a.Length < 2 || !int.TryParse(a[0], out int lotId)) return;
@@ -770,6 +825,27 @@ namespace Gladiator.Town
                 // in a bed you may sleep in: E picks the hours; moving gets you up
                 bool bed = pl.ActivityKind == Fighter.ActLie && CanSleepIn(house ?? town.HouseAt(p));
                 bool notMine = bed && SleepIsTrespass(house ?? town.HouseAt(p));
+                if (bed && Online && !pl.ActivityLeaving)
+                {
+                    // online: everybody has to be in bed, and the host says for how long
+                    BedCount(out int lying, out int total);
+                    bool all = lying >= total;
+                    if (OnlineGuest)
+                    {
+                        town.Hud.SetPrompt((all ? "TODOS ACOSTADOS: EL ANFITRION ELIGE CUANTO DORMIR" : "ACOSTADOS " + lying + " DE " + total + ": FALTAN JUGADORES") + "      " + key + "LEVANTARSE");
+                        if (GameInput.InteractPressed) pl.StopActivity();
+                    }
+                    else
+                    {
+                        town.Hud.SetPrompt((all ? key + "DORMIR (ELEGIR HORAS)" : "ACOSTADOS " + lying + " DE " + total + ": FALTAN JUGADORES") + "      MOVERSE: LEVANTARSE");
+                        if (GameInput.InteractPressed)
+                        {
+                            if (all) OpenSleepMenu();
+                            else town.Hud.ShowMessage("PARA DORMIR TIENEN QUE ESTAR TODOS ACOSTADOS  (" + lying + " DE " + total + ")", 4f);
+                        }
+                    }
+                    return;
+                }
                 town.Hud.SetPrompt(pl.ActivityLeaving ? "" : bed ? key + (notMine ? "DORMIR EN CAMA AJENA (ELEGIR HORAS)" : "DORMIR (ELEGIR HORAS)") + "      MOVERSE: LEVANTARSE" : key + "LEVANTARSE");
                 if (GameInput.InteractPressed && !pl.ActivityLeaving) { if (bed) OpenSleepMenu(); else pl.StopActivity(); }
                 return;
