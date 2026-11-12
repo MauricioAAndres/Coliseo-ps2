@@ -76,6 +76,19 @@ namespace Gladiator.Town
         public HouseInterior Forum { get; private set; }
         public ServiceNPC BathKeeper { get; private set; }
         public ServiceNPC Scribe { get; private set; }
+        /// <summary>The taverns and the barkeeper of each (same order).</summary>
+        public readonly List<HouseInterior> Taverns = new List<HouseInterior>();
+        public readonly List<ServiceNPC> Barkeepers = new List<ServiceNPC>();
+        public int MealsBought { get; private set; }
+
+        /// <summary>What the tavern sells: name, price, share of your health it gives back.</summary>
+        public static readonly (string Name, int Price, float Heal, string Blurb)[] TavernMenu =
+        {
+            ("JARRA DE CERVEZA", 4, 0.12f, "Fresca, de cebada. Quita la sed y algo del dolor."),
+            ("COPA DE VINO", 7, 0.20f, "Vino tinto de la casa, rebajado con agua."),
+            ("PAN Y QUESO", 6, 0.25f, "Media hogaza y un buen trozo de queso de oveja."),
+            ("ESTOFADO CALIENTE", 12, 0.55f, "Un cuenco de carne con lentejas. Te deja como nuevo."),
+        };
         public bool Bathing { get; private set; }
         public int BathsTaken { get; private set; }
         /// <summary>What the prompt line says when nothing else does: the errand in hand.</summary>
@@ -111,8 +124,14 @@ namespace Gladiator.Town
             {
                 if (h.Service == "baths") Baths = h;
                 else if (h.Service == "forum") Forum = h;
+                else if (h.Service == "tavern") Taverns.Add(h);
             }
             int seed = t.Layout.Seed;
+            string[] hosts = { "Caupo Sextus", "Caupona Lucilla", "Caupo Rufus" };
+            for (int i = 0; i < Taverns.Count; i++)
+                if (Taverns[i].KeeperSpot.HasValue)
+                    Barkeepers.Add(ServiceNPC.Spawn(hosts[i % hosts.Length], Taverns[i].KeeperSpot.Value, seed * 37 + 11 + i * 5, 1, 4 + i, 0.6f, i % 3 == 1));
+            Debug.Log($"[TOWN] taverns: {Taverns.Count} barkeepers: {Barkeepers.Count}");
             if (Baths != null && Baths.KeeperSpot.HasValue) BathKeeper = ServiceNPC.Spawn("Balneator Crispus", Baths.KeeperSpot.Value, seed * 29 + 3, 1, 0, 0.45f);
             if (Forum != null && Forum.KeeperSpot.HasValue) Scribe = ServiceNPC.Spawn("Escriba Tiro", Forum.KeeperSpot.Value, seed * 31 + 7, 2, 7, 0.2f);
             Debug.Log($"[TOWN] services: baths={(Baths != null)} forum={(Forum != null)}");
@@ -162,7 +181,53 @@ namespace Gladiator.Town
                 if (GameInput.InteractPressed) OpenScribe();
                 return true;
             }
+            for (int i = 0; i < Taverns.Count; i++)
+            {
+                var tv = Taverns[i];
+                if (!tv.Contains(p) || Flat(tv.CounterFront - p) > 2.1f) continue;
+                town.Hud.SetPrompt(key + "CANTINERO: BEBIDA Y COMIDA");
+                if (GameInput.InteractPressed) OpenTavern(i);
+                return true;
+            }
             return false;
+        }
+
+        // ================================================================== the taverns
+        /// <summary>The barkeeper's menu (public for tests).</summary>
+        public void OpenTavern(int tavern)
+        {
+            var prof = Profile;
+            var opts = new List<ChoiceMenu.Option>();
+            for (int k = 0; k < TavernMenu.Length; k++)
+            {
+                var item = TavernMenu[k];
+                int idx = k;
+                opts.Add(new ChoiceMenu.Option
+                {
+                    Label = item.Name + ":  " + item.Price + " DENARIOS",
+                    Blurb = item.Blurb + "  Cura " + Mathf.RoundToInt(item.Heal * 100f) + "% de tu vida.",
+                    Enabled = prof != null && prof.Denarii >= item.Price,
+                    OnChoose = () => { BuyAtTavern(idx); OpenTavern(tavern); },
+                });
+            }
+            opts.Add(new ChoiceMenu.Option { Label = "NADA MAS", Blurb = "", OnChoose = () => { } });
+            string host = tavern < Barkeepers.Count && Barkeepers[tavern] != null ? Barkeepers[tavern].Name.ToUpperInvariant() : "TABERNA";
+            ChoiceMenu.Ensure().Open(host + "   (" + (prof != null ? prof.Denarii : 0) + " denarios)", opts);
+            manager.MenuOpenedByService();
+        }
+
+        /// <summary>Pay for a drink or a dish and have it on the spot (public for tests).</summary>
+        public bool BuyAtTavern(int item)
+        {
+            var prof = Profile;
+            if (prof == null || player == null || item < 0 || item >= TavernMenu.Length) return false;
+            var it = TavernMenu[item];
+            if (!prof.Spend(it.Price)) { Say("CUESTA " + it.Price + " DENARIOS Y TIENES " + prof.Denarii, 3f); return false; }
+            player.Health.Heal(player.Health.Max * it.Heal);
+            MealsBought++;
+            if (Gladiator.Audio.AudioManager.Instance != null) Gladiator.Audio.AudioManager.Instance.Play("pickup", player.transform.position, 0.6f, 0.05f, 0.9f);
+            Say(it.Name + ":  +" + Mathf.RoundToInt(it.Heal * 100f) + "% DE VIDA", 3f);
+            return true;
         }
 
         // ================================================================== the baths

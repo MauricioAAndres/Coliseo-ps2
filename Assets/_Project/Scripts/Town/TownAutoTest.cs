@@ -805,6 +805,87 @@ namespace Gladiator.Town
             yield return Wait(0.3f);
         }
 
+        /// <summary>The two taverns: sign, tables, bar, barkeeper, buying food and drink; the armourer in the open.</summary>
+        IEnumerator TavernTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sv = town.Services;
+            var prof = GameManager.Instance.Profile;
+            Vector3 p0 = pl.transform.position;
+            var lots = town.Layout.Lots.FindAll(l => l.Kind == BuildingKind.Tavern && !l.Hidden);
+            string where = "";
+            foreach (var l in lots) where += $" lot {l.Id} {l.Width:0.0}x{l.Depth:0.0} m, {(l.Center - town.Layout.Fountain).magnitude:0} m from the fountain;";
+            Log($"TAVERN lots={lots.Count} (expected 2):{where} halls={sv.Taverns.Count} barkeepers={sv.Barkeepers.Count}");
+            for (int i = 0; i < sv.Taverns.Count; i++)
+            {
+                var tv = sv.Taverns[i];
+                var lot = tv.Lot;
+                int chairs = 0; foreach (var f in tv.Furniture) if (f.Kind == Fighter.ActChair) chairs++;
+                var bk = i < sv.Barkeepers.Count ? sv.Barkeepers[i] : null;
+                Teleport(pl, lot.Center + lot.Front * (lot.Depth * 0.5f + 6.5f) + lot.Right * 1.5f + Vector3.up * 0.1f, -lot.Front);
+                cam.FocusOverride = lot.Center + lot.Front * (lot.Depth * 0.5f) + Vector3.up * 2.2f; cam.Distance = 8.5f; cam.Pitch = 8f;
+                cam.Yaw = Quaternion.LookRotation(-lot.Front - lot.Right * 0.45f).eulerAngles.y;
+                yield return Wait(1.5f);
+                yield return Shot("05f_taberna" + (i + 1) + "_fuera");
+                cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f;
+                Teleport(pl, tv.CounterFront + lot.Front * 2.2f + Vector3.up * 0.1f, -lot.Front);
+                cam.Yaw = Quaternion.LookRotation(-lot.Front).eulerAngles.y;
+                yield return Wait(1.8f);
+                yield return Shot("05g_taberna" + (i + 1) + "_dentro");
+                Teleport(pl, tv.CounterFront + Vector3.up * 0.1f, -lot.Front);
+                yield return Wait(1.0f);
+                bool inside = tv.Contains(pl.transform.position);
+                bool keeperBehind = bk != null && Vector3.Dot(bk.transform.position - tv.CounterFront, -lot.Front) > 1.2f && tv.Contains(bk.transform.position);
+                Log($"TAVERN {i + 1}: lot {lot.Id} chairs={chairs} (expected 16) barkeeper={(bk != null ? bk.Name : "-")} behind the bar={keeperBehind} player inside at the bar={inside} public={tv.Public}");
+                if (i == 0)
+                {
+                    yield return Shot("05h_taberna_barra");
+                    prof.AddDenarii(30);
+                    int m0 = prof.Denarii;
+                    pl.Health.TakeDamage(pl.Health.Current - pl.Health.Max * 0.3f);
+                    float h0 = pl.Health.Normalized;
+                    bool beer = sv.BuyAtTavern(0);
+                    float h1 = pl.Health.Normalized;
+                    bool stew = sv.BuyAtTavern(3);
+                    float h2 = pl.Health.Normalized;
+                    prof.Spend(prof.Denarii);
+                    bool broke = sv.BuyAtTavern(0);
+                    Log($"TAVERN buy: beer={beer} health {h0:0.00}->{h1:0.00} (expected +0.12) stew={stew} ->{h2:0.00} (expected +0.55) paid={m0 - 14 == m0 - (4 + 12)} money {m0}->{m0 - 16} with no money={broke} (expected False)");
+                    sv.OpenTavern(0);
+                    yield return Wait(0.6f);
+                    yield return Shot("05i_taberna_menu");
+                    Gladiator.UI.ChoiceMenu.Ensure().Close();
+                    yield return Wait(0.3f);
+                    pl.Health.Heal(pl.Health.Max);
+                    // sit at a table
+                    var seat = tv.Furniture.Find(f => f.Kind == Fighter.ActChair);
+                    bool sat = pl.TryActivityAt(seat.Kind, seat.At, pl.transform.position);
+                    yield return Wait(1.6f);
+                    yield return Shot("05j_taberna_sentado");
+                    Log($"TAVERN sit at a table: {sat} state={pl.State}");
+                    pl.StopActivity();
+                    yield return Wait(1.0f);
+                }
+            }
+            // the armourer: out in the open by his table
+            var smithy = town.Layout.Lots.Find(l => l.Kind == BuildingKind.Smithy);
+            if (smithy != null && town.Armorers.Count > 0)
+            {
+                Teleport(pl, smithy.Door + smithy.Front * 6f + Vector3.up * 0.1f, -smithy.Front);
+                cam.FocusOverride = smithy.ArmorerSpot + Vector3.up * 1.1f; cam.Distance = 5.5f; cam.Pitch = 12f;
+                cam.Yaw = Quaternion.LookRotation(-smithy.Front + smithy.Right * 0.3f).eulerAngles.y;
+                yield return Wait(1.5f);
+                yield return Shot("05k_armero_visible");
+                cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f;
+                var a = town.Armorers[0].transform.position;
+                bool clear = !Physics.Linecast(a + Vector3.up * 1.4f + smithy.Front * 0.5f, a + Vector3.up * 1.4f + smithy.Front * 5f, Ragdoll.WorldMask & ~(1 << Ragdoll.FighterLayer), QueryTriggerInteraction.Ignore);
+                Log($"ARMORER in the open: nothing within 5 m in front of him={clear} (expected True) dist from spot={(a - smithy.ArmorerSpot).magnitude:0.0}");
+            }
+            Teleport(pl, p0);
+            yield return Wait(0.3f);
+        }
+
         IEnumerator ServicesTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -1028,9 +1109,10 @@ namespace Gladiator.Town
             float tA = Time.time;
             while (swings == 0 && Time.time - tA < 2f) yield return null;
             float delay = Time.time - tA + 0.12f;
-            Log($"SHEATH put away with R={put} away={away}; attack: accepted={asked} drawing first={drawing} swing started after {delay:0.00} s (expected about {Fighter.QuickDrawSeconds:0.00}) " +
-                $"with={pl.AttackStats.Name} (expected Gladius) inHand={pl.WeaponInHand} swings={swings}");
+            Log($"SHEATH put away with R={put} away={away}; attack: accepted={asked} drawing={drawing} (expected False) swing started after {delay:0.00} s (expected about 0.12) " +
+                $"with={pl.AttackStats.Name} (expected Puños) inHand={pl.WeaponInHand} sheathed={pl.Sheathed} (expected False, True) swings={swings}");
             Fighter.AnyAttackStarted -= onSwing;
+            yield return Shot("06c_punos_con_arma_enfundada");
             yield return HoldCam(cam, pl, 1.2f, 0.95f, 2.4f, 32f, -50f);
             // two-handers, spears and the bow go across the back
             foreach (var ws in new[] { WeaponLibrary.Greatsword, WeaponLibrary.Spear, WeaponLibrary.Bow })
@@ -1588,6 +1670,7 @@ namespace Gladiator.Town
                 yield return SheathWindowsTest(town);
                 yield return HomeOwnerTest(town);
                 yield return PropsTest(town);
+                yield return TavernTest(town);
                 yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;

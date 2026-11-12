@@ -133,6 +133,8 @@ namespace Gladiator.Combat
         /// <summary>R: puts the weapon away, or draws it.</summary>
         public bool ToggleSheath() => Carried == null && SetSheathed(!Sheathed);
 
+        /// <summary>Attacking with the weapon put away draws it first (off for players: they punch instead).</summary>
+        public bool AutoDraw = true;
         /// <summary>The crate or jar carried in both arms (attacking throws it).</summary>
         public TownProp Carried;
 
@@ -583,8 +585,9 @@ namespace Gladiator.Combat
         {
             if (!IsAlive) return false;
             if (Carried != null) { Carried.Throw(); return false; } // arms full: the blow hurls what you carry
-            // the weapon is put away: the blow draws it first (quickly) and then lands
-            if (type != AttackType.Kick && CurrentWeapon != null && (state == FighterState.Idle || state == FighterState.Blocking) && !InAir)
+            // the weapon is put away: the blow draws it first (quickly) and then lands. Not the player: with the weapon
+            // put away he fights with his fists, and draws only when he says so (R)
+            if (AutoDraw && type != AttackType.Kick && CurrentWeapon != null && (state == FighterState.Idle || state == FighterState.Blocking) && !InAir)
             {
                 if (Sheathed && sheathT < 0f) SetSheathed(false, false, QuickDrawSeconds);
                 if (sheathT >= 0f)

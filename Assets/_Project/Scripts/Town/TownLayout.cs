@@ -37,15 +37,9 @@ namespace Gladiator.Town
         public Vector3 Right => Vector3.Cross(Vector3.up, Front).normalized;
         /// <summary>Shops: where you stand to buy (the yellow ring), beside the door so the door stays free.</summary>
         public Vector3 ShopSpot => Door + Right * (DoorOffset >= 0f ? 2.1f : -2.1f);
-        /// <summary>Smithies: where the armourer stands, behind the anvil under the shed beside the door.</summary>
-        public Vector3 ArmorerSpot
-        {
-            get
-            {
-                float dx = DoorOffset * Width;
-                return Center + Rotation * new Vector3(dx + (dx >= 0f ? -2.3f : 2.3f) - 0.5f, 0f, Depth * 0.5f + 0.62f);
-            }
-        }
+        /// <summary>Smithies: where the armourer stands, in the open on the side of the door away from the shed, behind
+        /// his table of wares.</summary>
+        public Vector3 ArmorerSpot => ShopSpot - Front * 0.3f;
         public Quaternion Rotation => Quaternion.LookRotation(Front);
         public bool IsHome => Kind == BuildingKind.Domus || Kind == BuildingKind.Insula;
         /// <summary>Shops you walk into through a real door (built like a home inside): store, tavern, smithy, bakery, pottery.</summary>
@@ -372,6 +366,18 @@ namespace Gladiator.Town
                     if (score > bestScore) { bestScore = score; pick = lot; }
                 }
                 if (pick != null) { pick.ForSale = true; pick.Price = 250 + rng.Next(0, 6) * 50; }
+            }
+
+            // ---- the second tavern, half hidden: the tenement farthest from the plaza (no dice: the same towns)
+            {
+                TownLot far = null; float fd = -1f;
+                foreach (var lot in gridLots)
+                {
+                    if (lot.Kind != BuildingKind.Insula || lot.Hidden || lot.ForSale) continue;
+                    float d = (lot.Center - W(Vector3.zero)).sqrMagnitude;
+                    if (d > fd) { fd = d; far = lot; }
+                }
+                if (far != null) { far.Kind = BuildingKind.Tavern; far.Floors = 1; far.Large = false; far.DoorOffset = 0f; }
             }
 
             int homes = 0;

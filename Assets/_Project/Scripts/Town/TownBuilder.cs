@@ -199,6 +199,7 @@ namespace Gladiator.Town
                 case BuildingKind.Temple: Temple(lot); return;
                 case BuildingKind.Baths: Baths(lot); return;
                 case BuildingKind.Forum: Basilica(lot); return;
+                case BuildingKind.Tavern: Tavern(lot); return;
                 case BuildingKind.Infirmary: Infirmary(lot); return;
                 case BuildingKind.Governor: GovernorDomus(lot); return;
                 case BuildingKind.Jail: Jail(lot); return;
@@ -1072,9 +1073,25 @@ namespace Gladiator.Town
             Box(PS2Materials.Get("sign_" + ColorUtility.ToHtmlStringRGB(c), PS2Textures.Cloth, c), LP(lot, x, 2.55f, hz + 0.75f), new Vector3(0.06f, 0.55f, 0.55f), q);
         }
 
-        /// <summary>Where you can buy: a tall yellow banner on a pole (the armourer stands at the anvil under the shed).</summary>
+        /// <summary>Where you can buy: a tall yellow banner on a pole and the armourer's table of wares (he stands behind it).</summary>
         void ShopMarker(TownLot lot)
         {
+            {
+                Quaternion tq = lot.Rotation;
+                Vector3 tc = lot.ShopSpot + lot.Front * 0.6f;
+                Vector3 T(float x, float y, float z) => tc + tq * new Vector3(x, y, z);
+                Box(wood, T(0, 0.82f, 0), new Vector3(1.6f, 0.08f, 0.7f), tq);
+                foreach (float sx in new[] { -0.7f, 0.7f }) foreach (float sz in new[] { -0.27f, 0.27f })
+                    Box(darkWood, T(sx, 0.39f, sz), new Vector3(0.09f, 0.78f, 0.09f), tq, 0f);
+                Collider(T(0, 0.45f, 0), new Vector3(1.6f, 0.9f, 0.7f), tq);
+                Box(iron, T(-0.4f, 0.88f, 0.05f), new Vector3(0.7f, 0.03f, 0.07f), tq * Quaternion.Euler(0, 18f, 0), 0f);     // a blade
+                Box(darkWood, T(-0.72f, 0.88f, -0.06f), new Vector3(0.16f, 0.04f, 0.05f), tq * Quaternion.Euler(0, 18f, 0), 0f);
+                Box(iron, T(-0.66f, 0.88f, -0.04f), new Vector3(0.04f, 0.04f, 0.2f), tq * Quaternion.Euler(0, 18f, 0), 0f);
+                Box(iron, T(0.2f, 0.98f, 0f), new Vector3(0.26f, 0.24f, 0.28f), tq, 0f);                                    // a helmet
+                Box(banner, T(0.2f, 1.14f, 0f), new Vector3(0.05f, 0.1f, 0.26f), tq, 0f);
+                Box(banner, T(0.6f, 0.9f, 0.02f), new Vector3(0.42f, 0.06f, 0.42f), tq * Quaternion.Euler(0, 30f, 0), 0f);   // a round shield, flat
+                Box(iron, T(0.6f, 0.94f, 0.02f), new Vector3(0.12f, 0.05f, 0.12f), tq, 0f);
+            }
             float side = lot.DoorOffset >= 0f ? 1f : -1f;   // the side away from the shed
             Vector3 pole = lot.ShopSpot + lot.Right * (side * 1.2f) - lot.Front * 0.5f;
             var y = PS2Materials.Get("banner_shop", PS2Textures.Cloth, new Color(0.95f, 0.75f, 0.1f));
@@ -1698,6 +1715,126 @@ namespace Gladiator.Town
         /// counter at the back with scrolls and ink, shelves of scrolls behind it, the board with the day's errands on a
         /// side wall and benches for those who wait. Its roof hides while you are inside.
         /// </summary>
+        /// <summary>A hanging board with a mug of beer painted on both faces (the board's faces look along local z).</summary>
+        void BeerSign(Vector3 c, Quaternion q, float size)
+        {
+            var beer = PS2Materials.Get("sign_beer", PS2Textures.Cloth, new Color(0.95f, 0.72f, 0.12f));
+            var foam = PS2Materials.Get("sign_foam", PS2Textures.Cloth, new Color(0.97f, 0.95f, 0.88f));
+            float s = size;
+            Vector3 P(float x, float y, float z) => c + q * new Vector3(x, y, z);
+            Box(darkWood, c, new Vector3(s, s, 0.08f), q);
+            Box(wood, P(0, s * 0.5f + 0.03f, 0), new Vector3(s + 0.1f, 0.06f, 0.12f), q, 0f);
+            Box(wood, P(0, -s * 0.5f - 0.03f, 0), new Vector3(s + 0.1f, 0.06f, 0.12f), q, 0f);
+            foreach (float f in new[] { -1f, 1f })
+            {
+                float z = f * 0.05f;
+                Box(beer, P(-0.06f * s, -0.08f * s, z), new Vector3(0.44f * s, 0.5f * s, 0.03f), q, 0f);            // the mug
+                Box(foam, P(-0.06f * s, 0.24f * s, z), new Vector3(0.52f * s, 0.16f * s, 0.035f), q, 0f);           // its head
+                Box(foam, P(-0.22f * s, 0.12f * s, z), new Vector3(0.1f * s, 0.14f * s, 0.035f), q, 0f);            // running over
+                Box(beer, P(0.25f * s, 0.06f * s, z), new Vector3(0.14f * s, 0.07f * s, 0.03f), q, 0f);             // the handle
+                Box(beer, P(0.25f * s, -0.2f * s, z), new Vector3(0.14f * s, 0.07f * s, 0.03f), q, 0f);
+                Box(beer, P(0.3f * s, -0.07f * s, z), new Vector3(0.07f * s, 0.33f * s, 0.03f), q, 0f);
+            }
+        }
+
+        /// <summary>
+        /// The tavern (taberna): one hall you walk into. A bar across the back with the barkeeper behind it (drinks and
+        /// food), shelves of jars and barrels, and four big tables with chairs you can sit on. A big board with a mug of
+        /// beer hangs over the street and another is on the wall over the door.
+        /// </summary>
+        void Tavern(TownLot lot)
+        {
+            Quaternion q = lot.Rotation;
+            float w = lot.Width, d = lot.Depth, H = 3.6f, t = 0.25f, hx = w * 0.5f, hz = d * 0.5f;
+            Material wall = plaster[lot.Tint % plaster.Length];
+            var boards = PS2Materials.Get("tavern_floor", PS2Textures.Wood, new Color(0.62f, 0.5f, 0.38f));
+            var house = Hall(lot, "Tavern", "TABERNA", "tavern", 0f, d, H, 0.85f, 2.5f, wall, boards);
+            Vector3 P(float x, float y, float z) => LP(lot, x, y, z);
+
+            // ---- the signs: one flat over the door, one hanging out over the street on a beam
+            BeerSign(P(0, 3.05f, hz + 0.07f), q, 1.0f);
+            float sgx = hx - 1.1f;
+            Box(darkWood, P(sgx, 3.5f, hz + 0.95f), new Vector3(0.12f, 0.12f, 1.9f), q);
+            Box(iron, P(sgx, 3.36f, hz + 0.6f), new Vector3(0.03f, 0.2f, 0.03f), q, 0f);
+            Box(iron, P(sgx, 3.36f, hz + 1.5f), new Vector3(0.03f, 0.2f, 0.03f), q, 0f);
+            BeerSign(P(sgx, 2.66f, hz + 1.05f), q * Quaternion.Euler(0, 90f, 0), 1.2f);
+            // an awning and two barrels by the door
+            for (int i = 0; i < 6; i++)
+                Box(i % 2 == 0 ? banner : awningA, P(-hx + 0.6f + 2.6f * (i + 0.5f) / 6f, 2.7f, hz + 0.8f), new Vector3(2.6f / 6f, 0.06f, 1.7f), q * Quaternion.Euler(14f, 0, 0), 0f);
+            foreach (float bx in new[] { -hx + 0.9f, -hx + 1.75f })
+            {
+                AddMesh(wood, LowPolyMesh.Cylinder(0.36f, 0.95f, 8, true, false, 1f, 1f / 3f), P(bx, 0, hz + 0.55f), q);
+                Box(iron, P(bx, 0.25f, hz + 0.55f), new Vector3(0.76f, 0.05f, 0.76f), q * Quaternion.Euler(0, 22.5f, 0), 0f);
+                Box(iron, P(bx, 0.7f, hz + 0.55f), new Vector3(0.76f, 0.05f, 0.76f), q * Quaternion.Euler(0, 22.5f, 0), 0f);
+                Collider(P(bx, 0.5f, hz + 0.55f), new Vector3(0.7f, 1f, 0.7f), q);
+            }
+
+            // ---- the bar across the back; the barkeeper stands behind it
+            float cz = -hz + 2.0f, cw = w - 2.9f;
+            Box(wood, P(-0.5f, 0.52f, cz), new Vector3(cw, 1.04f, 0.6f), q);
+            Box(darkWood, P(-0.5f, 1.07f, cz + 0.03f), new Vector3(cw + 0.1f, 0.06f, 0.76f), q, 0f);
+            Collider(P(-0.5f, 0.55f, cz), new Vector3(cw, 1.1f, 0.62f), q);
+            for (int k = 0; k < 4; k++)
+            {
+                float mx = -0.5f - cw * 0.38f + k * cw * 0.25f;
+                Box(clay, P(mx, 1.18f, cz + 0.1f - (k % 2) * 0.15f), new Vector3(0.13f, 0.16f, 0.13f), q, 0f);              // mugs
+                Box(clay, P(mx + 0.09f, 1.18f, cz + 0.1f - (k % 2) * 0.15f), new Vector3(0.05f, 0.08f, 0.03f), q, 0f);
+            }
+            Box(straw, P(-0.5f + cw * 0.3f, 1.14f, cz - 0.05f), new Vector3(0.4f, 0.09f, 0.3f), q * Quaternion.Euler(0, 15f, 0), 0f); // bread
+            // shelves of jars on the back wall, barrels in the corner
+            Box(darkWood, P(-0.5f, 1.25f, -hz + t + 0.16f), new Vector3(cw, 0.06f, 0.32f), q, 0f);
+            Box(darkWood, P(-0.5f, 1.85f, -hz + t + 0.16f), new Vector3(cw, 0.06f, 0.32f), q, 0f);
+            int jarsN = Mathf.FloorToInt(cw / 0.45f);
+            for (int r = 0; r < 2; r++)
+                for (int k = 0; k < jarsN; k++)
+                    if ((k * 3 + r + lot.Id) % 4 != 0)
+                    {
+                        float jx = -0.5f - cw * 0.5f + 0.25f + k * 0.45f;
+                        Box(clay, P(jx, 1.42f + r * 0.6f, -hz + t + 0.16f), new Vector3(0.2f, 0.28f, 0.2f), q * Quaternion.Euler(0, 45f, 0), 0f);
+                        Box(clay, P(jx, 1.6f + r * 0.6f, -hz + t + 0.16f), new Vector3(0.1f, 0.08f, 0.1f), q, 0f);
+                    }
+            for (int k = 0; k < 2; k++)
+            {
+                Vector3 bp = P(hx - t - 0.5f, 0, -hz + t + 0.5f + k * 0.85f);
+                AddMesh(wood, LowPolyMesh.Cylinder(0.38f, 1.0f, 8, true, false, 1f, 1f / 3f), bp, q);
+                Box(iron, bp + Vector3.up * 0.28f, new Vector3(0.8f, 0.05f, 0.8f), q * Quaternion.Euler(0, 22.5f, 0), 0f);
+                Box(iron, bp + Vector3.up * 0.74f, new Vector3(0.8f, 0.05f, 0.8f), q * Quaternion.Euler(0, 22.5f, 0), 0f);
+                Collider(bp + Vector3.up * 0.5f, new Vector3(0.74f, 1f, 0.74f), q);
+            }
+            house.KeeperSpot = new Pose(P(-0.5f, 0.05f, cz - 0.95f), q);
+            house.CounterFront = P(-0.5f, 0.05f, cz + 1.15f);
+
+            // ---- four big tables, four chairs each (two a side)
+            float txc = hx - t - 1.5f;
+            float zA = cz + 2.45f, zB = hz - t - 1.35f;
+            if (zB - zA < 2.0f) { float mid = (zA + zB) * 0.5f; zA = mid - 1.0f; zB = mid + 1.0f; }
+            foreach (float tx in new[] { -txc, txc })
+                foreach (float tz in new[] { zA, zB })
+                {
+                    Box(wood, P(tx, 0.76f, tz), new Vector3(1.7f, 0.08f, 0.85f), q);
+                    foreach (float sx in new[] { -0.74f, 0.74f }) foreach (float sz in new[] { -0.32f, 0.32f })
+                        Box(darkWood, P(tx + sx, 0.36f, tz + sz), new Vector3(0.09f, 0.72f, 0.09f), q, 0f);
+                    Collider(P(tx, 0.42f, tz), new Vector3(1.7f, 0.84f, 0.85f), q);
+                    Box(clay, P(tx - 0.4f, 0.88f, tz + 0.1f), new Vector3(0.13f, 0.16f, 0.13f), q, 0f);
+                    Box(clay, P(tx + 0.35f, 0.88f, tz - 0.15f), new Vector3(0.13f, 0.16f, 0.13f), q, 0f);
+                    Box(straw, P(tx, 0.83f, tz), new Vector3(0.3f, 0.06f, 0.3f), q * Quaternion.Euler(0, 30f, 0), 0f);        // a plate
+                    foreach (float side in new[] { -1f, 1f })
+                        foreach (float cxo in new[] { -0.42f, 0.42f })
+                        {
+                            float cx = tx + cxo, czz = tz + side * 0.72f;
+                            Box(darkWood, P(cx, 0.44f, czz), new Vector3(0.4f, 0.06f, 0.4f), q);
+                            foreach (float lx in new[] { -0.16f, 0.16f }) foreach (float lz in new[] { -0.16f, 0.16f })
+                                Box(darkWood, P(cx + lx, 0.22f, czz + lz), new Vector3(0.05f, 0.44f, 0.05f), q, 0f);
+                            Box(darkWood, P(cx, 0.75f, czz + side * 0.18f), new Vector3(0.4f, 0.55f, 0.05f), q, 0f);
+                            Collider(P(cx, 0.3f, czz), new Vector3(0.4f, 0.6f, 0.4f), q);
+                            house.Furniture.Add(new FurnitureSpot(Gladiator.Combat.Fighter.ActChair,
+                                new Pose(P(cx, 0.02f, czz), q * Quaternion.LookRotation(new Vector3(0, 0, -side)))));
+                        }
+                }
+            HallTop(lot, house, 0f, d, H, wall, 1.3f, () =>
+                Gable(roofs[lot.RoofTint % roofs.Length], wall, LP(lot, 0, H, 0), q, w + 0.5f, d + 0.6f, 1.3f));
+        }
+
         void Basilica(TownLot lot)
         {
             Quaternion q = lot.Rotation;

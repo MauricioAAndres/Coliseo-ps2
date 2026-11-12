@@ -39,7 +39,7 @@ namespace Gladiator.Combat
         /// <summary>True while a wheel is open (movement and attacks are paused).</summary>
         public bool TauntWheelOpen => tauntWheel.Open || actWheel.Open;
 
-        void Awake() { fighter = GetComponent<Fighter>(); }
+        void Awake() { fighter = GetComponent<Fighter>(); fighter.AutoDraw = false; }
         void OnDisable() { NearbyWeapon = null; CloseWheels(); }
         void OnDestroy()
         {

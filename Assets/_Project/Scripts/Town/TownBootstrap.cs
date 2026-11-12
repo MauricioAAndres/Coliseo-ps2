@@ -926,7 +926,7 @@ namespace Gladiator.Town
                 return;
             }
             // the smithies: weapons, armour and shields
-            var smithy = NearestSmithy(p, 2.5f); // in front of the armourer at his anvil
+            var smithy = NearestSmithy(p, 2.5f); // in front of the armourer at his table
             if (smithy != null)
             {
                 var gmS = GameManager.Instance;

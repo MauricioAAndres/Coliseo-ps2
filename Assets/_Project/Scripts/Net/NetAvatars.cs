@@ -170,6 +170,7 @@ namespace Gladiator.Net
             var lk = LookFor != null ? LookFor(p) : (p.G.Appearance(), p.G.ArmorSet);
             int team = TeamFor != null ? TeamFor(p) : (local != null ? local.TeamId : 0);
             var f = CharacterFactory.Create(p.G.Name, lk.Item1, pos, Quaternion.identity, team, lk.Item2);
+            f.AutoDraw = false; // another player: fists while the weapon is put away, as on his own screen
             // A copy never deals or takes damage here: each player's own game decides what happens to their gladiator.
             f.Harmless = true;
             f.DisarmResistance = 1f;
