@@ -224,7 +224,7 @@ namespace Gladiator.Net
             if (f != local || NetSession.Instance == null || !NetSession.Instance.InGame) return;
             switch (kind)
             {
-                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture": case "knockdown": case "sheathe": case "draw":
+                case "jump": case "vault": case "climb": case "dodge": case "dodge_back": case "taunt": case "cheer": case "gesture": case "knockdown": case "sheathe": case "draw": case "torch_on": case "torch_off":
                     NetSession.Instance.Send("MV", kind + "|" + local.TauntKind + "|" + PosYaw());
                     break;
                 case "activity" when local.OnFurniture:
@@ -437,6 +437,8 @@ namespace Gladiator.Net
                 case "activity_end": Fighter.StopActivity(); break;
                 case "knockdown": Fighter.KnockDown(-fwd, 2.8f); Knockdowns++; break;
                 case "sheathe": if (!Fighter.SetSheathed(true)) Fighter.SetSheathed(true, true); break;
+                case "torch_on": Torch.Ensure(Fighter); Fighter.TorchOn = true; break;
+                case "torch_off": Fighter.TorchOn = false; break;
                 case "draw": if (!Fighter.SetSheathed(false, false, Fighter.QuickDrawSeconds)) Fighter.SetSheathed(false, true); break;
             }
         }

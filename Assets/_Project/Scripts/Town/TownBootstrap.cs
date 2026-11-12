@@ -75,6 +75,9 @@ namespace Gladiator.Town
         }
 
         public CarpenterNPC Carpenter { get; private set; }
+        /// <summary>Both carpenters: the one in the centre and the one out by the walls.</summary>
+        public readonly System.Collections.Generic.List<CarpenterNPC> Carpenters = new System.Collections.Generic.List<CarpenterNPC>();
+        public System.Collections.Generic.List<Vector3> JarSpots { get; private set; }
         /// <summary>The armourer of each smithy, at his anvil with a hammer: he sells weapons, armour and shields.</summary>
         public readonly System.Collections.Generic.List<ServiceNPC> Armorers = new System.Collections.Generic.List<ServiceNPC>();
         /// <summary>Online: houses bought by the other players (lot id -> owner's name).</summary>
@@ -239,6 +242,7 @@ namespace Gladiator.Town
             builder.Build();
             Buildings = builder.BuildingCount;
             Houses = builder.Houses;
+            JarSpots = builder.JarSpots;
             MarkOwned();
             // the ludus: its training yard inside the town, the gate opens onto the street (no loading, no E)
             Ludus = new GameObject("Ludus").transform;
@@ -297,7 +301,8 @@ namespace Gladiator.Town
             Guards.Init(this);
             Governor = GovernorNPC.Spawn(this);
             Prisoner = JailNPC.Spawn(this);
-            Carpenter = CarpenterNPC.Spawn(this);
+            CarpenterNPC.SpawnAll(this, Carpenters);
+            Carpenter = Carpenters.Count > 0 ? Carpenters[0] : null;
             SpawnArmorers();
             Services = gameObject.AddComponent<TownServices>();
             TownProps.Spawn(this);
@@ -428,6 +433,8 @@ namespace Gladiator.Town
 
         // ---------------------------------------------------------------- night: houses lock their doors
         public static bool IsNight(float hour) => hour >= 22f || hour < 6f;
+        /// <summary>Dark enough for torches.</summary>
+        public static bool IsDark(float hour) => hour >= 19.5f || hour < 6.5f;
         public bool Night { get { var s = TownSimulation.Instance; return s != null && IsNight(s.Hour); } }
 
         bool Mine(HouseInterior h) => h != null && HouseDeeds.Owns(town.Layout.Seed, h.Lot.Id);
@@ -961,8 +968,9 @@ namespace Gladiator.Town
                 if (GameInput.InteractPressed) town.Hud.ShowMessage(gov.Talk(town.Player), 5.5f);
                 return;
             }
-            var carp = town.Carpenter;
-            if (carp != null && carp.Fighter != null && Flat(carp.Fighter.transform.position - p) < 2.6f)
+            CarpenterNPC carp = null;
+            foreach (var cn in town.Carpenters) if (cn != null && cn.Fighter != null && Flat(cn.Fighter.transform.position - p) < 2.6f) carp = cn;
+            if (carp != null)
             {
                 town.Hud.SetPrompt(key + "CARPINTERO: MUEBLES PARA TU CASA");
                 if (GameInput.InteractPressed) OpenCarpenter();
@@ -985,6 +993,7 @@ namespace Gladiator.Town
             }
             var npc = town.Spawner != null ? town.Spawner.Nearest(p, 2.3f) : null;
             if (npc != null && npc.Controlled) npc = null; // a guard warning or fighting you does not chat
+            if (npc != null && Flat(town.Layout.ArenaGate - p) < GateRadius) npc = null; // at the arena gate, the gate comes first
             if (npc != null && npc.Citizen != null && !npc.Fleeing)
             {
                 town.Hud.SetPrompt(key + "HABLAR CON " + npc.Citizen.Name.ToUpperInvariant() + " (" + npc.Citizen.JobName + ")");

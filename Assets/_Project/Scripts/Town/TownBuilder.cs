@@ -100,6 +100,8 @@ namespace Gladiator.Town
 
         /// <summary>The houses you can walk into (TownManager hides their roof while you are inside).</summary>
         public readonly List<HouseInterior> Houses = new List<HouseInterior>();
+        /// <summary>Where the rows of jars stand outside the pottery and the taverns.</summary>
+        public readonly List<Vector3> JarSpots = new List<Vector3>();
 
         /// <summary>Box in world space.</summary>
         void Box(Material m, Vector3 center, Vector3 size, Quaternion rot, float uv = 1f / 3f) => B(m).AddBox(center, size, rot, Color.white, uv);
@@ -1108,9 +1110,8 @@ namespace Gladiator.Town
             float hz = lot.Depth * 0.5f;
             for (int i = 0; i < n; i++)
             {
-                float x = lot.Width * 0.5f + 0.35f + (i / 7) * 0.45f, z = hz - 0.5f - (i % 7) * 0.6f; // along the side wall, outside
-                Box(clay, LP(lot, x, 0.32f, z), new Vector3(0.32f, 0.64f, 0.32f), q * Quaternion.Euler(0, 45f, 0), 0f);
-                Box(clay, LP(lot, x, 0.7f, z), new Vector3(0.16f, 0.14f, 0.16f), q, 0f);
+                float x = lot.Width * 0.5f + 0.4f + (i / 7) * 0.5f, z = hz - 0.5f - (i % 7) * 0.62f; // along the side wall, outside
+                JarSpots.Add(LP(lot, x, 0f, z)); // real jars (TownProps): they can be shoved, carried and smashed
             }
         }
 
@@ -1758,6 +1759,7 @@ namespace Gladiator.Town
             Box(iron, P(sgx, 3.36f, hz + 0.6f), new Vector3(0.03f, 0.2f, 0.03f), q, 0f);
             Box(iron, P(sgx, 3.36f, hz + 1.5f), new Vector3(0.03f, 0.2f, 0.03f), q, 0f);
             BeerSign(P(sgx, 2.66f, hz + 1.05f), q * Quaternion.Euler(0, 90f, 0), 1.2f);
+            Amphorae(lot, 5);
             // an awning and two barrels by the door
             for (int i = 0; i < 6; i++)
                 Box(i % 2 == 0 ? banner : awningA, P(-hx + 0.6f + 2.6f * (i + 0.5f) / 6f, 2.7f, hz + 0.8f), new Vector3(2.6f / 6f, 0.06f, 1.7f), q * Quaternion.Euler(14f, 0, 0), 0f);
@@ -1975,6 +1977,21 @@ namespace Gladiator.Town
             Quaternion q = Quaternion.LookRotation(L.ArenaFacing);
             Vector3 g = L.ArenaCenter + L.ArenaFacing * (R + 0.3f);
             Box(dark, g + Vector3.up * 2.3f, new Vector3(4.2f, 4.6f, 0.4f), q);
+            // the doors: two big leaves of planks with iron bands, studs and rings
+            foreach (float sx in new[] { -1f, 1f })
+            {
+                Box(darkWood, g + q * new Vector3(sx * 1.04f, 2.3f, 0.24f), new Vector3(2.04f, 4.6f, 0.14f), q, 0.5f);
+                for (int k = 0; k < 4; k++)
+                    Box(wood, g + q * new Vector3(sx * (0.3f + k * 0.5f), 2.3f, 0.32f), new Vector3(0.42f, 4.5f, 0.04f), q, 0.5f);
+                foreach (float by in new[] { 0.7f, 2.3f, 3.9f })
+                {
+                    Box(iron, g + q * new Vector3(sx * 1.04f, by, 0.35f), new Vector3(2.0f, 0.16f, 0.04f), q, 0f);
+                    for (int k = 0; k < 4; k++)
+                        Box(iron, g + q * new Vector3(sx * (0.3f + k * 0.5f), by, 0.38f), new Vector3(0.08f, 0.08f, 0.05f), q * Quaternion.Euler(0, 0, 45f), 0f);
+                }
+                Box(iron, g + q * new Vector3(sx * 0.3f, 1.5f, 0.4f), new Vector3(0.22f, 0.22f, 0.05f), q * Quaternion.Euler(0, 0, 45f), 0f);
+            }
+            Box(dark, g + q * new Vector3(0, 2.3f, 0.33f), new Vector3(0.05f, 4.6f, 0.04f), q, 0f);
             Box(stone, g + q * new Vector3(-2.6f, 2.8f, 0.2f), new Vector3(1.0f, 5.6f, 0.9f), q);
             Box(stone, g + q * new Vector3(2.6f, 2.8f, 0.2f), new Vector3(1.0f, 5.6f, 0.9f), q);
             Box(stone, g + q * new Vector3(0, 5.2f, 0.2f), new Vector3(6.2f, 1.0f, 0.9f), q);

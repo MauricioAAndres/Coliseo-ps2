@@ -16,11 +16,43 @@ namespace Gladiator.Town
         public string Name { get; private set; }
         Vector3 face;
 
-        public static CarpenterNPC Spawn(TownBootstrap town)
+        /// <summary>Both carpenters, each outside a house with his bench: one by the plaza, one far from it.</summary>
+        public static void SpawnAll(TownBootstrap town, System.Collections.Generic.List<CarpenterNPC> into)
         {
             var L = town.Layout;
-            Vector3 at = L.ToWorld(new Vector3(6.5f, 0f, -8.6f));
-            Vector3 fwd = L.ToWorld(Vector3.forward).normalized; // looking at the fountain
+            TownLot near = null, far = null; float nd = float.MaxValue, fs = -1f;
+            TownLot hid = null; float hd = -1f;
+            foreach (var lot in L.Lots)
+            {
+                if (lot.Kind != BuildingKind.Tavern || lot.Hidden) continue;
+                float d = (lot.Center - L.Fountain).sqrMagnitude;
+                if (d > hd) { hd = d; hid = lot; }
+            }
+            bool Fits(TownLot lot) => !lot.Hidden && !lot.ForSale && (lot.Kind == BuildingKind.Domus || lot.Kind == BuildingKind.Insula || lot.Kind == BuildingKind.Shop);
+            foreach (var lot in L.Lots)
+            {
+                if (!Fits(lot)) continue;
+                float d = (lot.Door - L.Fountain).magnitude;
+                if (d < nd) { nd = d; near = lot; }
+            }
+            foreach (var lot in L.Lots)
+            {
+                if (!Fits(lot) || lot == near) continue;
+                float d = (lot.Door - L.Fountain).magnitude;
+                if (d < 40f) continue;
+                // far from the plaza, and not next to the hidden tavern or the smithy by the ludus
+                float s = d + (hid != null ? Mathf.Min(60f, (lot.Center - hid.Center).magnitude) : 0f) + Mathf.Min(40f, (lot.Center - L.LudusGate).magnitude);
+                if (s > fs) { fs = s; far = lot; }
+            }
+            if (near != null) into.Add(Spawn(town, near, "Faber el carpintero", 0));
+            if (far != null) into.Add(Spawn(town, far, "Tignarius el carpintero", 1));
+        }
+
+        public static CarpenterNPC Spawn(TownBootstrap town, TownLot lot, string name, int n)
+        {
+            var L = town.Layout;
+            Vector3 at = lot.ShopSpot - lot.Front * 0.3f;
+            Vector3 fwd = lot.Front; // his back to the house, looking at the street
             Quaternion q = Quaternion.LookRotation(fwd);
 
             // the workbench in front of him: planks, tools; a stack of boards beside it; a board with his wares
@@ -43,8 +75,7 @@ namespace Gladiator.Town
             PS2Spawn.Box(sign.transform, "Bed", new Vector3(0.34f, 0.1f, 0.02f), new Vector3(0.2f, -0.04f, 0.03f), wood);
             LowPolyMesh.BakeAmbient(bench.gameObject, TownBuilder.AmbientSky, TownBuilder.AmbientGround);
 
-            const string name = "Faber el carpintero";
-            var look = CharacterAppearance.Random(new System.Random(town.Layout.Seed * 17 + 5), true);
+            var look = CharacterAppearance.Random(new System.Random(town.Layout.Seed * 17 + 5 + n * 101), true);
             look.Name = name;
             look.Armor = 0; look.Helmet = false;
             look.Outfit = 1; look.ClothColor = 3;
@@ -56,7 +87,7 @@ namespace Gladiator.Town
             f.Health.SetMax(1000000f, true);
             var c = f.gameObject.AddComponent<CarpenterNPC>();
             c.Fighter = f; c.Name = name; c.face = fwd;
-            Debug.Log($"[TOWN] carpenter at {at}");
+            Debug.Log($"[TOWN] carpenter {name} at {at} (lot {lot.Id}, {(at - L.Fountain).magnitude:0} m from the fountain)");
             return c;
         }
 

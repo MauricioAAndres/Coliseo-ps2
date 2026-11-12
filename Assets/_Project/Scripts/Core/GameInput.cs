@@ -88,6 +88,9 @@ namespace Gladiator.Core
         /// <summary>Put the weapon away / draw it: R / gamepad d-pad right.</summary>
         public static bool SheathPressed => Bound(GameAction.Sheath);
 
+        /// <summary>Light the torch / put it out: H.</summary>
+        public static bool TorchPressed => Bound(GameAction.Torch);
+
         /// <summary>Taunt button held: after a moment it opens the taunt wheel.</summary>
         public static bool TauntHeld => BoundHeld(GameAction.Taunt);
 

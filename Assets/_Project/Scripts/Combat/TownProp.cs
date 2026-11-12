@@ -31,7 +31,7 @@ namespace Gladiator.Combat
         Rigidbody body;
         Collider col;
         Fighter lastHitter, thrownBy;
-        float lastHit = -9f, thrownAt = -9f;
+        float lastHit = -9f, thrownAt = -9f, holdDist;
         Material mat;
         Color tint;
 
@@ -178,6 +178,7 @@ namespace Gladiator.Combat
             if (Broken || Holder != null || f == null || f.Carried != null || !f.IsAlive || f.KnockedOut || f.Ragdolled || f.InActivity) return false;
             if (f.CurrentWeapon != null && !f.Sheathed) f.SetSheathed(true);
             Holder = f;
+            holdDist = 0f;
             f.Carried = this;
             body.isKinematic = true;
             col.enabled = false;
@@ -219,7 +220,14 @@ namespace Gladiator.Combat
         {
             if (Holder == null) return;
             Transform t = Holder.transform;
-            transform.SetPositionAndRotation(t.position + Vector3.up * 1.02f + t.forward * (0.46f + Size.z * 0.5f), t.rotation);
+            // held out in front, but never through a wall: something in the way brings it in against the chest
+            float want = 0.46f + Size.z * 0.5f, d = want;
+            Vector3 chest = t.position + Vector3.up * 1.02f;
+            int mask = Ragdoll.WorldMask & ~(1 << Ragdoll.FighterLayer);
+            if (Physics.BoxCast(chest, new Vector3(Size.x * 0.48f, Size.y * 0.45f, 0.05f), t.forward, out RaycastHit hit, t.rotation, want + Size.z * 0.5f, mask, QueryTriggerInteraction.Ignore))
+                d = Mathf.Clamp(hit.distance - Size.z * 0.5f, 0.02f, want);
+            holdDist = holdDist <= 0f ? d : d < holdDist ? d : Mathf.MoveTowards(holdDist, d, Time.deltaTime * 2.5f);
+            transform.SetPositionAndRotation(chest + t.forward * holdDist, t.rotation);
         }
 
         /// <summary>Where a hand holds it (world).</summary>

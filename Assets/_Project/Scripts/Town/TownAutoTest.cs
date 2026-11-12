@@ -886,6 +886,123 @@ namespace Gladiator.Town
             yield return Wait(0.3f);
         }
 
+        /// <summary>The arena's doors and its free gate, both carpenters, the rows of jars, a carried crate against a
+        /// wall, torches at night.</summary>
+        IEnumerator ExtrasTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sim = TownSimulation.Instance;
+            var L = town.Layout;
+            Vector3 p0 = pl.transform.position;
+            float hour0 = sim.Hour;
+            void Frame(Vector3 focus, Vector3 lookDir, float dist, float pitch) { cam.FocusOverride = focus; cam.Distance = dist; cam.Pitch = pitch; cam.Yaw = Quaternion.LookRotation(lookDir).eulerAngles.y; }
+            void Free() { cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f; }
+
+            // ---- the arena gate: doors, and nobody standing in the doorway
+            sim.Hour = 10.5f;
+            Teleport(pl, L.ArenaGate + Vector3.up * 0.1f, -L.ArenaFacing);
+            yield return Wait(3f);
+            int inGate = 0; float nearest = 99f;
+            foreach (var f in Fighter.All)
+            {
+                if (f == null || f == pl) continue;
+                float d = (f.transform.position - L.ArenaGate).magnitude;
+                if (d < nearest) nearest = d;
+                if (d < 3.2f) inGate++;
+            }
+            Frame(L.ArenaGate + Vector3.up * 2.2f, -L.ArenaFacing, 9f, 6f);
+            yield return Wait(1.0f);
+            yield return Shot("05l_arena_puerta");
+            Free();
+            Log($"ARENA GATE: people within 3.2 m of it={inGate} (expected 0) nearest {nearest:0.0} m");
+
+            // ---- the carpenters
+            string cs = "";
+            foreach (var c in town.Carpenters) cs += $" {c.Name} {(c.transform.position - L.Fountain).magnitude:0} m from the fountain;";
+            Log($"CARPENTERS {town.Carpenters.Count} (expected 2):{cs} armourers={town.Armorers.Count}");
+            for (int i = 0; i < town.Carpenters.Count; i++)
+            {
+                var c = town.Carpenters[i];
+                Vector3 fw = c.transform.forward;
+                Teleport(pl, c.transform.position + fw * 2.6f + Vector3.up * 0.1f, -fw);
+                Frame(c.transform.position + Vector3.up * 1.1f, -fw + Vector3.Cross(Vector3.up, fw) * 0.5f, 6.5f, 14f);
+                yield return Wait(1.3f);
+                yield return Shot("05m_carpintero" + (i + 1));
+                Free();
+            }
+
+            // ---- the rows of jars are real jars
+            int rowJars = 0; TownProp aJar = null;
+            foreach (var o in TownProp.All) if (o.Id >= 5000 && o.Id < 6000) { rowJars++; aJar = o; }
+            Log($"JAR ROWS: spots={(town.JarSpots != null ? town.JarSpots.Count : 0)} jars standing={rowJars}");
+            if (aJar != null)
+            {
+                Vector3 jp = aJar.transform.position;
+                var lot = L.Lots[0]; float bd = 1e9f;
+                foreach (var l in L.Lots) { float d = (l.Center - jp).sqrMagnitude; if (d < bd) { bd = d; lot = l; } }
+                Vector3 away = jp - lot.Center; away.y = 0f; away = Vector3.Project(away, lot.Right).normalized;
+                Teleport(pl, jp + away * 2.2f - Vector3.up * jp.y + Vector3.up * 0.1f, -away);
+                Frame(jp + Vector3.up * 0.6f, -away + lot.Front * -0.6f, 6f, 22f);
+                yield return Wait(1.2f);
+                yield return Shot("05n_anforas");
+                Free();
+                // carry one into the wall: it stays on this side
+                Teleport(pl, jp + away * 0.9f - Vector3.up * jp.y + Vector3.up * 0.1f, -away);
+                yield return Wait(0.4f);
+                bool got = aJar.PickUp(pl);
+                var pcx = pl.GetComponent<PlayerController>();
+                pcx.enabled = false;
+                for (float t = 0f; t < 1.6f; t += Time.deltaTime) { pl.SetFacing(-away); pl.Move(-away); yield return null; }
+                pl.Move(Vector3.zero);
+                yield return Wait(0.3f);
+                float wallAt = lot.Width * 0.5f;
+                float jarAt = aJar != null ? Mathf.Abs(Vector3.Dot(aJar.transform.position - lot.Center, lot.Right)) : -1f;
+                Frame(pl.transform.position + Vector3.up * 1f, -away + lot.Front * -0.9f, 4f, 25f);
+                yield return Wait(0.5f);
+                yield return Shot("05o_jarron_contra_pared");
+                Free();
+                Log($"CARRY against a wall: picked={got} jar centre {jarAt:0.00} m from the house's middle, wall face at {wallAt:0.00} (expected the jar outside: over {wallAt + 0.15f:0.00})");
+                if (pl.Carried != null) pl.Carried.Drop();
+                pcx.enabled = true;
+            }
+
+            // ---- torches at night
+            sim.Hour = 20.6f;
+            Teleport(pl, L.Fountain + new Vector3(4f, 0.1f, -4f), Vector3.forward);
+            Torch.Ensure(pl);
+            if (!pl.TorchOn) pl.ToggleTorch();
+            yield return Wait(4f);
+            int guards = 0, guardsLit = 0, folk = 0, folkLit = 0;
+            CitizenNPC gShow = null;
+            foreach (var n in town.Spawner.GetComponentsInChildren<CitizenNPC>())
+            {
+                if (n.Citizen == null || n.transform.position.y < -10f) continue;
+                bool lit = n.GetComponent<Fighter>().TorchShown;
+                if (n.Citizen.Job == Job.Guardia) { guards++; if (lit) { guardsLit++; gShow = n; } }
+                else { folk++; if (lit) folkLit++; }
+            }
+            Log($"TORCH at 20:36: player on={pl.TorchOn} shown={pl.TorchShown} (expected True True); guards with bodies {guards}, with a torch {guardsLit}; townsfolk {folk}, with a torch {folkLit}");
+            Frame(pl.transform.position + Vector3.up * 1.1f, new Vector3(-0.6f, 0, 1f), 4.2f, 14f);
+            yield return Wait(0.8f);
+            yield return Shot("05p_antorcha_jugador");
+            if (gShow != null)
+            {
+                Vector3 gf = gShow.transform.forward;
+                Teleport(pl, gShow.transform.position + gf * 3f + Vector3.up * 0.1f, -gf);
+                Frame(gShow.transform.position + Vector3.up * 1.1f, -gf + Vector3.Cross(Vector3.up, gf) * 0.5f, 5f, 12f);
+                yield return Wait(1.0f);
+                yield return Shot("05q_antorcha_guardia");
+            }
+            Free();
+            pl.ToggleTorch();
+            yield return Wait(0.4f);
+            Log($"TORCH put out: on={pl.TorchOn} shown={pl.TorchShown} (expected False False)");
+            sim.Hour = hour0;
+            Teleport(pl, p0);
+            yield return Wait(0.5f);
+        }
+
         IEnumerator ServicesTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -1671,6 +1788,7 @@ namespace Gladiator.Town
                 yield return HomeOwnerTest(town);
                 yield return PropsTest(town);
                 yield return TavernTest(town);
+                yield return ExtrasTest(town);
                 yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;

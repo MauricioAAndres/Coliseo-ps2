@@ -85,6 +85,15 @@ namespace Gladiator.Town
                     Outdoors++;
                 }
             }
+            // the rows of jars outside the pottery and the taverns
+            if (town.JarSpots != null)
+                for (int i = 0; i < town.JarSpots.Count; i++)
+                {
+                    Vector3 jp = town.JarSpots[i];
+                    if (Physics.Raycast(jp + Vector3.up * 1.2f, Vector3.down, out RaycastHit jh, 2.5f, mask, QueryTriggerInteraction.Ignore)) jp.y = jh.point.y;
+                    TownProp.Create(root, TownProp.Kind.Jar, 5000 + i, jp, (i * 47) % 360, 1.15f);
+                    Outdoors++;
+                }
             Debug.Log($"[TOWN] props: {Indoors} indoors, {Outdoors} outdoors (day {day})");
         }
 

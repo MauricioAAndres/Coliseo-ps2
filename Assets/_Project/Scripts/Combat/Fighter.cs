@@ -133,6 +133,9 @@ namespace Gladiator.Combat
         /// <summary>R: puts the weapon away, or draws it.</summary>
         public bool ToggleSheath() => Carried == null && SetSheathed(!Sheathed);
 
+        /// <summary>A torch: wanted lit (the player's key, or night for the townsfolk) and actually held up now.</summary>
+        public bool TorchOn, TorchShown;
+        public void ToggleTorch() { TorchOn = !TorchOn; AnyMove?.Invoke(this, TorchOn ? "torch_on" : "torch_off"); }
         /// <summary>Attacking with the weapon put away draws it first (off for players: they punch instead).</summary>
         public bool AutoDraw = true;
         /// <summary>The crate or jar carried in both arms (attacking throws it).</summary>

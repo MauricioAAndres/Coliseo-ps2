@@ -385,6 +385,11 @@ namespace Gladiator.Town
                 case PlaceKind.Fountain: return Layout.Fountain + o.normalized * 3.3f;
                 case PlaceKind.Market: return p.Position + o * 1.2f;
                 case PlaceKind.ArenaGate:
+                {
+                    // to the sides of the forecourt, never in the doorway: the gate has to stay free
+                    Vector3 side = Vector3.Cross(Vector3.up, Layout.ArenaFacing).normalized;
+                    return p.Position + side * ((o.x >= 0f ? 1f : -1f) * (4.4f + Mathf.Abs(o.x) * 2.6f)) + Layout.ArenaFacing * (0.4f + o.z * 1.2f);
+                }
                 case PlaceKind.LudusGate: return p.Position + o * 2.2f;
                 case PlaceKind.GuardPost: return p.Position + o * 0.8f;
                 default: return p.Position + o * (e.PlaceId.StartsWith("garden") ? 2f : 0.6f);

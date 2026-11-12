@@ -132,7 +132,7 @@ Shader "Gladiator/PS2_Lit"
                 for (uint li = 0u; li < lightCount; ++li)
                 {
                     Light l = GetAdditionalLight(li, positionWS);
-                    direct += l.color * (l.distanceAttenuation * saturate(dot(normalWS, l.direction)));
+                    direct += l.color * (l.distanceAttenuation * saturate(dot(normalWS, l.direction))) * 0.0; // point lights: per pixel below
                 }
                 #endif
 
@@ -167,6 +167,22 @@ Shader "Gladiator/PS2_Lit"
                     half3 fill = i.light.rgb * (0.9 + 0.15 * n.y);
                     lit = lerp(i.light.rgb, fill + direct, _LightingAmount);
                     spec *= _LightingAmount;
+                }
+                else
+                {
+                    // PS2 look: the sun stays per vertex, but torches and lamps are done per pixel (the ground's
+                    // quads are far too big for a point light to show at their corners)
+                    #if defined(_ADDITIONAL_LIGHTS) || defined(_ADDITIONAL_LIGHTS_VERTEX)
+                    half3 n2 = normalize(i.normalWS);
+                    half3 pt = 0;
+                    uint lightCount2 = GetAdditionalLightsCount();
+                    for (uint lj = 0u; lj < lightCount2; ++lj)
+                    {
+                        Light l2 = GetAdditionalLight(lj, i.positionWS);
+                        pt += l2.color * (l2.distanceAttenuation * saturate(dot(n2, l2.direction)));
+                    }
+                    lit += pt * _LightingAmount;
+                    #endif
                 }
                 half3 col = tex.rgb * lit + spec + _EmissionColor.rgb;
                 col = lerp(col, _FlashColor.rgb, _FlashColor.a);

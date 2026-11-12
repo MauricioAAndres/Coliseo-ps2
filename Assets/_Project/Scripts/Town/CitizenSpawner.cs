@@ -133,6 +133,12 @@ namespace Gladiator.Town
             f.Health.SetMax(1000000f, true);
             var npc = f.gameObject.AddComponent<CitizenNPC>();
             npc.transform.SetParent(transform, true);
+            // out after dark: the watch always carries a torch, and most of the townsfolk
+            Torch.Ensure(f).Wants = () =>
+            {
+                var s = TownSimulation.Instance; var cz = npc.Citizen;
+                return s != null && cz != null && TownManager.IsDark(s.Hour) && (cz.Job == Job.Guardia || cz.Id % 4 != 0);
+            };
             npc.LastCitizenId = c.Id;
             Rebuilds++;
             pool.Add(npc);

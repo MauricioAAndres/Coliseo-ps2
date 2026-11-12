@@ -208,6 +208,7 @@ namespace Gladiator.Combat
             if (face.sqrMagnitude > 0.04f) fighter.SetFacing(face);
 
             if (GameInput.SheathPressed) fighter.ToggleSheath(); // R: put the weapon away / draw it
+            if (GameInput.TorchPressed) { Torch.Ensure(fighter); fighter.ToggleTorch(); } // H: the torch
             if (GameInput.LightAttackPressed) fighter.TryAttack(AttackType.Light);
             if (GameInput.HeavyAttackPressed) fighter.TryAttack(AttackType.Heavy);
             if (GameInput.KickPressed) fighter.TryAttack(AttackType.Kick);
