@@ -1003,6 +1003,153 @@ namespace Gladiator.Town
             yield return Wait(0.5f);
         }
 
+        /// <summary>The townsfolk's day: the timetable, the people shown indoors (asleep, at the table, in the tavern),
+        /// the knots of neighbours in the evening, and the craftsmen's opening hours.</summary>
+        IEnumerator LifeTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sim = TownSimulation.Instance;
+            var L = town.Layout;
+            var guards = town.Guards;
+            Vector3 p0 = pl.transform.position;
+            float hour0 = sim.Hour;
+            bool susp0 = guards.Suspended;
+            guards.Suspended = true;
+            void Frame(Vector3 focus, Vector3 lookDir, float dist, float pitch) { cam.FocusOverride = focus; cam.Distance = dist; cam.Pitch = pitch; cam.Yaw = Quaternion.LookRotation(lookDir).eulerAngles.y; }
+            void Free() { cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f; }
+
+            // ---- the timetable
+            var worker = sim.Citizens.Find(c => c.Job == Job.Alfarero || c.Job == Job.Tendero || c.Job == Job.Herrero);
+            if (worker != null) Log("LIFE day of a worker: " + sim.Describe(worker, sim.Day).Replace("\n", " | "));
+            var keeperC = sim.Citizens.Find(c => c.Job == Job.Tabernero);
+            if (keeperC != null) Log("LIFE day of a barkeeper: " + sim.Describe(keeperC, sim.Day).Replace("\n", " | "));
+            foreach (float h in new[] { 3f, 6.5f, 10f, 12.5f, 20f, 22f, 23.6f })
+            {
+                var cs = sim.Census(h);
+                string line = "";
+                foreach (var kv in cs) line += kv.Key + "=" + kv.Value + " ";
+                int tav = 0, meet = 0, eatHome = 0;
+                foreach (var c in sim.Citizens)
+                {
+                    var l = sim.WhereIs(c, h);
+                    if (l.Walking) continue;
+                    if (l.Activity == Activity.Taberna) tav++;
+                    if (l.Activity == Activity.Reunion) meet++;
+                    if (l.Activity == Activity.Comer && l.PlaceId == c.HomeId) eatHome++;
+                }
+                Log($"LIFE census {TownSimulation.Clock(h)}: {line} tavern={tav} with neighbours={meet} eating at home={eatHome}");
+            }
+
+            // ---- a home with a family: asleep at 2:00, at the table at 6:20 and at 22:00
+            HouseInterior home = null; int people = 0;
+            foreach (var h in town.Houses)
+            {
+                if (h.Floor != 0 || h.Lot == null || !h.Lot.IsHome || h.Lot.ForSale || h.Door == null) continue;
+                var res = HomeOwners.Residents(h);
+                int adults = res.FindAll(c => c.Job != Job.Guardia && c.Job != Job.Panadero && c.Job != Job.Tabernero).Count;
+                if (adults == res.Count && res.Count > people) { people = res.Count; home = h; }
+            }
+            if (home != null)
+            {
+                foreach (var step in new[] { (2f, "05r_casa_durmiendo", Fighter.ActLie, "asleep in bed"), (6.35f, "05s_casa_desayuno", Fighter.ActChair, "at the table"), (22.2f, "05t_casa_cena", Fighter.ActChair, "at the table") })
+                {
+                    sim.Hour = step.Item1;
+                    Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                    yield return Wait(0.8f);
+                    int atHome = 0;
+                    foreach (var c in HomeOwners.Residents(home)) if (HomeOwners.AtHome(c, sim.Hour)) atHome++;
+                    Teleport(pl, HomeOwners.DoorSpot(home), home.transform.position - HomeOwners.DoorSpot(home));
+                    yield return Wait(3.5f);
+                    Frame(home.transform.position + Vector3.up * 0.8f, -home.transform.forward + home.transform.right * 0.4f, Mathf.Max(home.HalfX, home.HalfZ) + 4.5f, 55f);
+                    yield return Wait(0.8f);
+                    yield return Shot(step.Item2);
+                    Free();
+                    Log($"LIFE home lot {home.Lot.Id} at {TownSimulation.Clock(sim.Hour)}: residents {people}, at home {atHome}, shown {town.Indoor.Count} (expected {atHome}), {step.Item4}={town.Indoor.Doing(step.Item3)}, standing={town.Indoor.Doing(-1)}");
+                }
+                // walking away: they are data again
+                Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                yield return Wait(1.0f);
+                Log($"LIFE left the house: shown {town.Indoor.Count} (expected 0) focus={(town.Indoor.Focus != null)}");
+            }
+            else Log("LIFE no family home found");
+
+            // ---- the tavern in the evening
+            if (town.Services.Taverns.Count > 0)
+            {
+                var tv = town.Services.Taverns[0];
+                sim.Hour = 20.3f;
+                int should = 0;
+                foreach (var c in sim.Citizens) { var l = sim.WhereIs(c, sim.Hour); var plc = sim.Place(l.PlaceId); if (!l.Walking && l.Indoors && plc != null && plc.LotId == tv.Lot.Id && c.Job != Job.Tabernero) should++; }
+                Teleport(pl, tv.CounterFront + tv.Lot.Front * 3.2f + Vector3.up * 0.1f, -tv.Lot.Front);
+                yield return Wait(5f);
+                Frame(tv.transform.position + Vector3.up * 0.8f, -tv.Lot.Front + tv.Lot.Right * 0.35f, Mathf.Max(tv.HalfX, tv.HalfZ) + 4.5f, 52f);
+                yield return Wait(0.8f);
+                yield return Shot("05u_taberna_noche");
+                Free();
+                Log($"LIFE tavern lot {tv.Lot.Id} at 20:18: customers inside by the timetable {should}, shown {town.Indoor.Count}, seated={town.Indoor.Doing(Fighter.ActChair)}, standing={town.Indoor.Doing(-1)}");
+            }
+
+            // ---- the knots of neighbours in the plaza
+            sim.Hour = 20.3f;
+            Vector3 plaza = sim.Place("plaza").Position;
+            Teleport(pl, plaza + Vector3.up * 0.1f, Vector3.forward);
+            yield return Wait(7f);
+            int meetBodies = 0, facing = 0;
+            foreach (var n in town.Spawner.Active)
+            {
+                if (n.Citizen == null) continue;
+                var l = sim.WhereIs(n.Citizen, sim.Hour);
+                if (l.Activity != Activity.Reunion || l.Walking) continue;
+                Vector3 mid = sim.GatherPoint(n.Citizen) - n.transform.position; mid.y = 0f;
+                if (mid.magnitude > 3f) continue;
+                meetBodies++;
+                if (Vector3.Angle(n.transform.forward, mid) < 35f) facing++;
+            }
+            Frame(plaza + Vector3.up * 1f, new Vector3(0.3f, 0, 1f), 15f, 38f);
+            yield return Wait(0.8f);
+            yield return Shot("05v_plaza_reunion");
+            Free();
+            Log($"LIFE plaza at 20:18: neighbours standing in their ring {meetBodies}, facing its middle {facing}");
+
+            // ---- the craftsmen: closed at night, open by day, the armourer hammering
+            var ks = town.Keepers;
+            sim.Hour = 19.05f;
+            var ak = ks.All.Find(k => k.Hammers);
+            Teleport(pl, ak.Post + L.Lots.Find(l => l.Kind == BuildingKind.Smithy).Front * 5f + Vector3.up * 0.1f, -L.Lots.Find(l => l.Kind == BuildingKind.Smithy).Front);
+            float tk = Time.time;
+            yield return Wait(0.5f);
+            bool walking = !ak.AtPost && !ak.Inside;
+            while (Time.time - tk < 16f && !ks.All.TrueForAll(k => k.Inside)) yield return null;
+            int inside = ks.All.FindAll(k => k.Inside).Count;
+            Teleport(pl, ak.Post + (ak.Rot * Vector3.forward) * 1.6f + Vector3.up * 0.1f, -(ak.Rot * Vector3.forward));
+            yield return Wait(0.8f);
+            yield return Shot("05w_armero_cerrado");
+            var near = ks.Near(pl.transform.position, 2.5f);
+            Log($"LIFE keepers at 19:03: {ks.All.Count} (expected 4) armourer walking home={walking} all inside after {Time.time - tk:0.0} s: {inside}; at the post: keeper={(near != null ? near.Trade : "-")} selling={(near != null && near.AtPost)} (expected False)");
+            sim.Hour = 7.02f;
+            tk = Time.time;
+            while (Time.time - tk < 16f && !ks.All.TrueForAll(k => k.AtPost)) yield return null;
+            int open = ks.All.FindAll(k => k.AtPost).Count;
+            Log($"LIFE keepers at 7:01: at their posts after {Time.time - tk:0.0} s: {open} of {ks.All.Count}");
+            sim.Hour = 10f;
+            Teleport(pl, ak.Post + (ak.Rot * Vector3.forward) * 5.5f + Vector3.up * 0.1f, -(ak.Rot * Vector3.forward));
+            int blows = 0;
+            System.Action<Fighter, AttackType> onBlow = (f, a) => { if (f == ak.F) blows++; };
+            Fighter.AnyAttackStarted += onBlow;
+            Frame(ak.Post + Vector3.up * 1.1f, -(ak.Rot * Vector3.forward) + (ak.Rot * Vector3.right) * 0.4f, 4.5f, 12f);
+            float tb = Time.time; bool shot = false;
+            while (Time.time - tb < 9f) { if (!shot && blows > 0) { shot = true; yield return Wait(0.2f); yield return Shot("05x_armero_martillando"); } yield return null; }
+            Fighter.AnyAttackStarted -= onBlow;
+            Free();
+            Log($"LIFE armourer at 10:00 with nobody at his table: hammer blows in 9 s = {blows} (expected 2 to 4)");
+
+            sim.Hour = hour0;
+            guards.Suspended = susp0;
+            Teleport(pl, p0);
+            yield return Wait(0.5f);
+        }
+
         IEnumerator ServicesTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -1789,6 +1936,7 @@ namespace Gladiator.Town
                 yield return PropsTest(town);
                 yield return TavernTest(town);
                 yield return ExtrasTest(town);
+                yield return LifeTest(town);
                 yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;

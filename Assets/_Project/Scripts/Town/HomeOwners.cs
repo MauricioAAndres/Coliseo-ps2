@@ -124,6 +124,7 @@ namespace Gladiator.Town
             var sp = CitizenSpawner.Instance;
             if (sp == null || h == null || c == null || Owner != null) return false;
             if (manager != null && manager.Sleeping) manager.EndSleep(); // woken up
+            if (IndoorLife.Instance != null) IndoorLife.Instance.Yield(c);  // out of bed / up from the table
             Vector3 pp = player.transform.position;
             var spots = Spots(h, pp, 1, 1.0f, true);
             Vector3 at = spots.Count > 0 ? spots[0] : DoorSpot(h);

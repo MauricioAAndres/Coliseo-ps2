@@ -14,6 +14,8 @@ namespace Gladiator.Town
     {
         public Fighter Fighter { get; private set; }
         public string Name { get; private set; }
+        /// <summary>The house he works outside of (and goes into at closing time).</summary>
+        public TownLot Lot { get; private set; }
         Vector3 face;
 
         /// <summary>Both carpenters, each outside a house with his bench: one by the plaza, one far from it.</summary>
@@ -86,7 +88,7 @@ namespace Gladiator.Town
             f.DisarmResistance = 1f;
             f.Health.SetMax(1000000f, true);
             var c = f.gameObject.AddComponent<CarpenterNPC>();
-            c.Fighter = f; c.Name = name; c.face = fwd;
+            c.Fighter = f; c.Name = name; c.face = fwd; c.Lot = lot;
             Debug.Log($"[TOWN] carpenter {name} at {at} (lot {lot.Id}, {(at - L.Fountain).magnitude:0} m from the fountain)");
             return c;
         }

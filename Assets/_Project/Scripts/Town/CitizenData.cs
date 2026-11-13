@@ -14,7 +14,7 @@ namespace Gladiator.Town
     public enum Shift { Manana, Tarde, Noche, Ninguno }
 
     /// <summary>What a citizen is doing at a given time.</summary>
-    public enum Activity { Dormir, EnCasa, Trabajar, Comer, Mercado, Rezar, Banarse, Pasear, Taberna, Agua }
+    public enum Activity { Dormir, EnCasa, Trabajar, Comer, Mercado, Rezar, Banarse, Pasear, Taberna, Agua, Reunion }
 
     /// <summary>One row of a timetable: from this hour on, this activity at this place (until the next row).</summary>
     [System.Serializable]

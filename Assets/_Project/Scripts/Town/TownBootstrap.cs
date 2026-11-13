@@ -69,12 +69,17 @@ namespace Gladiator.Town
                     Gladiator.PS2Style.PS2Spawn.Box(h, "Head", new Vector3(0.07f, 0.15f, 0.07f), new Vector3(0f, 0f, 0.25f), iron);
                 }
                 Armorers.Add(n);
+                Keepers.Add(f, n, lot.ArmorerSpot, lot.Rotation, lot.Door, true, "ARMERO");
                 k++;
                 Debug.Log($"[TOWN] armorer {name} at {lot.ArmorerSpot} (lot {lot.Id})");
             }
         }
 
         public CarpenterNPC Carpenter { get; private set; }
+        /// <summary>The craftsmen who sell in the street and their opening hours.</summary>
+        public ShopKeepers Keepers { get; private set; }
+        /// <summary>The townsfolk shown inside the building the player is in.</summary>
+        public IndoorLife Indoor { get; private set; }
         /// <summary>Both carpenters: the one in the centre and the one out by the walls.</summary>
         public readonly System.Collections.Generic.List<CarpenterNPC> Carpenters = new System.Collections.Generic.List<CarpenterNPC>();
         public System.Collections.Generic.List<Vector3> JarSpots { get; private set; }
@@ -301,7 +306,12 @@ namespace Gladiator.Town
             Guards.Init(this);
             Governor = GovernorNPC.Spawn(this);
             Prisoner = JailNPC.Spawn(this);
+            Keepers = gameObject.AddComponent<ShopKeepers>();
+            Keepers.Init(Player);
+            Indoor = gameObject.AddComponent<IndoorLife>();
+            Indoor.Init(this);
             CarpenterNPC.SpawnAll(this, Carpenters);
+            foreach (var cn in Carpenters) Keepers.Add(cn.Fighter, cn, cn.Lot.ShopSpot - cn.Lot.Front * 0.3f, cn.Lot.Rotation, cn.Lot.Door, false, "CARPINTERO");
             Carpenter = Carpenters.Count > 0 ? Carpenters[0] : null;
             SpawnArmorers();
             Services = gameObject.AddComponent<TownServices>();
@@ -933,6 +943,13 @@ namespace Gladiator.Town
                 return;
             }
             // the smithies: weapons, armour and shields
+            // the craftsmen keep hours: away from the post, nothing is sold
+            var keeper = town.Keepers != null ? town.Keepers.Near(p, 2.5f) : null;
+            if (keeper != null && !keeper.AtPost)
+            {
+                town.Hud.SetPrompt(keeper.Trade + ": CERRADO.  ABRE DE 7:00 A 19:00");
+                return;
+            }
             var smithy = NearestSmithy(p, 2.5f); // in front of the armourer at his table
             if (smithy != null)
             {

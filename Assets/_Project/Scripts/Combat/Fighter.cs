@@ -442,6 +442,16 @@ namespace Gladiator.Combat
             return true;
         }
 
+        /// <summary>Out of the activity at once, where he is, with no getting-up (a body about to be taken away or moved).</summary>
+        public void AbortActivity()
+        {
+            if (state != FighterState.Activity) return;
+            OnFurniture = false;
+            ActivityLeaving = false;
+            if (Controller != null && IsAlive) Controller.enabled = true;
+            SetState(FighterState.Idle, 0f);
+        }
+
         /// <summary>Get up from the current activity (plays the "in" clip backwards).</summary>
         public void StopActivity()
         {

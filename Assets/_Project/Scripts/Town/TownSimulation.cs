@@ -245,6 +245,19 @@ namespace Gladiator.Town
         // ------------------------------------------------------------------ timetables
         string First(BuildingKind k, string fallback) => workByKind.TryGetValue(k, out var l) && l.Count > 0 ? l[0] : fallback;
         string Tavern => First(BuildingKind.Tavern, "plaza");
+        /// <summary>One of the town's taverns (the dice say which).</summary>
+        string AnyTavern(System.Random rng)
+        {
+            if (!workByKind.TryGetValue(BuildingKind.Tavern, out var l) || l.Count == 0) return "plaza";
+            return l[rng.Next(l.Count)];
+        }
+
+        /// <summary>Where the knot of neighbours a citizen joins in the evening stands (four of them about the plaza).</summary>
+        public Vector3 GatherPoint(CitizenData c)
+        {
+            Vector3 centre = places.TryGetValue("plaza", out var p) ? p.Position : Layout.Fountain;
+            return centre + Quaternion.Euler(0f, 45f + (c.Id % 4) * 90f, 0f) * Vector3.forward * 5.5f;
+        }
         string Temple => First(BuildingKind.Temple, "plaza");
         string Baths => First(BuildingKind.Baths, "fountain");
 
@@ -274,58 +287,75 @@ namespace Gladiator.Town
             (Activity, string) Lunch()
             {
                 double r = rng.NextDouble();
-                return r < 0.4 ? (Activity.Comer, Tavern) : r < 0.7 ? (Activity.Mercado, "stall" + rng.Next(Mathf.Max(1, Layout.Stalls.Count))) : (Activity.Comer, home);
+                return r < 0.4 ? (Activity.Comer, AnyTavern(rng)) : r < 0.7 ? (Activity.Mercado, "stall" + rng.Next(Mathf.Max(1, Layout.Stalls.Count))) : (Activity.Comer, home);
             }
             var s = new List<ScheduleEntry>();
             void Add(float h, Activity a, string p) => s.Add(new ScheduleEntry(Mathf.Clamp(h, 0f, 23.9f), a, p));
             void AddL(float h, (Activity a, string p) x) => Add(h, x.a, x.p);
 
+            // After work: the tavern, the arena's forecourt, a knot of neighbours in the plaza, or a stroll.
+            (Activity, string) Evening()
+            {
+                double r = rng.NextDouble();
+                if (r < 0.34) return (Activity.Taberna, AnyTavern(rng));
+                if (r < 0.48) return (Activity.Pasear, "arena_gate");
+                if (r < 0.80) return (Activity.Reunion, "plaza");
+                return (Activity.Pasear, rng.NextDouble() < 0.5 ? "plaza" : "fountain");
+            }
+            // The town's day: up at 6, breakfast at the table, work from 7 to 19 (an hour off at noon), out in the
+            // evening, supper at the kitchen table about 21:30, in bed by 23. Everybody a few minutes off the hour.
+            void WorkDay(float start, float end)
+            {
+                Add(0, Activity.Dormir, home); Add(start - 1f + J() * 0.4f, Activity.Comer, home); Add(start + J() * 0.4f, Activity.Trabajar, work);
+                AddL(12 + J() * 0.5f, Lunch()); Add(13 + J() * 0.3f, Activity.Trabajar, work);
+                AddL(end + J() * 0.5f, Evening()); Add(21.5f + J() * 0.6f, Activity.Comer, home); Add(23 + J() * 0.3f, Activity.Dormir, home);
+            }
+
             switch (c.Job)
             {
                 case Job.Panadero: // bread before dawn
-                    Add(0, Activity.Dormir, home); Add(3 + J() * 0.3f, Activity.Trabajar, work); AddL(11 + J(), Lunch());
-                    AddL(12.5f + J(), Leisure()); Add(15 + J(), Activity.EnCasa, home); Add(19.5f + J(), Activity.Dormir, home);
+                    Add(0, Activity.Dormir, home); Add(3.3f + J() * 0.3f, Activity.Comer, home); Add(4 + J() * 0.3f, Activity.Trabajar, work);
+                    AddL(12 + J() * 0.5f, Lunch()); Add(13 + J() * 0.3f, Activity.Trabajar, work); AddL(16 + J(), Leisure());
+                    Add(19.3f + J() * 0.5f, Activity.Comer, home); Add(20.5f + J() * 0.4f, Activity.Dormir, home);
                     break;
-                case Job.Tabernero: // the tavern closes late
-                    Add(0, Activity.Trabajar, work); Add(1 + J() * 0.3f, Activity.Dormir, home); Add(9 + J(), Activity.EnCasa, home);
-                    Add(10 + J() * 0.5f, Activity.Mercado, "stall" + rng.Next(Mathf.Max(1, Layout.Stalls.Count))); Add(11.2f + J() * 0.3f, Activity.Trabajar, work);
+                case Job.Tabernero: // behind the bar from 11 to 23: that is when the others come
+                    Add(0, Activity.Dormir, home); Add(8 + J() * 0.5f, Activity.Comer, home);
+                    Add(9.3f + J() * 0.5f, Activity.Mercado, "stall" + rng.Next(Mathf.Max(1, Layout.Stalls.Count))); Add(11 + J() * 0.3f, Activity.Trabajar, work);
+                    Add(23.3f + J() * 0.2f, Activity.Dormir, home);
                     break;
                 case Job.AmaDeCasa:
-                    Add(0, Activity.Dormir, home); Add(6.5f + J(), Activity.EnCasa, home); Add(8.5f + J(), Activity.Agua, "fountain");
+                    Add(0, Activity.Dormir, home); Add(6 + J() * 0.4f, Activity.Comer, home); Add(7 + J() * 0.4f, Activity.EnCasa, home);
+                    Add(8.5f + J(), Activity.Agua, "fountain");
                     Add(9.5f + J(), Activity.Mercado, "stall" + rng.Next(Mathf.Max(1, Layout.Stalls.Count))); Add(11 + J(), Activity.EnCasa, home);
-                    AddL(15 + J(), Leisure()); Add(17.5f + J(), Activity.EnCasa, home); Add(22 + J(), Activity.Dormir, home);
+                    Add(12.5f + J() * 0.4f, Activity.Comer, home); Add(13.5f + J() * 0.4f, Activity.EnCasa, home);
+                    AddL(15 + J(), Leisure()); Add(17.5f + J(), Activity.EnCasa, home); AddL(19 + J() * 0.5f, Evening());
+                    Add(21.5f + J() * 0.6f, Activity.Comer, home); Add(23 + J() * 0.3f, Activity.Dormir, home);
                     break;
                 case Job.Anciano:
-                    Add(0, Activity.Dormir, home); Add(7.5f + J(), Activity.EnCasa, home); Add(9 + J(), Activity.Pasear, "plaza");
-                    Add(11 + J(), Activity.Rezar, Temple); Add(12.5f + J(), Activity.EnCasa, home); Add(16 + J(), Activity.Pasear, rng.NextDouble() < 0.5 ? "plaza" : "fountain");
-                    if (rng.NextDouble() < 0.5) Add(18 + J(), Activity.Taberna, Tavern); else Add(18 + J(), Activity.EnCasa, home);
-                    Add(20.5f + J(), Activity.EnCasa, home); Add(21.5f + J(), Activity.Dormir, home);
+                    Add(0, Activity.Dormir, home); Add(6.5f + J() * 0.5f, Activity.Comer, home); Add(7.5f + J() * 0.5f, Activity.EnCasa, home);
+                    Add(9 + J(), Activity.Pasear, "plaza");
+                    Add(11 + J(), Activity.Rezar, Temple); Add(12.5f + J() * 0.5f, Activity.Comer, home); Add(13.5f + J() * 0.5f, Activity.EnCasa, home);
+                    Add(16 + J(), Activity.Pasear, rng.NextDouble() < 0.5 ? "plaza" : "fountain");
+                    if (rng.NextDouble() < 0.5) Add(18 + J(), Activity.Taberna, AnyTavern(rng)); else Add(18 + J(), Activity.Reunion, "plaza");
+                    Add(20.3f + J() * 0.5f, Activity.Comer, home); Add(21.5f + J() * 0.5f, Activity.Dormir, home);
                     break;
                 case Job.Nino: // playing in the plaza
-                    Add(0, Activity.Dormir, home); Add(7 + J(), Activity.EnCasa, home); Add(8.5f + J(), Activity.Pasear, rng.NextDouble() < 0.6 ? "plaza" : "fountain");
-                    Add(12.5f + J(), Activity.EnCasa, home); Add(14 + J(), Activity.Pasear, "plaza"); Add(19 + J(), Activity.EnCasa, home);
-                    Add(21 + J(), Activity.Dormir, home);
+                    Add(0, Activity.Dormir, home); Add(6.5f + J() * 0.5f, Activity.Comer, home);
+                    Add(8 + J(), Activity.Pasear, rng.NextDouble() < 0.6 ? "plaza" : "fountain");
+                    Add(12.5f + J() * 0.5f, Activity.Comer, home); Add(14 + J(), Activity.Pasear, "plaza"); Add(19 + J() * 0.5f, Activity.EnCasa, home);
+                    Add(20 + J() * 0.4f, Activity.Comer, home); Add(21 + J() * 0.4f, Activity.Dormir, home);
+                    break;
+                case Job.Guardia when c.Shift == Shift.Noche: // the night watch: 21 to 6
+                    Add(0, Activity.Trabajar, work); Add(6 + J() * 0.2f, Activity.Comer, home); Add(7 + J() * 0.3f, Activity.Dormir, home);
+                    Add(15 + J() * 0.5f, Activity.EnCasa, home); AddL(16.5f + J(), Leisure()); AddL(18.5f + J() * 0.5f, Evening());
+                    Add(20 + J() * 0.3f, Activity.Comer, home); Add(21 + J() * 0.2f, Activity.Trabajar, work);
+                    break;
+                case Job.Guardia when c.Shift == Shift.Tarde: // the afternoon watch: 13 to 23
+                    Add(0, Activity.Dormir, home); Add(7.5f + J() * 0.5f, Activity.Comer, home); AddL(9 + J(), Leisure()); AddL(11.5f + J() * 0.5f, Lunch());
+                    Add(13 + J() * 0.3f, Activity.Trabajar, work); Add(23.2f + J() * 0.2f, Activity.Dormir, home);
                     break;
                 default:
-                    if (c.Shift == Shift.Noche) // night watch
-                    {
-                        Add(0, Activity.Trabajar, work); Add(5 + J() * 0.3f, Activity.EnCasa, home); Add(6 + J() * 0.3f, Activity.Dormir, home);
-                        Add(14 + J(), Activity.EnCasa, home); AddL(15.5f + J(), Leisure()); AddL(18 + J(), Lunch()); Add(21 + J() * 0.2f, Activity.Trabajar, work);
-                    }
-                    else if (c.Shift == Shift.Tarde)
-                    {
-                        Add(0, Activity.Dormir, home); Add(8 + J(), Activity.EnCasa, home); AddL(9.5f + J(), Leisure()); AddL(11.5f + J(), Lunch());
-                        Add(13 + J() * 0.3f, Activity.Trabajar, work);
-                        if (rng.NextDouble() < 0.5) Add(21 + J() * 0.3f, Activity.Taberna, Tavern); else Add(21 + J() * 0.3f, Activity.EnCasa, home);
-                        Add(23 + J() * 0.3f, Activity.Dormir, home);
-                    }
-                    else // morning shift
-                    {
-                        Add(0, Activity.Dormir, home); Add(6.3f + J(), Activity.EnCasa, home); Add(7 + J() * 0.4f, Activity.Trabajar, work);
-                        AddL(12 + J() * 0.5f, Lunch()); Add(13 + J() * 0.3f, Activity.Trabajar, work); AddL(15.5f + J(), Leisure());
-                        if (rng.NextDouble() < 0.5) Add(18 + J(), Activity.Taberna, Tavern); else AddL(18 + J(), Leisure());
-                        Add(20.5f + J(), Activity.EnCasa, home); Add(22.5f + J(), Activity.Dormir, home);
-                    }
+                    WorkDay(7f, 19f);
                     break;
             }
             s.Sort((a, b) => a.Start.CompareTo(b.Start));
@@ -369,6 +399,7 @@ namespace Gladiator.Town
         bool IsIndoors(ScheduleEntry e)
         {
             if (e.Activity == Activity.Dormir || e.Activity == Activity.EnCasa) return true;
+            if (places.TryGetValue(e.PlaceId, out var hp) && hp.Kind == PlaceKind.Home) return true; // breakfast, supper: at home is indoors
             return places.TryGetValue(e.PlaceId, out var p) && p.Kind == PlaceKind.Work && !e.PlaceId.StartsWith("garden")
                    && (e.Activity == Activity.Trabajar || e.Activity == Activity.Comer || e.Activity == Activity.Taberna
                        || e.Activity == Activity.Rezar || e.Activity == Activity.Banarse);
@@ -379,6 +410,7 @@ namespace Gladiator.Town
         {
             if (!places.TryGetValue(e.PlaceId, out var p)) p = places["plaza"];
             Vector3 o = new Vector3(c.SpotOffset.x, 0f, c.SpotOffset.y);
+            if (e.Activity == Activity.Reunion) return GatherPoint(c) + o.normalized * 1.15f; // in a ring, close together
             switch (p.Kind)
             {
                 case PlaceKind.Plaza: return p.Position + o * 6f;
@@ -515,6 +547,7 @@ namespace Gladiator.Town
                 case Activity.Banarse: return "en las termas";
                 case Activity.Taberna: return "en la taberna";
                 case Activity.Agua: return "por agua";
+                case Activity.Reunion: return "con los vecinos";
                 default: return "paseando";
             }
         }

@@ -37,6 +37,8 @@ namespace Gladiator.Town
         float repath, fleeTimer, greetCooldown, stuckTimer, idleTurn;
         Vector3 fleeFrom;
         Vector3 faceDir;
+        bool gathering;
+        float gesture = 6f;
 
         void Awake() { Fighter = GetComponent<Fighter>(); }
 
@@ -111,6 +113,7 @@ namespace Gladiator.Town
             // where the simulation wants them now
             var loc = sim.WhereIs(Citizen, sim.Hour);
             string place = loc.PlaceId;
+            gathering = loc.Activity == Activity.Reunion && !loc.Walking;
             if (loc.Indoors || (loc.Walking && IsIndoorPlace(place)))
             {
                 // going home / to work inside: walk to the door and disappear through it
@@ -195,6 +198,19 @@ namespace Gladiator.Town
         void Idle(float dt)
         {
             Fighter.Move(Vector3.zero);
+            if (gathering)
+            {
+                // with the neighbours: facing the middle of the ring, a wave or a nod now and then
+                Vector3 mid = sim.GatherPoint(Citizen) - transform.position; mid.y = 0f;
+                if (mid.sqrMagnitude > 0.05f) Fighter.SetFacing(mid);
+                if ((gesture -= dt) <= 0f)
+                {
+                    gesture = Random.Range(7f, 16f);
+                    if (Fighter.State == FighterState.Idle) Fighter.TryTaunt(new[] { 1, 3, 4, 5 }[Random.Range(0, 4)]);
+                }
+                if (Flat(goal - transform.position) > 1.5f) { arrived = false; repath = 0f; }
+                return;
+            }
             if (faceDir.sqrMagnitude > 0.01f && goalPlace != null && !goalPlace.StartsWith("plaza")) Fighter.SetFacing(faceDir);
             else if ((idleTurn -= dt) <= 0f)
             {
@@ -241,6 +257,7 @@ namespace Gladiator.Town
                 case Activity.Mercado: doing = "Busco algo bueno en el mercado."; break;
                 case Activity.Pasear: doing = Citizen.Job == Job.Nino ? "Jugamos a gladiadores!" : "Un buen dia para pasear."; break;
                 case Activity.Agua: doing = "Voy por agua a la fuente."; break;
+                case Activity.Reunion: doing = "Aqui, charlando con los vecinos."; break;
                 case Activity.Rezar: doing = "Que los dioses te protejan."; break;
                 case Activity.Banarse: doing = "A las termas, que hoy toca."; break;
                 case Activity.Taberna: case Activity.Comer: doing = "Me espera un buen vino."; break;

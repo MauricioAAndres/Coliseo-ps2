@@ -137,7 +137,8 @@ namespace Gladiator.Town
             Torch.Ensure(f).Wants = () =>
             {
                 var s = TownSimulation.Instance; var cz = npc.Citizen;
-                return s != null && cz != null && TownManager.IsDark(s.Hour) && (cz.Job == Job.Guardia || cz.Id % 4 != 0);
+                return s != null && cz != null && TownManager.IsDark(s.Hour) && (cz.Job == Job.Guardia || cz.Id % 4 != 0)
+                       && (IndoorLife.Instance == null || !IndoorLife.Instance.Holds(cz.Id)); // nobody carries one indoors
             };
             npc.LastCitizenId = c.Id;
             Rebuilds++;
