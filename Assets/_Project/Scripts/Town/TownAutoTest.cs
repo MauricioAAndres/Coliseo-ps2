@@ -1167,6 +1167,54 @@ namespace Gladiator.Town
             bool susp0 = guards.Suspended;
             guards.Suspended = true;
 
+            // ---- the stairs outside the tenements are solid underneath
+            {
+                var up = town.Houses.Find(x => x.Floor == 1 && x.StairDir.sqrMagnitude > 0.5f);
+                if (up != null)
+                {
+                    var lotS = up.Lot;
+                    Vector3 m = (up.StairBottom + up.StairTop) * 0.5f; m.y = 0f;
+                    Vector3 outw = Vector3.Project(m - lotS.Center, lotS.Right); outw.y = 0f; outw.Normalize();
+                    Teleport(pl, m + outw * 1.6f + Vector3.up * 0.1f, -outw);
+                    pc.enabled = false;
+                    yield return Wait(0.4f);
+                    for (float t = 0f; t < 2.2f; t += Time.deltaTime) { pl.SetFacing(-outw); pl.Move(-outw); yield return null; }
+                    pl.Move(Vector3.zero);
+                    float side = Vector3.Dot(pl.transform.position - m, outw);
+                    var camS = town.Cam;
+                    camS.FocusOverride = m + Vector3.up * 1.2f; camS.Distance = 6f; camS.Pitch = 20f; camS.Yaw = Quaternion.LookRotation(-outw + lotS.Front * 0.5f).eulerAngles.y;
+                    yield return Wait(0.6f);
+                    yield return Shot("05zc_escalera_por_debajo");
+                    camS.FocusOverride = null; camS.Distance = 6f; camS.Pitch = 35f;
+                    Log($"STAIRS walking into the side of the stairs of lot {lotS.Id}: stopped {side:0.00} m from their middle (expected over 0.9: the stairs are 1.15 m wide) height {pl.transform.position.y:0.00}");
+                    pc.enabled = true;
+                }
+            }
+            // ---- walking into a house says whose it is
+            {
+                var tm = town.GetComponent<TownManager>();
+                var home = town.Houses.Find(x => x.Floor == 0 && x.Lot != null && x.Lot.IsHome && !x.Lot.ForSale && x.Door != null);
+                Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                yield return Wait(0.5f);
+                Teleport(pl, home.transform.position + Vector3.up * 0.1f, home.transform.forward);
+                yield return Wait(0.6f);
+                string said = tm.LastAnnounced;
+                yield return Shot("05zd_casa_de");
+                var shop = town.Houses.Find(x => x.Floor == 0 && x.Lot != null && x.Lot.Kind == BuildingKind.Smithy);
+                string saidShop = "-";
+                if (shop != null)
+                {
+                    Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                    yield return Wait(0.5f);
+                    Teleport(pl, shop.transform.position + Vector3.up * 0.1f, shop.transform.forward);
+                    yield return Wait(0.6f);
+                    saidShop = tm.LastAnnounced;
+                }
+                Log($"HOUSE TITLE home lot {home.Lot.Id}: '{said}'  smithy: '{saidShop}'");
+                Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                yield return Wait(0.4f);
+            }
+
             // ---- the navmesh goes into the houses (for whoever asks), the street paths do not
             HouseInterior h = null;
             foreach (var x in town.Houses)

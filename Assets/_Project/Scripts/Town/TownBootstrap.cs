@@ -430,8 +430,41 @@ namespace Gladiator.Town
     {
         const float GateRadius = 3.2f;
         TownBootstrap town;
-        HouseInterior house;
+        HouseInterior house, announced;
         string room;
+
+        /// <summary>Whose building it is, as it is announced when the player walks in: "CASA DE GNAEUS SEMPRONIUS",
+        /// "TU CASA", "TABERNA DE CAECILIA TERENTIA"... Null for the public halls (their room's name says it).</summary>
+        public string HouseTitle(HouseInterior h)
+        {
+            if (h == null || h.Lot == null || (h.Public && !h.Lot.IsShop)) return null; // shops are "public" too (no trespassing)
+            var lot = h.Lot;
+            if (lot.ForSale)
+            {
+                if (HouseDeeds.Owns(town.Layout.Seed, lot.Id)) return "TU CASA";
+                if (town.OtherOwners.TryGetValue(lot.Id, out string other)) return "CASA DE " + other.ToUpperInvariant();
+                return "CASA EN VENTA";
+            }
+            var sim = TownSimulation.Instance;
+            if (sim == null) return null;
+            if (lot.IsHome)
+            {
+                // the head of the house: a grown man, else a grown woman, else an elder
+                CitizenData head = null; int best = 9;
+                foreach (var c in HomeOwners.Residents(h))
+                {
+                    int r = c.Age >= 16 && c.Age <= 60 ? (c.Female ? 1 : 0) : c.Age > 60 ? 2 : 3;
+                    if (r < best) { best = r; head = c; }
+                }
+                return head != null ? "CASA DE " + head.Name.ToUpperInvariant() : "CASA";
+            }
+            string what = TownLayout.KindName(lot.Kind).ToUpperInvariant();
+            CitizenData keeper = sim.Citizens.Find(c => c.WorkId == "work" + lot.Id && c.Age >= 16);
+            return keeper != null ? what + " DE " + keeper.Name.ToUpperInvariant() : what;
+        }
+
+        /// <summary>The last thing announced on walking into a building (tests).</summary>
+        public string LastAnnounced { get; private set; }
         /// <summary>The house the player is in (null outside) and the room (tests).</summary>
         public HouseInterior CurrentHouse => house;
         public string CurrentRoom => room;
@@ -885,8 +918,19 @@ namespace Gladiator.Town
             if (house != null)
             {
                 string rn = house.RoomAt(p); // null at the door, outside
-                if (rn != null && rn != room) { room = rn; town.Hud.ShowMessage(rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn, 1.6f); }
+                // just walked in: whose house it is, with the room
+                string title = null;
+                if (announced != house && town.HouseAt(p) == house) { announced = house; title = HouseTitle(house); }
+                if ((rn != null && rn != room) || title != null)
+                {
+                    if (rn != null) room = rn;
+                    string rname = rn == null ? null : rn == "BANO" ? "BAÑO" : rn == "HABITACION" ? "HABITACIÓN" : rn;
+                    string msg = title != null && rname != null ? title + "   -   " + rname : title ?? rname;
+                    if (title != null) LastAnnounced = msg;
+                    town.Hud.ShowMessage(msg, title != null ? 2.8f : 1.6f);
+                }
             }
+            else announced = null;
             // on a bed, a chair, at the altar: E gets up
             var pl = town.Player;
             if (pl.KnockedOut) { town.Hud.SetPrompt(""); return; } // out cold: nothing to do

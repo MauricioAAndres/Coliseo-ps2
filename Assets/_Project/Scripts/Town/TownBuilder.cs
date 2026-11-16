@@ -971,6 +971,15 @@ namespace Gladiator.Town
             Vector3 mid = LP(lot, xc, H * 0.5f - 0.05f, zBottom + run * 0.5f);
             PS2Spawn.BoxCollider(colliders, mid, new Vector3(sw, 0.1f, len), q * Quaternion.Euler(-ang, 0f, 0f));
             Collider(LP(lot, xc, H * 0.5f, (zLand + zEnd) * 0.5f), new Vector3(sw, H, zEnd - zLand), q);
+            // the stone under the ramp is solid: blocks from the ground up to just below the ramp, so nobody walks into
+            // the stairs from the side or the low end
+            for (int i = 1; i < n; i++)
+            {
+                float za = zBottom + run * i / n, zb = zBottom + run * (i + 1) / n;
+                float under = H * i / n - 0.12f; // the ramp's height at the step's low edge, less a margin
+                if (under < 0.15f) continue;
+                Collider(LP(lot, xc, under * 0.5f, (za + zb) * 0.5f), new Vector3(sw, under, zb - za), q);
+            }
             // railing on the open side: posts + a rail along the slope and the landing
             for (int i = 0; i <= 4; i++)
             {
