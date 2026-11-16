@@ -38,6 +38,9 @@ namespace Gladiator.Town
         Vector3 fleeFrom;
         Vector3 faceDir;
         bool gathering;
+        float resync = 2f;
+        /// <summary>Times a body was put back on its simulated way out of sight (tests).</summary>
+        public static int Resyncs;
         float gesture = 6f;
 
         void Awake() { Fighter = GetComponent<Fighter>(); }
@@ -87,7 +90,7 @@ namespace Gladiator.Town
             corners.Clear();
         }
 
-        float WalkSpeed => Citizen == null ? 0.3f : Citizen.Age < 16 ? 0.36f : Citizen.Age > 60 ? 0.24f : 0.31f;
+        float WalkSpeed => TownSimulation.WalkShare(Citizen);
 
         void Update()
         {
@@ -110,9 +113,21 @@ namespace Gladiator.Town
                 return;
             }
 
+            // online guest: the host has this person on his screen too; this body goes where the host's goes
+            var sp = CitizenSpawner.Instance;
+            if (sp != null && sp.HostSays(Citizen.Id, out Vector3 hostAt, out float hostYaw)) { FollowHost(hostAt, hostYaw); React(); return; }
+
             // where the simulation wants them now
             var loc = sim.WhereIs(Citizen, sim.Hour);
             string place = loc.PlaceId;
+            // fallen far behind (or ahead of) the simulation on the way: put back on it, where nobody sees the hop
+            if (loc.Walking && (resync -= dt) <= 0f)
+            {
+                resync = 2f;
+                if (Flat(transform.position - loc.Position) > 15f && !CitizenSpawner.InView(transform.position) && !CitizenSpawner.InView(loc.Position)
+                    && TownNavMesh.Snap(loc.Position, out Vector3 back, 3f))
+                { Place(back, transform.rotation); Resyncs++; }
+            }
             gathering = loc.Activity == Activity.Reunion && !loc.Walking;
             if (loc.Indoors || (loc.Walking && IsIndoorPlace(place)))
             {
@@ -144,6 +159,26 @@ namespace Gladiator.Town
             else Idle(dt);
 
             React();
+        }
+
+        void FollowHost(Vector3 at, float yaw)
+        {
+            goalPlace = null; // when the host lets go of them, find the way again from here
+            corners.Clear();
+            Vector3 d = at - transform.position; d.y = 0f;
+            float m = d.magnitude;
+            if (m > 6f && !CitizenSpawner.InView(transform.position) && !CitizenSpawner.InView(at)) { Place(at, Quaternion.Euler(0f, yaw, 0f)); return; }
+            if (m > 0.3f)
+            {
+                // catch up smoothly: a little faster the further behind
+                Fighter.Move(d.normalized * Mathf.Clamp(m * 0.45f, WalkSpeed * 0.7f, 0.8f));
+                Fighter.SetFacing(d);
+            }
+            else
+            {
+                Fighter.Move(Vector3.zero);
+                Fighter.SetFacing(Quaternion.Euler(0f, yaw, 0f) * Vector3.forward);
+            }
         }
 
         bool IsIndoorPlace(string id)

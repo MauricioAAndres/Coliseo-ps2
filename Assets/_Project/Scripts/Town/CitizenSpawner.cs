@@ -50,8 +50,88 @@ namespace Gladiator.Town
 
         Gladiator.Net.NetSession hooked;
 
+        // ------------------------------------------------------------------ online: the host's townsfolk
+        /// <summary>Where the host has a townsperson's body (guests: their own body for that person follows it).</summary>
+        struct Remote { public Vector3 Pos; public float Yaw, Time; }
+        readonly Dictionary<int, Remote> remote = new Dictionary<int, Remote>();
+        float npSend;
+        /// <summary>Bodies following the host's right now (tests).</summary>
+        public int FollowingHost { get; private set; }
+
+        /// <summary>Online guest: where the host shows this person, if he showed them a moment ago.</summary>
+        public bool HostSays(int id, out Vector3 pos, out float yaw)
+        {
+            pos = default; yaw = 0f;
+            if (!remote.TryGetValue(id, out var r) || Time.time - r.Time > 0.8f) return false;
+            pos = r.Pos; yaw = r.Yaw;
+            return true;
+        }
+
+        void SendBodies(Gladiator.Net.NetSession net)
+        {
+            if ((npSend -= Time.deltaTime) > 0f) return;
+            npSend = 0.2f;
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in active)
+            {
+                var n = kv.Value;
+                if (n.Controlled || n.Citizen == null) continue; // indoors, warning, fighting: each machine its own
+                Vector3 q = n.transform.position;
+                if (sb.Length > 0) sb.Append(';');
+                sb.Append(kv.Key).Append(',').Append(Mathf.RoundToInt(q.x * 20f)).Append(',').Append(Mathf.RoundToInt(q.y * 20f)).Append(',')
+                  .Append(Mathf.RoundToInt(q.z * 20f)).Append(',').Append(Mathf.RoundToInt(n.transform.eulerAngles.y));
+            }
+            net.Send("NP", sb.ToString());
+        }
+
+        void OnBodies(string payload)
+        {
+            float now = Time.time;
+            foreach (var item in payload.Split(';'))
+            {
+                var a = item.Split(',');
+                if (a.Length < 5 || !int.TryParse(a[0], out int id)) continue;
+                if (!int.TryParse(a[1], out int x) || !int.TryParse(a[2], out int y) || !int.TryParse(a[3], out int z) || !int.TryParse(a[4], out int yaw)) continue;
+                remote[id] = new Remote { Pos = new Vector3(x / 20f, y / 20f, z / 20f), Yaw = yaw, Time = now };
+            }
+        }
+
+        // ------------------------------------------------------------------ seen or not
+        static readonly RaycastHit[] sight = new RaycastHit[8];
+
+        /// <summary>On screen and not behind a wall: bodies are never made or taken away where the player can see it.</summary>
+        public static bool InView(Vector3 feet)
+        {
+            var cam = Camera.main;
+            if (cam == null) return false;
+            Vector3 head = feet + Vector3.up * 1.3f;
+            Vector3 vp = cam.WorldToViewportPoint(head);
+            if (vp.z <= 0f || vp.x < -0.08f || vp.x > 1.08f || vp.y < -0.15f || vp.y > 1.1f) return false;
+            Vector3 from = cam.transform.position, d = head - from;
+            float len = d.magnitude;
+            if (len < 0.1f) return true;
+            int mask = Ragdoll.WorldMask & ~(1 << Ragdoll.FighterLayer);
+            int n = Physics.RaycastNonAlloc(from, d / len, sight, len - 0.3f, mask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var c = sight[i].collider;
+                if (c != null && c.attachedRigidbody == null && c.GetComponentInParent<Fighter>() == null) return false; // behind a wall
+            }
+            return true;
+        }
+
+        /// <summary>Bodies that appeared or went away in plain sight closer than 30 m (tests: should stay 0).</summary>
+        public int PoppedInView { get; private set; }
+
         void OnNet(int from, string type, string payload)
         {
+            if (type == "NP")
+            {
+                var ns = Gladiator.Net.NetSession.Instance;
+                var sender = ns != null ? ns.Get(from) : null;
+                if (ns != null && !ns.IsHost && sender != null && sender.Host) OnBodies(payload);
+                return;
+            }
             if (type != "CH") return;
             var a = payload.Split('|');
             if (a.Length < 3 || !int.TryParse(a[0], out int id)) return;
@@ -64,7 +144,11 @@ namespace Gladiator.Town
             var net = Gladiator.Net.NetSession.Instance;
             if (net != hooked) { if (hooked != null) hooked.GameMessage -= OnNet; hooked = net; if (net != null) net.GameMessage += OnNet; }
             if (sim == null || player == null) return;
+            if (net != null && net.InGame && net.IsHost) SendBodies(net);
             if ((tick -= Time.deltaTime) > 0f) return;
+            FollowingHost = 0;
+            if (net != null && net.InGame && !net.IsHost)
+                foreach (var kv in active) if (!kv.Value.Controlled && HostSays(kv.Key, out _, out _)) FollowingHost++;
             tick = 0.25f;
             Vector3 p = player.transform.position;
             float hour = sim.Hour;
@@ -75,10 +159,12 @@ namespace Gladiator.Town
             {
                 var npc = kv.Value;
                 float d = Flat(npc.transform.position - p);
-                // going indoors: through the door, or simply gone once out of close view (or after a while)
-                bool homeBound = npc.GoingIn && (d > 26f || npc.GoingInSeconds > 40f);
                 if (npc.Controlled) continue; // a guard dealing with the player stays
-                if (d > ReleaseRadius || npc.Finished || homeBound) release.Add(kv.Key);
+                // never in plain sight: through their door (that one is seen: they went in), or once nobody is looking
+                bool seen = InView(npc.transform.position);
+                bool homeBound = npc.GoingIn && !seen && (d > 26f || npc.GoingInSeconds > 40f);
+                bool far = d > ReleaseRadius && (!seen || d > ReleaseRadius + 30f);
+                if (far || npc.Finished || homeBound) { release.Add(kv.Key); if (seen && !npc.Finished && d < 30f) PoppedInView++; }
             }
             foreach (int id in release) Release(id);
 
@@ -91,10 +177,14 @@ namespace Gladiator.Town
             {
                 if (active.ContainsKey(c.Id)) continue;
                 if (spawned >= 2) break;                    // a couple per tick: no hitches
+                var loc = sim.WhereIs(c, hour);
+                Vector3 want = HostSays(c.Id, out Vector3 hostAt, out _) ? hostAt : loc.Position; // online: where the host has them
+                if (!TownNavMesh.Snap(want, out Vector3 at, 4f)) continue;
+                // not out of thin air in front of the player: only off screen, behind a wall, far off, or just out of a door
+                bool outOfDoor = loc.Walking && Flat(at - loc.From) < 3f;
+                if (InView(at) && Flat(at - p) < 34f && !outOfDoor) continue;
                 var body = Take(c);
                 if (body == null) break;                     // pool exhausted (the nearest 18 are already out)
-                var loc = sim.WhereIs(c, hour);
-                if (!TownNavMesh.Snap(loc.Position, out Vector3 at, 4f)) { Give(body); continue; }
                 body.Assign(c, at, sim);
                 active[c.Id] = body;
                 spawned++;
@@ -109,7 +199,7 @@ namespace Gladiator.Town
                     int far = -1; float farD = 0f;
                     foreach (var kv in active) { float d = Flat(kv.Value.transform.position - p); if (d > farD) { farD = d; far = kv.Key; } }
                     float nd = Flat(sim.WhereIs(nearest, hour).Position - p);
-                    if (far >= 0 && nd < 20f && farD > 30f && farD > nd + 12f) { Release(far); bumpCooldown = 1f; }
+                    if (far >= 0 && nd < 20f && farD > 30f && farD > nd + 12f && !InView(active[far].transform.position)) { Release(far); bumpCooldown = 1f; }
                 }
             }
         }

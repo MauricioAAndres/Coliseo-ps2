@@ -19,8 +19,13 @@ namespace Gladiator.Town
         public const int Population = 100;
         /// <summary>Game minutes that pass per real second.</summary>
         public const float MinutesPerSecond = 1f;
-        /// <summary>How fast people get across town in the simulation (metres per game minute).</summary>
-        public const float WalkMetresPerMinute = 6f;
+        /// <summary>A grown-up's walking speed on screen (metres per real second): the simulation walks people exactly as
+        /// fast as their bodies do, so a body that comes back is where it would have got to.</summary>
+        public const float BodyWalkSpeed = 0.31f * 4.6f;
+        /// <summary>How fast a citizen walks, as the share of a fighter's run their body uses (CitizenNPC).</summary>
+        public static float WalkShare(CitizenData c) => c == null ? 0.3f : c.Age < 16 ? 0.36f : c.Age > 60 ? 0.24f : 0.31f;
+        /// <summary>Metres a citizen covers in a game minute.</summary>
+        public static float MetresPerMinute(CitizenData c) => WalkShare(c) * 4.6f * (c != null && c.Job == Job.Guardia ? 0.9f : 1f) / MinutesPerSecond;
         public const float DayStartHour = 7f;
         const string RelKey = "Gladiator.TownRel.";
 
@@ -359,6 +364,15 @@ namespace Gladiator.Town
                     break;
             }
             s.Sort((a, b) => a.Start.CompareTo(b.Start));
+            // set off early enough to be there on time (the walk takes what it takes along the streets)
+            if (routesReady)
+                for (int k = s.Count - 1; k >= 1; k--)
+                {
+                    if (s[k].PlaceId == s[k - 1].PlaceId) continue;
+                    float hours = RouteOf(c, s[k - 1], s[k]).Length / MetresPerMinute(c) / 60f;
+                    float start = Mathf.Max(s[k - 1].Start + 0.05f, s[k].Start - hours);
+                    s[k] = new ScheduleEntry(start, s[k].Activity, s[k].PlaceId);
+                }
             scheduleCache[key] = s;
             return s;
         }
@@ -377,7 +391,8 @@ namespace Gladiator.Town
             // where they were before: the previous row (the first row of the day follows yesterday's last one)
             var prev = i > 0 ? s[i - 1] : ScheduleFor(c, day - 1)[ScheduleFor(c, day - 1).Count - 1];
             Vector3 to = SpotOf(c, cur), from = SpotOf(c, prev);
-            float travelMin = prev.PlaceId == cur.PlaceId ? 0f : Vector3.Distance(from, to) / WalkMetresPerMinute;
+            Route route = prev.PlaceId == cur.PlaceId ? null : RouteOf(c, prev, cur);
+            float travelMin = route == null ? 0f : route.Length / MetresPerMinute(c);
             float elapsedMin = (hour - cur.Start) * 60f;
             var loc = new CitizenLocation { Activity = cur.Activity, PlaceId = cur.PlaceId };
             if (elapsedMin < travelMin)
@@ -385,7 +400,8 @@ namespace Gladiator.Town
                 loc.Walking = true;
                 loc.FromPlaceId = prev.PlaceId;
                 loc.Progress = Mathf.Clamp01(elapsedMin / travelMin);
-                loc.Position = Vector3.Lerp(from, to, loc.Progress);
+                loc.Position = route.At(loc.Progress);
+                loc.From = from;
             }
             else
             {
@@ -403,6 +419,57 @@ namespace Gladiator.Town
             return places.TryGetValue(e.PlaceId, out var p) && p.Kind == PlaceKind.Work && !e.PlaceId.StartsWith("garden")
                    && (e.Activity == Activity.Trabajar || e.Activity == Activity.Comer || e.Activity == Activity.Taberna
                        || e.Activity == Activity.Rezar || e.Activity == Activity.Banarse);
+        }
+
+        // ------------------------------------------------------------------ routes
+        /// <summary>The way a citizen walks between two stops: along the streets once the navigation mesh exists.</summary>
+        public class Route
+        {
+            public readonly List<Vector3> Points = new List<Vector3>();
+            public float Length;
+            public Vector3 At(float t)
+            {
+                if (Points.Count == 0) return Vector3.zero;
+                float want = Mathf.Clamp01(t) * Length;
+                for (int i = 1; i < Points.Count; i++)
+                {
+                    float seg = Vector3.Distance(Points[i - 1], Points[i]);
+                    if (want <= seg || i == Points.Count - 1) return seg < 1e-4f ? Points[i] : Vector3.Lerp(Points[i - 1], Points[i], Mathf.Clamp01(want / seg));
+                    want -= seg;
+                }
+                return Points[Points.Count - 1];
+            }
+        }
+
+        readonly Dictionary<(int, string, string), Route> routes = new Dictionary<(int, string, string), Route>();
+        readonly List<Vector3> corners = new List<Vector3>();
+        bool routesReady;
+
+        /// <summary>The town's navigation mesh is built: from now on people walk along the streets (and set off in time).</summary>
+        public void RoutesReady()
+        {
+            routesReady = TownNavMesh.Ready;
+            routes.Clear();
+            scheduleCache.Clear();
+            foreach (var c in Citizens) c.Schedule = ScheduleFor(c, Day);
+        }
+
+        Route RouteOf(CitizenData c, ScheduleEntry from, ScheduleEntry to)
+        {
+            var key = (c.Id, from.PlaceId, to.PlaceId);
+            if (routes.TryGetValue(key, out var r)) return r;
+            r = new Route();
+            Vector3 a = SpotOf(c, from), b = SpotOf(c, to);
+            r.Points.Add(a);
+            if (routesReady)
+            {
+                TownNavMesh.Path(a, b, corners);
+                for (int i = 0; i < corners.Count - 1; i++) r.Points.Add(corners[i]);
+            }
+            r.Points.Add(b);
+            for (int i = 1; i < r.Points.Count; i++) { var p = r.Points[i]; p.y = 0f; var q = r.Points[i - 1]; q.y = 0f; r.Length += Vector3.Distance(p, q); }
+            routes[key] = r;
+            return r;
         }
 
         /// <summary>The exact spot of a citizen at a place: spread around open places so a crowd does not stack up.</summary>

@@ -67,7 +67,8 @@ namespace Gladiator.Town
         public bool Walking;
         public bool Indoors;         // at home, asleep or working inside a building (no body needed in the street)
         public float Progress;       // 0..1 along the walk
-        public Vector3 Position;     // world position in the town (straight line while walking)
+        public Vector3 Position;     // world position in the town (along the streets while walking)
+        public Vector3 From;         // walking: where the walk started (a door, a stall...)
         public override string ToString() =>
             Walking ? $"de camino ({Progress:P0}) de {FromPlaceId} a {PlaceId} para {Activity}" : $"{Activity} en {PlaceId}" + (Indoors ? " (dentro)" : "");
     }

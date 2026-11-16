@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using Gladiator.Combat;
 using Gladiator.Core;
@@ -1150,6 +1151,239 @@ namespace Gladiator.Town
             yield return Wait(0.5f);
         }
 
+        /// <summary>A guard after the player inside a house (straight at him, the old way, and along the navmesh, the new
+        /// way), bodies appearing or jumping in plain sight while walking down a street, and people walking in, about and
+        /// out of a house.</summary>
+        IEnumerator ChaseCrowdTest(TownBootstrap town)
+        {
+            var pl = town.Player;
+            var cam = town.Cam;
+            var sim = TownSimulation.Instance;
+            var L = town.Layout;
+            var guards = town.Guards;
+            var pc = pl.GetComponent<PlayerController>();
+            Vector3 p0 = pl.transform.position;
+            float hour0 = sim.Hour;
+            bool susp0 = guards.Suspended;
+            guards.Suspended = true;
+
+            // ---- the navmesh goes into the houses (for whoever asks), the street paths do not
+            HouseInterior h = null;
+            foreach (var x in town.Houses)
+                if (x.Floor == 0 && x.Lot != null && x.Lot.IsHome && !x.Lot.ForSale && x.Door != null && x.Rooms.Count >= 2) { h = x; break; }
+            var corners = new List<Vector3>();
+            Vector3 street = h.Lot.Door + h.Lot.Front * 2f;
+            TownNavMesh.Path(street, h.transform.position, corners, true);
+            bool reaches = corners.Count > 0 && h.Contains(corners[corners.Count - 1] + Vector3.up * 0.3f);
+            int indoorCorners = corners.Count;
+            TownNavMesh.Path(street, h.transform.position, corners, false);
+            bool streetIn = false; foreach (var c in corners) if (h.Contains(c + Vector3.up * 0.3f)) streetIn = true;
+            string ends = corners.Count > 0 ? $"last corner {(corners[corners.Count - 1] - h.transform.position).magnitude:0.0} m from the middle" : "none";
+            UnityEngine.AI.NavMesh.SamplePosition(h.transform.position, out var midHit, 1f, UnityEngine.AI.NavMesh.AllAreas);
+            Log($"NAV house lot {h.Lot.Id}: indoor path reaches the middle={reaches} corners={indoorCorners}; street-only path goes in={streetIn} (expected False) {ends}; " +
+                $"the middle's area mask={midHit.mask} (expected {1 << TownNavMesh.IndoorArea})");
+
+            // ---- a guard behind the house, the player inside it: can he get to him?
+            sim.Hour = 10f;
+            var gc = sim.Citizens.Find(c => c.Job == Job.Guardia);
+            // in the street in front of the house, off to the side of the door: the front wall stands between them
+            Vector3 back = h.Lot.Door + h.Lot.Front * 1.6f + h.Lot.Right * (h.Lot.DoorOffset * h.Lot.Width > 0f ? -1f : 1f) * (h.Lot.Width * 0.5f - 0.8f);
+            if (!TownNavMesh.Snap(back, out Vector3 backAt, 4f)) backAt = back;
+            foreach (bool steer in new[] { false, true })
+            {
+                EnemyAI.Steer = steer ? TownChase.Steer : (System.Func<Fighter, Fighter, Vector3?>)null;
+                if (h.Door.IsOpen) h.Door.Toggle();
+                Teleport(pl, h.transform.position + Vector3.up * 0.1f, h.transform.forward);
+                pc.enabled = false;
+                yield return Wait(0.6f);
+                int doors0 = TownChase.DoorsOpened;
+                Vector3 look = pl.transform.position - backAt; look.y = 0f;
+                var g = town.Spawner.Summon(gc, backAt, Quaternion.LookRotation(look));
+                var f = g.Fighter;
+                f.Harmless = false;
+                f.SetSheathed(false, true);
+                var ai = g.gameObject.AddComponent<EnemyAI>();
+                ai.OnlyTarget = pl; ai.TauntChance = 0f;
+                float t0 = Time.time, minD = 99f, nextLog = 0f; bool reached = false;
+                string trail = "";
+                while (Time.time - t0 < (steer ? 30f : 15f))
+                {
+                    pl.Health.Heal(pl.Health.Max);
+                    if (Time.time - t0 >= nextLog)
+                    {
+                        nextLog += 3f;
+                        trail += $" {Time.time - t0:0}s:{Vector3.Distance(f.transform.position, pl.transform.position):0.0}m{(h.Contains(f.transform.position) ? "(in)" : "")}";
+                    }
+                    float d = Vector3.Distance(f.transform.position, pl.transform.position);
+                    minD = Mathf.Min(minD, d);
+                    if (h.Contains(f.transform.position) && d < 2.6f) { reached = true; break; }
+                    yield return null;
+                }
+                float took = Time.time - t0;
+                if (steer)
+                {
+                    cam.FocusOverride = h.transform.position + Vector3.up * 0.8f; cam.Distance = Mathf.Max(h.HalfX, h.HalfZ) + 4.5f; cam.Pitch = 55f;
+                    yield return Wait(0.6f);
+                    yield return Shot("05z_guardia_entra_a_la_casa");
+                    cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f;
+                }
+                Log($"CHASE {(steer ? "along the navmesh (new)" : "straight at him (old)")}: reached the player inside={reached} after {took:0.0} s, closest {minD:0.0} m, " +
+                    $"doors opened {TownChase.DoorsOpened - doors0}, still outside={!h.Contains(f.transform.position)}; started {(backAt - pl.transform.position).magnitude:0.0} m away, in sight={TownChase.InSight(f, pl)}; trail{trail}");
+                Destroy(ai);
+                f.Harmless = true;
+                f.SetBlock(false);
+                f.SetSheathed(true, true);
+                town.Spawner.Dismiss(g);
+                pl.Health.Heal(pl.Health.Max);
+                pc.enabled = true;
+                yield return Wait(0.5f);
+            }
+            EnemyAI.Steer = TownChase.Steer;
+            if (h.Door.IsOpen) h.Door.Toggle();
+
+            // ---- down a street at dusk: nobody appears, vanishes or jumps in plain sight
+            sim.Hour = 18.85f;
+            Vector3 start = L.Fountain + new Vector3(0f, 0.1f, -9f);
+            Vector3 dir = L.ToWorld(Vector3.right).normalized;
+            // the clock jumped: send everybody's body home first (away for a moment, so nobody is looking)
+            Teleport(pl, L.LudusGate + Vector3.up * 0.1f, dir);
+            yield return Wait(2f);
+            Teleport(pl, start, dir);
+            yield return Wait(4f);
+            pc.enabled = false;
+            var sp = town.Spawner;
+            var last = new Dictionary<int, Vector3>();
+            int popIn = 0, outOfDoor = 0, jumps = 0, seenAll = 0, pop0 = sp.PoppedInView;
+            float driftSum = 0f, driftMax = 0f; int driftN = 0;
+            var ids = new HashSet<int>();
+            string jumpWho = "";
+            foreach (var n in sp.Active) if (n.Citizen != null && !n.Controlled) last[n.Citizen.Id] = n.transform.position; // already there: not new
+            for (float t = 0f; t < 28f; t += Time.deltaTime)
+            {
+                if (t > 14f && t - Time.deltaTime <= 14f) dir = -dir; // turn back halfway
+                pl.SetFacing(dir); pl.Move(dir * 0.55f);
+                ids.Clear();
+                foreach (var n in sp.Active)
+                {
+                    if (n.Citizen == null || n.Controlled) continue;
+                    int id = n.Citizen.Id;
+                    ids.Add(id);
+                    Vector3 pos = n.transform.position;
+                    bool seen = CitizenSpawner.InView(pos) && Vector3.Distance(pos, pl.transform.position) < 30f;
+                    if (!last.TryGetValue(id, out Vector3 before))
+                    {
+                        seenAll++;
+                        if (seen)
+                        {
+                            var loc = sim.WhereIs(n.Citizen, sim.Hour);
+                            if (loc.Walking && Vector3.Distance(pos, loc.From) < 3.5f) outOfDoor++; else popIn++;
+                        }
+                    }
+                    else if (seen && Vector3.Distance(pos, before) > 1.2f) { jumps++; jumpWho += $" {n.Citizen.Name} {Vector3.Distance(pos, before):0.0}m"; }
+                    last[id] = pos;
+                    var l2 = sim.WhereIs(n.Citizen, sim.Hour);
+                    if (l2.Walking && !n.Fleeing)
+                    {
+                        Vector3 dd = pos - l2.Position; dd.y = 0f;
+                        driftSum += dd.magnitude; driftN++; driftMax = Mathf.Max(driftMax, dd.magnitude);
+                    }
+                }
+                var drop = new List<int>();
+                foreach (var id in last.Keys) if (!ids.Contains(id)) drop.Add(id);
+                foreach (var id in drop) last.Remove(id);
+                if (t > 7f && t - Time.deltaTime <= 7f) yield return Shot("05za_calle_al_atardecer");
+                yield return null;
+            }
+            pl.Move(Vector3.zero);
+            pc.enabled = true;
+            Log($"CROWD 28 s down a street at dusk: bodies {seenAll}; appeared in sight within 30 m={popIn} (expected 0), came out of a door in sight={outOfDoor}, " +
+                $"went away in sight={sp.PoppedInView - pop0} (expected 0), jumps over 1.2 m in a frame={jumps} (expected 0){jumpWho}; walkers off their simulated spot: average {(driftN > 0 ? driftSum / driftN : 0f):0.0} m, most {driftMax:0.0} m");
+
+            // ---- a house: somebody comes in through the door, somebody goes out, somebody moves from the table to bed
+            HouseInterior fam = null;
+            foreach (var x in town.Houses)
+            {
+                if (x.Floor != 0 || x.Lot == null || !x.Lot.IsHome || x.Lot.ForSale || x.Door == null) continue;
+                var res = HomeOwners.Residents(x);
+                if (res.Count >= 2 && res.TrueForAll(c => c.Job != Job.Guardia && c.Job != Job.Panadero && c.Job != Job.Tabernero)) { fam = x; break; }
+            }
+            var il = town.Indoor;
+            if (fam != null)
+            {
+                var res = HomeOwners.Residents(fam);
+                float When(System.Func<CitizenData, float, bool> from, System.Func<CitizenData, float, bool> to, float h0, float h1, out CitizenData who)
+                {
+                    who = null;
+                    foreach (var c in res)
+                        for (float hh = h0; hh < h1; hh += 0.01f)
+                            if (from(c, hh) && to(c, hh + 0.01f)) { who = c; return hh + 0.01f; }
+                    return -1f;
+                }
+                bool HomeIn(CitizenData c, float hh) { var l = sim.WhereIs(c, hh); return !l.Walking && l.Indoors && l.PlaceId == c.HomeId; }
+                Vector3 inside = fam.transform.position + Vector3.up * 0.1f;
+
+                // out in the morning
+                float tOut = When(HomeIn, (c, hh) => !HomeIn(c, hh), 6.1f, 9.5f, out var leaver);
+                if (tOut > 0f)
+                {
+                    sim.Hour = tOut - 0.05f;
+                    Teleport(pl, inside, fam.transform.forward);
+                    yield return Wait(2.2f);
+                    int out0 = il.WentOut; float t0 = Time.time; bool shot = false;
+                    while (Time.time - t0 < 16f && il.WentOut == out0)
+                    {
+                        if (!shot && il.WalkingNow > 0 && Time.time - t0 > 4f)
+                        {
+                            shot = true;
+                            cam.FocusOverride = fam.transform.position + Vector3.up * 0.8f; cam.Distance = Mathf.Max(fam.HalfX, fam.HalfZ) + 4.5f; cam.Pitch = 55f;
+                            yield return Wait(0.3f);
+                            yield return Shot("05zb_sale_de_casa");
+                            cam.FocusOverride = null; cam.Distance = 6f; cam.Pitch = 35f;
+                        }
+                        yield return null;
+                    }
+                    var ob = sp.Active;
+                    bool streetBody = false; foreach (var n in ob) if (n.Citizen == leaver && !n.Controlled) streetBody = true;
+                    Log($"INDOOR out at {TownSimulation.Clock(tOut)}: {leaver.Name} went out through the door={il.WentOut > out0} after {Time.time - t0:0.0} s, " +
+                        $"has a body in the street now={streetBody}");
+                }
+                // in, in the evening
+                float tIn = When((c, hh) => !HomeIn(c, hh), HomeIn, 19.2f, 23.5f, out var comer);
+                if (tIn > 0f)
+                {
+                    Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                    yield return Wait(0.6f);
+                    sim.Hour = tIn - 0.05f;
+                    Teleport(pl, inside, -fam.transform.forward);
+                    yield return Wait(1.0f);
+                    int in0 = il.CameIn, mv0 = il.MovedInside; float t0 = Time.time;
+                    while (Time.time - t0 < 14f && il.MovedInside == mv0) yield return null;
+                    Log($"INDOOR in at {TownSimulation.Clock(tIn)}: {comer.Name} came in through the door={il.CameIn > in0} and sat / lay down after walking={il.MovedInside > mv0} " +
+                        $"after {Time.time - t0:0.0} s");
+                }
+                // from the table to bed
+                float tBed = When((c, hh) => HomeIn(c, hh) && sim.WhereIs(c, hh).Activity != Activity.Dormir,
+                                  (c, hh) => HomeIn(c, hh) && sim.WhereIs(c, hh).Activity == Activity.Dormir, 20f, 23.9f, out var sleeper);
+                if (tBed > 0f)
+                {
+                    Teleport(pl, L.Fountain + new Vector3(3f, 0.1f, 3f));
+                    yield return Wait(0.6f);
+                    sim.Hour = tBed - 0.04f;
+                    Teleport(pl, inside, -fam.transform.forward);
+                    yield return Wait(2.0f);
+                    int mv0 = il.MovedInside, lying0 = il.Doing(Fighter.ActLie); float t0 = Time.time;
+                    while (Time.time - t0 < 14f && il.Doing(Fighter.ActLie) <= lying0) yield return null;
+                    Log($"INDOOR to bed at {TownSimulation.Clock(tBed)}: {sleeper.Name} got up from the table and walked to bed={il.MovedInside > mv0} lying now {il.Doing(Fighter.ActLie)} (was {lying0}) after {Time.time - t0:0.0} s");
+                }
+            }
+            else Log("INDOOR no family home found");
+
+            sim.Hour = hour0;
+            guards.Suspended = susp0;
+            Teleport(pl, p0);
+            yield return Wait(0.5f);
+        }
+
         IEnumerator ServicesTest(TownBootstrap town)
         {
             var pl = town.Player;
@@ -1937,6 +2171,7 @@ namespace Gladiator.Town
                 yield return TavernTest(town);
                 yield return ExtrasTest(town);
                 yield return LifeTest(town);
+                yield return ChaseCrowdTest(town);
                 yield return ServicesTest(town);
                 yield return LudusTest(town);
                 town.Guards.Suspended = true;

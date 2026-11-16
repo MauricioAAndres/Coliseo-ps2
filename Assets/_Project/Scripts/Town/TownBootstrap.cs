@@ -258,6 +258,8 @@ namespace Gladiator.Town
             Vector3 mid = (Layout.WallCorners[0] + Layout.WallCorners[2]) * 0.5f;
             float span = Mathf.Max(TownLayout.WallX * 2f, TownLayout.WallZMax - TownLayout.WallZMin) + 10f;
             TownNavMesh.Build(mid, new Vector3(span, 40f, span), Houses);
+            sim.RoutesReady();                    // the townsfolk walk the streets from now on
+            Gladiator.Combat.EnemyAI.Steer = TownChase.Steer; // fighting in town: round the houses, in through the doors
             BuildSky(env);
             Gladiator.PS2Style.DayNightCycle.Attach(env); // dawn / day / dusk / night from the town clock, clouds
             Camera cam = BuildCamera();
@@ -354,6 +356,8 @@ namespace Gladiator.Town
         {
             if (Instance == this) Instance = null;
             TownNavMesh.Clear();
+            Gladiator.Combat.EnemyAI.Steer = null;
+            TownChase.Clear();
         }
 
         void SetupRenderSettings()

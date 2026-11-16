@@ -311,6 +311,11 @@ namespace Gladiator.Net
                 for (float t = 0f; t < 0.8f; t += Time.deltaTime) { camC.FocusOverride = bedC.At.position + Vector3.up * 0.3f; camC.Distance = 4f; camC.Pitch = 50f; yield return null; }
             }
             yield return Shot("mp_client_pueblo");
+            {
+                var spN = Gladiator.Town.CitizenSpawner.Instance;
+                yield return new WaitForSeconds(1.5f);
+                Log($"NPCSYNC guest's townsfolk following the host's={(spN != null ? spN.FollowingHost : -1)} of {(spN != null ? spN.ActiveCount : -1)} bodies (expected more than 0)");
+            }
             if (townC.Cam != null) townC.Cam.FocusOverride = null;
             // sleeping online: the guest gets into a bed and waits; the host decides, both sleep and wake together
             {

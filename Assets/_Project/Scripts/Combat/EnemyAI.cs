@@ -20,7 +20,13 @@ namespace Gladiator.Combat
 
         static readonly System.Collections.Generic.List<EnemyAI> all = new System.Collections.Generic.List<EnemyAI>();
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { all.Clear(); }
+        static void ResetStatics() { all.Clear(); Steer = null; }
+
+        /// <summary>
+        /// Where to walk to reach the target when it is not simply straight ahead (out of sight, round a corner, inside
+        /// a house), or null to go straight at it. The town plugs in its navigation mesh; the arena leaves it empty.
+        /// </summary>
+        public static System.Func<Fighter, Fighter, Vector3?> Steer;
 
         /// <summary>Fighter this AI is currently going after (used to spread targets in free-for-all).</summary>
         public Fighter Target { get; private set; }
@@ -96,6 +102,21 @@ namespace Gladiator.Combat
                     Vector3 tw = Flat(w.transform.position - transform.position);
                     if (tw.magnitude <= Fighter.PickupRadius) self.TryPickup(w);
                     else { self.Move(tw.normalized); self.SetFacing(tw); Traverse(tw); }
+                    return;
+                }
+            }
+
+            // not straight ahead (a wall, a house in between): follow the way round, no fighting meanwhile
+            if (Steer != null && !wantBlock)
+            {
+                Vector3? way = Steer(self, target);
+                if (way.HasValue)
+                {
+                    Vector3 w = Flat(way.Value - transform.position);
+                    self.SetBlock(false);
+                    self.SetCharge(false);
+                    if (w.sqrMagnitude > 0.0025f) { self.Move(w.normalized); self.SetFacing(w); Traverse(w); }
+                    else self.Move(Vector3.zero);
                     return;
                 }
             }
